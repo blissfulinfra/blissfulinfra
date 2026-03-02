@@ -1195,6 +1195,69 @@ $ curl http://localhost:8095/chat -d '{"message": "hello"}'
 
 ---
 
+### 6.10 Spring Boot Template Enhancements
+**Goal:** Harden the Kotlin/Spring Boot template with real-world resilience and HTTP client patterns.
+
+#### 6.10.1 Resilience4j Patterns
+Wrap external calls (Kafka publish, DB writes, downstream HTTP) with Resilience4j decorators so the template demonstrates production-grade fault tolerance out of the box.
+
+- [ ] Add `resilience4j-spring-boot3` dependency to `build.gradle.kts`
+- [ ] Circuit breaker on `EventPublisher.publish()` (Kafka producer)
+- [ ] Retry with exponential backoff on DB writes (JPA repository calls)
+- [ ] Rate limiter on `GET /hello` to demonstrate throttling
+- [ ] Bulkhead on downstream HTTP calls (thread pool isolation)
+- [ ] Expose Resilience4j metrics via Actuator → Prometheus → Grafana
+- [ ] Add `application.yaml` config block for all Resilience4j instances
+
+**Reference:** https://resilience4j.readme.io/docs/getting-started
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `resilience4j-spring-boot3` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/EventPublisher.kt` — `@CircuitBreaker` + `@Retry` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — `@RateLimiter` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — Resilience4j instance config |
+
+#### 6.10.2 WebClient (Spring WebFlux) with Example External Call
+Replace `RestTemplate` (deprecated) with reactive `WebClient` and wire in a real call to a free public REST API to demonstrate non-blocking HTTP, error handling, and OTEL trace propagation.
+
+- [ ] Add `spring-boot-starter-webflux` dependency to `build.gradle.kts`
+- [ ] Create `WebClientConfig.kt` — define a `WebClient` bean with base URL + timeout
+- [ ] Create `ExternalApiService.kt` — call a free public API (e.g. `https://catfact.ninja/fact`) returning a `Mono<T>`
+- [ ] Add `GET /external` endpoint in `HelloController` that calls `ExternalApiService`
+- [ ] Wrap `WebClient` call with Resilience4j `@CircuitBreaker` (ties 6.10.1 + 6.10.2 together)
+- [ ] OTEL Java agent automatically propagates trace context through `WebClient` — verify in Jaeger
+
+**Reference:** https://docs.spring.io/spring-framework/reference/web/webflux-webclient/client-retrieve.html
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `spring-boot-starter-webflux` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/WebClientConfig.kt` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/service/ExternalApiService.kt` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `GET /external` |
+
+#### Phase 6.10 Definition of Done
+```
+# Circuit breaker trips after Kafka is down
+$ docker stop my-app-kafka
+$ curl http://localhost:8080/hello
+{"error": "circuit breaker open: kafka-producer"}  # not a 500, graceful fallback
+
+# Rate limiter kicks in
+$ for i in {1..20}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/hello; done
+200 200 200 ... 429 429 429
+
+# External API call works and shows up in Jaeger with child span
+$ curl http://localhost:8080/external
+{"fact": "Cats have 32 muscles in each ear."}
+# Jaeger: root span GET /external → child span GET catfact.ninja/fact
+```
+
+---
+
 ## Phase 7: Autonomy
 
 **Goal:** Close the loop. Phases 1-6 gave blissful-infra eyes (observability), reflexes (resilience), and a brain (intelligence). Phase 7 gives it a voice — LangGraph-powered virtual employees that analyze your codebase and suggest changes for human review.
