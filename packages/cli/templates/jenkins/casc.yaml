@@ -40,17 +40,6 @@ tool:
       - name: "Default"
         home: "git"
 
-  jdk:
-    installations:
-      - name: "JDK21"
-        home: "/opt/java/openjdk"
-
-  gradle:
-    installations:
-      - name: "Gradle"
-        gradleInstaller:
-          - id: "8.5"
-
 credentials:
   system:
     domainCredentials:

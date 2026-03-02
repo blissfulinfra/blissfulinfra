@@ -9,10 +9,39 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JENKINS_DIR = path.join(__dirname, "..", "..", "templates", "jenkins");
 const JENKINS_DATA_DIR = path.join(process.env.HOME || "~", ".blissful-infra", "jenkins");
+const JENKINS_BASE = "http://localhost:8081";
+const JENKINS_AUTH = "Basic " + Buffer.from("admin:admin").toString("base64");
 
 interface JenkinsOptions {
   build?: boolean;
   reset?: boolean;
+}
+
+/** Fetch Jenkins CSRF crumb (required for all POST operations). */
+async function getJenkinsCrumb(): Promise<Record<string, string>> {
+  try {
+    const resp = await fetch(`${JENKINS_BASE}/crumbIssuer/api/json`, {
+      headers: { Authorization: JENKINS_AUTH },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (resp.ok) {
+      const data = await resp.json() as { crumb: string; crumbRequestField: string };
+      return { [data.crumbRequestField]: data.crumb };
+    }
+  } catch {
+    // CSRF disabled or Jenkins not reachable — proceed without crumb
+  }
+  return {};
+}
+
+/** POST to Jenkins with automatic crumb injection. */
+async function jenkinsPost(url: string, body: string, contentType = "application/xml"): Promise<Response> {
+  const crumb = await getJenkinsCrumb();
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": contentType, Authorization: JENKINS_AUTH, ...crumb },
+    body,
+  });
 }
 
 export async function checkDockerRunning(): Promise<boolean> {
@@ -46,7 +75,7 @@ async function waitForJenkins(timeoutSeconds = 120): Promise<boolean> {
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const response = await fetch("http://localhost:8081/login", {
+      const response = await fetch(`${JENKINS_BASE}/login`, {
         signal: AbortSignal.timeout(5000),
       });
       if (response.ok || response.status === 403) {
@@ -62,6 +91,24 @@ async function waitForJenkins(timeoutSeconds = 120): Promise<boolean> {
 
   spinner.fail("Jenkins failed to start within timeout");
   return false;
+}
+
+async function ensureJenkinsImage(): Promise<void> {
+  try {
+    await execa("docker", ["image", "inspect", "blissful-jenkins:latest"], { stdio: "pipe" });
+  } catch {
+    const spinner = ora("Building Jenkins image with plugins (first time only, ~2 min)...").start();
+    try {
+      await execa("docker", ["build", "-t", "blissful-jenkins:latest", "."], {
+        cwd: JENKINS_DATA_DIR,
+        stdio: "pipe",
+      });
+      spinner.succeed("Jenkins image built");
+    } catch (error) {
+      spinner.fail("Failed to build Jenkins image");
+      throw error;
+    }
+  }
 }
 
 export async function startJenkins(opts: JenkinsOptions): Promise<void> {
@@ -84,6 +131,17 @@ export async function startJenkins(opts: JenkinsOptions): Promise<void> {
   // Ensure data directory exists
   await fs.mkdir(JENKINS_DATA_DIR, { recursive: true });
 
+  // On reset, wipe Docker volumes so JCasC runs fresh
+  if (opts.reset) {
+    const resetSpinner = ora("Removing old Jenkins data...").start();
+    try {
+      await execa("docker", ["compose", "down", "-v"], { cwd: JENKINS_DATA_DIR, stdio: "pipe" });
+      resetSpinner.succeed("Old Jenkins data removed");
+    } catch {
+      resetSpinner.info("No existing Jenkins data to remove");
+    }
+  }
+
   // Copy Jenkins templates to data directory if not exists or reset
   const composeFile = path.join(JENKINS_DATA_DIR, "docker-compose.yaml");
   const shouldCopy = opts.reset || !(await fs.access(composeFile).then(() => true).catch(() => false));
@@ -105,20 +163,11 @@ export async function startJenkins(opts: JenkinsOptions): Promise<void> {
     }
   }
 
-  // Build custom image if requested
+  // Force rebuild on --build, otherwise ensure image exists (build once on first run)
   if (opts.build) {
-    const spinner = ora("Building Jenkins image with plugins...").start();
-    try {
-      await execa("docker", ["build", "-t", "blissful-jenkins:latest", "."], {
-        cwd: JENKINS_DATA_DIR,
-        stdio: "pipe",
-      });
-      spinner.succeed("Jenkins image built");
-    } catch (error) {
-      spinner.fail("Failed to build Jenkins image");
-      throw error;
-    }
+    await execa("docker", ["rmi", "-f", "blissful-jenkins:latest"], { stdio: "pipe" }).catch(() => {});
   }
+  await ensureJenkinsImage();
 
   // Start Jenkins
   const spinner = ora("Starting Jenkins...").start();
@@ -270,34 +319,25 @@ export async function registerProjectWithJenkins(projectDir: string, projectName
   const scriptPath = await findJenkinsfileScriptPath(projectDir);
   if (!scriptPath) return;
 
-  const auth = "Basic " + Buffer.from("admin:admin").toString("base64");
   const jobXml = buildJobXml(projectDir, projectName, scriptPath);
 
   // Skip if already registered
   const checkResp = await fetch(
-    `http://localhost:8081/job/blissful-projects/job/${projectName}/api/json`,
-    { headers: { Authorization: auth }, signal: AbortSignal.timeout(5000) },
+    `${JENKINS_BASE}/job/blissful-projects/job/${projectName}/api/json`,
+    { headers: { Authorization: JENKINS_AUTH }, signal: AbortSignal.timeout(5000) },
   );
   if (checkResp.ok) return;
 
   // Try the blissful-projects folder first, fall back to root
-  const createResp = await fetch(
-    `http://localhost:8081/job/blissful-projects/createItem?name=${projectName}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/xml", Authorization: auth },
-      body: jobXml,
-    },
+  const createResp = await jenkinsPost(
+    `${JENKINS_BASE}/job/blissful-projects/createItem?name=${projectName}`,
+    jobXml,
   );
 
   if (!createResp.ok) {
-    const fallbackResp = await fetch(
-      `http://localhost:8081/createItem?name=${projectName}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/xml", Authorization: auth },
-        body: jobXml,
-      },
+    const fallbackResp = await jenkinsPost(
+      `${JENKINS_BASE}/createItem?name=${projectName}`,
+      jobXml,
     );
     if (!fallbackResp.ok) {
       throw new Error(`Failed to create Jenkins job: ${fallbackResp.status}`);
@@ -338,8 +378,8 @@ async function addProject(projectName: string): Promise<void> {
 
   try {
     const checkResp = await fetch(
-      `http://localhost:8081/job/blissful-projects/job/${projectName}/api/json`,
-      { headers: { Authorization: "Basic " + Buffer.from("admin:admin").toString("base64") } },
+      `${JENKINS_BASE}/job/blissful-projects/job/${projectName}/api/json`,
+      { headers: { Authorization: JENKINS_AUTH } },
     );
 
     if (checkResp.ok) {
@@ -371,22 +411,13 @@ async function buildProject(projectName: string): Promise<void> {
 
   try {
     // Try both with and without folder prefix
-    let buildUrl = `http://localhost:8081/job/blissful-projects/job/${projectName}/build`;
-    let response = await fetch(buildUrl, {
-      method: "POST",
-      headers: {
-        Authorization: "Basic " + Buffer.from("admin:admin").toString("base64"),
-      },
-    });
-
+    let response = await jenkinsPost(
+      `${JENKINS_BASE}/job/blissful-projects/job/${projectName}/build`, "",
+    );
     if (!response.ok) {
-      buildUrl = `http://localhost:8081/job/${projectName}/build`;
-      response = await fetch(buildUrl, {
-        method: "POST",
-        headers: {
-          Authorization: "Basic " + Buffer.from("admin:admin").toString("base64"),
-        },
-      });
+      response = await jenkinsPost(
+        `${JENKINS_BASE}/job/${projectName}/build`, "",
+      );
     }
 
     if (!response.ok) {
@@ -413,10 +444,8 @@ async function listProjects(): Promise<void> {
 
   try {
     // Get all jobs
-    const response = await fetch("http://localhost:8081/api/json?tree=jobs[name,color,lastBuild[number,result,timestamp]]", {
-      headers: {
-        Authorization: "Basic " + Buffer.from("admin:admin").toString("base64"),
-      },
+    const response = await fetch(`${JENKINS_BASE}/api/json`, {
+      headers: { Authorization: JENKINS_AUTH },
     });
 
     if (!response.ok) {
