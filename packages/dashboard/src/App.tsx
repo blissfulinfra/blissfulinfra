@@ -1379,6 +1379,16 @@ function App() {
           </div>
           <div className="flex items-center gap-2">
             <a
+              href="http://localhost:16686"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-purple-400"
+              title="Open Jaeger Distributed Tracing"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Jaeger
+            </a>
+            <a
               href="http://localhost:3001/d/blissful-service-overview/service-overview"
               target="_blank"
               rel="noopener noreferrer"
