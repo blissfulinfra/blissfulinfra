@@ -1778,27 +1778,36 @@ async function getPipelineStatus(
     try {
       const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
 
-      // Try folder path first (standard), then root as fallback
-      let jobApiUrl = `http://${jenkinsApiHost}:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
-      let resp = await fetch(jobApiUrl, {
+      // First resolve where the job actually lives (existence check, not lastBuild).
+      // A new job with no builds returns 404 on /lastBuild, so we must check the
+      // job endpoint itself to avoid misidentifying the path.
+      const folderJobUrl = `http://${jenkinsApiHost}:8081/job/blissful-projects/job/${projectName}/api/json`;
+      const rootJobUrl   = `http://${jenkinsApiHost}:8081/job/${projectName}/api/json`;
+
+      const folderCheck = await fetch(folderJobUrl, {
         headers: { Authorization: authHeader },
         signal: AbortSignal.timeout(3000),
       });
 
-      if (!resp.ok) {
-        // Fallback: job created at root level
-        jobApiUrl = `http://${jenkinsApiHost}:8081/job/${projectName}/lastBuild/api/json`;
-        resp = await fetch(jobApiUrl, {
+      if (!folderCheck.ok) {
+        const rootCheck = await fetch(rootJobUrl, {
           headers: { Authorization: authHeader },
           signal: AbortSignal.timeout(3000),
         });
-        if (resp.ok || resp.status === 404) {
-          // Jenkins is reachable even if job doesn't exist yet
+        if (rootCheck.ok) {
           resolvedJobPath = `job/${projectName}`;
         }
+        // If neither exists the path stays as blissful-projects (job not registered yet)
       }
 
       jenkinsReachable = true;
+
+      // Now fetch lastBuild from the resolved path
+      const jobApiUrl = `http://${jenkinsApiHost}:8081/${resolvedJobPath}/lastBuild/api/json`;
+      const resp = await fetch(jobApiUrl, {
+        headers: { Authorization: authHeader },
+        signal: AbortSignal.timeout(3000),
+      });
 
       if (resp.ok) {
         const build = (await resp.json()) as {
