@@ -1239,6 +1239,158 @@ Replace `RestTemplate` (deprecated) with reactive `WebClient` and wire in a real
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/service/ExternalApiService.kt` |
 | MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `GET /external` |
 
+#### 6.10.3 Flyway Database Migrations
+Replace `spring.jpa.hibernate.ddl-auto=update` with version-controlled SQL migrations. Every schema change is a numbered script, applied automatically on startup and tracked in a `flyway_schema_history` table.
+
+- [ ] Add `flyway-core` dependency to `build.gradle.kts`
+- [ ] Create `src/main/resources/db/migration/V1__init.sql` — initial schema (greetings table)
+- [ ] Set `spring.flyway.enabled=true`, `spring.jpa.hibernate.ddl-auto=validate` in `application.yaml`
+- [ ] Add `V2__add_greeting_index.sql` as an example of a follow-on migration
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `flyway-core` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V1__init.sql` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V2__add_greeting_index.sql` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — flyway + ddl-auto=validate |
+
+#### 6.10.4 Global Exception Handler + RFC 7807 Problem Details
+Replace raw Spring 500 responses with a `@ControllerAdvice` that maps all exceptions to the RFC 7807 `application/problem+json` shape — a standard every API client can parse uniformly.
+
+- [ ] Create `GlobalExceptionHandler.kt` with `@ControllerAdvice`
+- [ ] Map `MethodArgumentNotValidException` → 400 with field-level error detail
+- [ ] Map `NoSuchElementException` → 404
+- [ ] Map `IllegalArgumentException` → 400
+- [ ] Map `Exception` (catch-all) → 500 without stack trace leakage
+- [ ] Use Spring 6's built-in `ProblemDetail` type (no extra library needed)
+- [ ] Add `@Valid` annotations to existing controller request bodies
+
+**Response shape:**
+```json
+{
+  "type": "https://example.com/errors/validation-failed",
+  "title": "Validation Failed",
+  "status": 400,
+  "detail": "name must not be blank",
+  "instance": "/hello"
+}
+```
+
+**Files:**
+| Action | File |
+|--------|------|
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/exception/GlobalExceptionHandler.kt` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `@Valid` |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — confirm `spring-boot-starter-validation` present |
+
+#### 6.10.5 Transactional Outbox Pattern
+The most common way to lose events: write to the DB, then the app crashes before Kafka publish. The outbox pattern writes the event to a DB table in the **same transaction** as the business write, then a separate publisher polls and sends to Kafka. Guarantees at-least-once delivery with no dual-write risk.
+
+```
+Business logic
+    │
+    ├── INSERT greeting → greetings table     ┐ same
+    └── INSERT event   → outbox table         ┘ transaction
+
+Outbox Publisher (scheduled)
+    │
+    ├── SELECT unprocessed rows from outbox
+    ├── Publish each to Kafka
+    └── Mark row as processed
+```
+
+- [ ] Create `OutboxEvent` entity (`id`, `event_type`, `payload`, `processed_at`, `created_at`)
+- [ ] Create `OutboxRepository` (Spring Data JPA)
+- [ ] Modify `HelloController` to write greeting + outbox event in one `@Transactional` block
+- [ ] Create `OutboxPublisher` — `@Scheduled(fixedDelay = 1000)` polls unprocessed rows, publishes to Kafka, marks processed
+- [ ] Wire `OutboxPublisher` to existing `EventPublisher`
+
+**Files:**
+| Action | File |
+|--------|------|
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/entity/OutboxEvent.kt` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/repository/OutboxRepository.kt` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/OutboxPublisher.kt` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — `@Transactional` + outbox write |
+| CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V3__add_outbox_table.sql` |
+
+#### 6.10.6 Kafka Dead Letter Queue (DLQ)
+When a consumer fails to process a message after N retries, it should land in a DLQ topic for inspection — not silently drop or crash the consumer. Spring Kafka's `@RetryableTopic` handles this automatically.
+
+- [ ] Annotate `EventConsumer` with `@RetryableTopic(attempts = 3, backoff = @Backoff(delay = 1000, multiplier = 2.0))`
+- [ ] This auto-creates `greetings-retry-0`, `greetings-retry-1`, `greetings-dlt` topics
+- [ ] Add `@DltHandler` method on `EventConsumer` — logs the failed message with full context
+- [ ] Add DLQ message count metric via Micrometer
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/EventConsumer.kt` — `@RetryableTopic` + `@DltHandler` |
+
+#### 6.10.7 Correlation ID / MDC Propagation
+Every log line in a single HTTP request should share one `X-Request-ID`. Without this, tracing a request across log lines requires grepping for unrelated strings. The OTEL trace ID is already injected by the Java agent; this adds HTTP-level correlation for clients that send their own request IDs.
+
+- [ ] Create `CorrelationFilter` — servlet filter that reads `X-Request-ID` header (or generates a UUID), stores in MDC as `requestId`, forwards as response header
+- [ ] Update `logback-spring.xml` to include `requestId` in every log line's JSON output
+- [ ] Register filter as a `@Bean` in `WebConfig` or via `@Component`
+
+**Files:**
+| Action | File |
+|--------|------|
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/filter/CorrelationFilter.kt` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/logback-spring.xml` — add `requestId` field |
+
+#### 6.10.8 OpenAPI / Swagger Docs
+Auto-generate interactive API docs from the existing controller code — zero annotations needed for basic coverage. `springdoc-openapi` scans `@RestController` methods and produces a spec at `/v3/api-docs` and a UI at `/swagger-ui.html`.
+
+- [ ] Add `springdoc-openapi-starter-webmvc-ui` dependency to `build.gradle.kts`
+- [ ] Add `@Operation` and `@ApiResponse` annotations to `HelloController` as examples
+- [ ] Configure `springdoc.api-docs.path=/v3/api-docs` and `springdoc.swagger-ui.path=/swagger-ui.html` in `application.yaml`
+- [ ] Expose `/v3/api-docs` and `/swagger-ui/**` via Spring Security (if JWT added in future)
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `springdoc-openapi-starter-webmvc-ui` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `@Operation` examples |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — springdoc paths |
+
+#### 6.10.9 JWT / OAuth2 Resource Server
+Protect endpoints with Bearer token validation. Spring Security's OAuth2 resource server validates JWT signatures against a JWKS endpoint — no manual token parsing needed.
+
+- [ ] Add `spring-boot-starter-security` + `spring-security-oauth2-resource-server` to `build.gradle.kts`
+- [ ] Create `SecurityConfig.kt` — configure `httpSecurity.oauth2ResourceServer { jwt { } }`
+- [ ] Set `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` in `application.yaml` (points to local Keycloak or mock JWKS)
+- [ ] Protect `POST /echo` and `GET /greetings` — leave `GET /hello` and `/health` public
+- [ ] Add `@PreAuthorize("hasRole('USER')")` example on one endpoint
+- [ ] Add Keycloak dev container to docker-compose (optional, gated on `--auth` flag)
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add security + oauth2 resource server |
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/SecurityConfig.kt` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — jwt jwk-set-uri |
+
+#### 6.10.10 Audit Trail + Soft Deletes
+Track who created/modified each record and when, without application code changes — Spring Data JPA auditing handles it automatically. Soft deletes prevent accidental data loss and support compliance requirements.
+
+- [ ] Enable JPA auditing: `@EnableJpaAuditing` on `Application.kt`
+- [ ] Add `@CreatedDate`, `@LastModifiedDate`, `@CreatedBy`, `@LastModifiedBy` fields to `Greeting` entity
+- [ ] Create `AuditorAwareImpl` — returns current user from `SecurityContext` (or `"system"` fallback)
+- [ ] Add `deleted_at` column to `Greeting` + `@SQLRestriction("deleted_at IS NULL")` filter
+- [ ] Add `DELETE /greetings/{id}` endpoint that sets `deleted_at` instead of hard-deleting
+- [ ] Flyway migration `V4__add_audit_columns.sql`
+
+**Files:**
+| Action | File |
+|--------|------|
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/Application.kt` — `@EnableJpaAuditing` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/entity/Greeting.kt` — audit fields + `deleted_at` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/AuditConfig.kt` |
+| CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V4__add_audit_columns.sql` |
+
 #### Phase 6.10 Definition of Done
 ```
 # Circuit breaker trips after Kafka is down
@@ -1254,6 +1406,40 @@ $ for i in {1..20}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost
 $ curl http://localhost:8080/external
 {"fact": "Cats have 32 muscles in each ear."}
 # Jaeger: root span GET /external → child span GET catfact.ninja/fact
+
+# Validation error returns RFC 7807 problem details
+$ curl -X POST http://localhost:8080/echo -d '{}'
+{"type":"about:blank","title":"Bad Request","status":400,"detail":"data must not be null"}
+
+# Flyway runs on startup
+INFO  FlywayAutoConfiguration - Flyway migration has applied 4 migration(s) to schema "public"
+
+# Outbox guarantees no lost events even if Kafka is briefly down
+$ docker stop my-app-kafka && curl http://localhost:8080/hello && docker start my-app-kafka
+# Event appears in Kafka once broker is back — not lost
+
+# Kafka consumer fails 3 times → message lands in DLT
+# greetings-dlt topic has 1 message; consumer is still healthy
+
+# Correlation ID flows through every log line
+$ curl -H "X-Request-ID: abc-123" http://localhost:8080/hello
+# All log lines for this request contain: "requestId": "abc-123"
+
+# Swagger UI available
+$ open http://localhost:8080/swagger-ui.html
+# Interactive docs showing all endpoints, request/response shapes
+
+# JWT protection
+$ curl http://localhost:8080/echo -d '{"data":"test"}'
+HTTP/1.1 401 Unauthorized
+$ curl -H "Authorization: Bearer <valid-token>" http://localhost:8080/echo -d '{"data":"test"}'
+{"echo": "test"}
+
+# Soft delete
+$ curl -X DELETE http://localhost:8080/greetings/1
+HTTP/1.1 204 No Content
+$ curl http://localhost:8080/greetings  # deleted record not returned
+$ SELECT * FROM greeting WHERE deleted_at IS NOT NULL;  # record still in DB
 ```
 
 ---
