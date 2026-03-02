@@ -15,7 +15,7 @@ interface JenkinsOptions {
   reset?: boolean;
 }
 
-async function checkDockerRunning(): Promise<boolean> {
+export async function checkDockerRunning(): Promise<boolean> {
   try {
     await execa("docker", ["info"], { stdio: "pipe" });
     return true;
@@ -24,7 +24,7 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function isJenkinsRunning(): Promise<boolean> {
+export async function isJenkinsRunning(): Promise<boolean> {
   try {
     const { stdout } = await execa("docker", [
       "ps",
@@ -64,7 +64,7 @@ async function waitForJenkins(timeoutSeconds = 120): Promise<boolean> {
   return false;
 }
 
-async function startJenkins(opts: JenkinsOptions): Promise<void> {
+export async function startJenkins(opts: JenkinsOptions): Promise<void> {
   // Check Docker
   if (!(await checkDockerRunning())) {
     console.error(chalk.red("Docker is not running."));
