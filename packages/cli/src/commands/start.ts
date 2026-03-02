@@ -9,6 +9,7 @@ import { copyTemplate, copyPlugin, getAvailableTemplates, getAvailablePlugins } 
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
 import { parsePluginSpecs, serializePluginSpecs, type PluginInstance } from "../utils/config.js";
+import { isJenkinsRunning, startJenkins } from "./jenkins.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -563,6 +564,12 @@ export const startCommand = new Command("start")
       console.error(chalk.red("Docker is not running."));
       console.error(chalk.dim("Please start Docker and try again."));
       process.exit(1);
+    }
+
+    // Ensure Jenkins is running (shared CI/CD server)
+    if (!(await isJenkinsRunning())) {
+      console.log(chalk.dim("Starting Jenkins CI/CD server..."));
+      await startJenkins({});
     }
 
     const backend = opts.backend || DEFAULTS.backend;
