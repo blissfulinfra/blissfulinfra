@@ -5,14 +5,12 @@ github
 docker-workflow
 docker-plugin
 pipeline-stage-view
-blueocean
 credentials-binding
 timestamper
 ansicolor
 ws-cleanup
 job-dsl
-folder
+cloudbees-folder
 pipeline-utility-steps
-http_request
 junit
 htmlpublisher
