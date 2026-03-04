@@ -101,6 +101,8 @@ Your app is now running:
 | Grafana    | http://localhost:3001     |
 | Prometheus | http://localhost:9090     |
 | Dashboard  | http://localhost:3002     |
+| Jenkins    | http://localhost:8081     |
+| Registry   | localhost:5050            |
 
 ---
 
@@ -113,12 +115,13 @@ A blissful-infra project is a directory with a `blissful-infra.yaml` config file
 ```
 my-app/
 ├── backend/              # Spring Boot / FastAPI / Express / Go
+│   └── Jenkinsfile       # CI/CD pipeline definition
 ├── frontend/             # React + Vite
+├── loki/                 # Log aggregation config
+├── prometheus/           # Metrics scrape config (with monitoring)
+├── grafana/              # Dashboards and datasources (with monitoring)
 ├── ai-pipeline/          # ML service (if --plugins ai-pipeline)
-├── prometheus/           # Metrics scrape config
-├── grafana/              # Dashboards and datasources
-├── k8s/                  # Kubernetes manifests + Argo CD
-├── Jenkinsfile           # CI/CD pipeline definition
+├── k8s/                  # Kubernetes manifests + Argo CD (if --deploy kubernetes)
 ├── docker-compose.yaml   # Everything wired together
 └── blissful-infra.yaml   # Project config
 ```
@@ -208,12 +211,12 @@ blissful-infra dashboard
 
 **Infrastructure**
 
-| Command                       | Description                          |
-|-------------------------------|--------------------------------------|
-| `jenkins start/stop/status`   | Manage Jenkins CI server             |
-| `jenkins add-project <name>`  | Register project with Jenkins        |
-| `jenkins build <name>`        | Trigger a Jenkins build              |
-| `dashboard`                   | Launch the web dashboard             |
+| Command                       | Description                                         |
+|-------------------------------|-----------------------------------------------------|
+| `jenkins start/stop/status`   | Manage Jenkins CI server                            |
+| `jenkins add-project <name>`  | Register project with Jenkins (automatic via start) |
+| `jenkins build <name>`        | Trigger a Jenkins build                             |
+| `dashboard`                   | Launch the web dashboard                            |
 
 ---
 

@@ -51,7 +51,7 @@ New to enterprise infrastructure? This guide explains what each component does, 
 │   └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘          │
 │                                                              │              │
 │                                                              ▼              │
-│   3. CONTAINER REGISTRY (localhost:5000)                                    │
+│   3. CONTAINER REGISTRY (localhost:5050)                                    │
 │   ──────────────────────────────────────                                    │
 │   Stores versioned images: my-app:abc123, my-app:def456                     │
 │                     │                                                       │
@@ -126,14 +126,14 @@ New to enterprise infrastructure? This guide explains what each component does, 
 **In blissful-infra:**
 ```bash
 # Your Jenkinsfile defines the pipeline
-cat my-app/Jenkinsfile
+cat my-app/backend/Jenkinsfile
 
 # Stages: Build → Test → Security Scan → Push Image → Deploy
 ```
 
 **Key files:**
-- `Jenkinsfile` - Pipeline definition
-- `Dockerfile` - How to build the container
+- `backend/Jenkinsfile` - Pipeline definition
+- `backend/Dockerfile` - How to build the container
 
 ---
 
@@ -201,7 +201,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: localhost:5000/my-app:latest
+          image: localhost:5050/my-app:latest
           resources:
             requests:
               memory: "256Mi"    # Minimum memory
@@ -313,7 +313,7 @@ blissful-infra start my-app
 
 # 2. Explore the generated files
 ls -la my-app/
-cat my-app/Jenkinsfile
+cat my-app/backend/Jenkinsfile
 cat my-app/k8s/base/deployment.yaml
 
 # 3. Start the project
@@ -327,7 +327,7 @@ open http://localhost:8080
 
 ```bash
 # 1. Read the Jenkinsfile
-cat my-app/Jenkinsfile
+cat my-app/backend/Jenkinsfile
 
 # 2. Run the pipeline locally
 blissful-infra my-app pipeline --local
@@ -336,7 +336,7 @@ blissful-infra my-app pipeline --local
 # Build → Test → Containerize → Push
 
 # 4. Check the registry
-curl http://localhost:5000/v2/_catalog
+curl http://localhost:5050/v2/_catalog
 ```
 
 ### Level 3: Work with Kubernetes (1 hour)

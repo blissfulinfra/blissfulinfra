@@ -135,7 +135,7 @@ Stopped.
 **Location:** `packages/cli/templates/spring-boot/Jenkinsfile`
 
 ### 2.2 Container Registry
-- [x] Local registry option (localhost:5000)
+- [x] Local registry option (localhost:5050)
 - [x] ECR/GCR/ACR integration (configurable via blissful-infra.yaml)
 - [x] Image tagging strategy (git sha + latest)
 - [x] Security scanning with Trivy
@@ -182,9 +182,10 @@ Stopped.
 - [x] `blissful-infra jenkins add-project <name>` - Register project with Jenkins
 - [x] `blissful-infra jenkins build <name>` - Trigger a build
 - [x] `blissful-infra jenkins list` - List registered projects
-- [x] Pre-configured with Pipeline, Docker, Git, Blue Ocean plugins
+- [x] Pre-configured with Pipeline, Docker, Git, and supporting plugins via JCasC
 - [x] Jenkins Configuration as Code (JCasC) for zero-touch setup
-- [x] Local Docker registry on port 5000
+- [x] Custom image build (`blissful-jenkins:latest`) with plugins pre-installed
+- [x] Local Docker registry on port 5050
 - [x] Default credentials: admin/admin
 
 **Location:** `packages/cli/templates/jenkins/`, `packages/cli/src/commands/jenkins.ts`
@@ -201,17 +202,22 @@ Stopped.
 
 ### Phase 2 Definition of Done
 ```
-# Start shared Jenkins server
-$ blissful-infra jenkins start
-Starting Jenkins...
+# Create and run a project — Jenkins starts automatically
+$ blissful-infra start my-service
+Starting Jenkins CI/CD server...
 ✓ Jenkins is ready
+✓ Created my-service/
+✓ Containers started
+✓ Registered my-service with Jenkins
 URL: http://localhost:8081
 Username: admin
 Password: admin
-Registry: localhost:5000
+Registry: localhost:5050
 
-# Create and register a project
-$ blissful-infra create my-service --template spring-boot --deploy kubernetes
+# Or start Jenkins manually
+$ blissful-infra jenkins start
+
+# Re-register an existing project (if needed)
 $ blissful-infra jenkins add-project my-service
 ✓ Added my-service to Jenkins
 
