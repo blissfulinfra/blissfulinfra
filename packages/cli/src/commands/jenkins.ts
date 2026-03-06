@@ -343,6 +343,8 @@ export async function registerProjectWithJenkins(projectDir: string, projectName
       throw new Error(`Failed to create Jenkins job: ${fallbackResp.status}`);
     }
   }
+
+  console.log(chalk.dim("  Jenkins job: ") + chalk.cyan(`http://localhost:8081/job/blissful-projects/job/${projectName}`));
 }
 
 async function addProject(projectName: string): Promise<void> {

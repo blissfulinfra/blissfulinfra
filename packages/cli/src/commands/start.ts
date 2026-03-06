@@ -748,7 +748,7 @@ docker-compose.override.yaml
       try {
         await registerProjectWithJenkins(projectDir, name);
       } catch {
-        // Non-fatal — user can run `jenkins add-project` manually
+        console.log(chalk.dim("  (Jenkins registration skipped — run `blissful-infra jenkins add-project " + name + "` manually if needed)"));
       }
     } catch (error) {
       startSpinner.fail("Failed to start containers");
@@ -803,6 +803,8 @@ docker-compose.override.yaml
       console.log(chalk.dim("  Prometheus:  ") + chalk.cyan("http://localhost:9090"));
       console.log(chalk.dim("  Grafana:     ") + chalk.cyan("http://localhost:3001"));
     }
+    console.log(chalk.dim("  Jenkins:     ") + chalk.cyan("http://localhost:8081"));
+    console.log(chalk.dim("  Registry:    ") + chalk.cyan("localhost:5050"));
     console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));
     console.log();
 
