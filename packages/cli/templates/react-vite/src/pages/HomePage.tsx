@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { useWebSocket } from '@/hooks/useWebSocket'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ChatWindow } from '@/components/ChatWindow'
+import { LiveFeed } from '@/components/LiveFeed'
 
 interface HealthResponse {
   status: string
@@ -36,8 +37,6 @@ export default function HomePage() {
     queryFn: () => fetchHello(),
   })
 
-  const { messages, connected } = useWebSocket('/ws/events')
-
   return (
     <div className="space-y-8">
       <section>
@@ -47,7 +46,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <Card.Header>
             <Card.Title>API Health</Card.Title>
@@ -92,33 +91,12 @@ export default function HomePage() {
             )}
           </Card.Content>
         </Card>
+      </div>
 
-        <Card>
-          <Card.Header>
-            <Card.Title>WebSocket Events</Card.Title>
-          </Card.Header>
-          <Card.Content>
-            <div className="space-y-2">
-              <p>
-                Status:{' '}
-                <span className={connected ? 'text-green-600' : 'text-yellow-600'}>
-                  {connected ? 'Connected' : 'Disconnected'}
-                </span>
-              </p>
-              <div className="max-h-32 overflow-y-auto text-sm">
-                {messages.length === 0 ? (
-                  <p className="text-muted-foreground">No events yet</p>
-                ) : (
-                  messages.slice(-5).map((msg, i) => (
-                    <p key={i} className="text-muted-foreground truncate">
-                      {msg}
-                    </p>
-                  ))
-                )}
-              </div>
-            </div>
-          </Card.Content>
-        </Card>
+      {/* Side-by-side: WebSocket (bidirectional chat) vs SSE (server-push event feed) */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <ChatWindow />
+        <LiveFeed />
       </div>
     </div>
   )

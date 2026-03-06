@@ -59,6 +59,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 - [x] Basic unit tests (JUnit 5 + MockK)
 - [x] Structured JSON logging (logstash-logback-encoder)
 - [x] Kafka producer/consumer with WebSocket bridge
+- [x] Server-Sent Events (SSE) streaming endpoint (`GET /api/events/stream`)
 - [x] Template variable substitution (`{{PROJECT_NAME}}`)
 
 **Location:** `packages/cli/templates/spring-boot/`
