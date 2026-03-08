@@ -27,7 +27,9 @@ export interface ChatResponse {
 }
 
 const DEFAULT_CONFIG: OllamaConfig = {
-  endpoint: "http://localhost:11434",
+  endpoint: process.env.DOCKER_MODE
+    ? "http://host.docker.internal:11434"
+    : "http://localhost:11434",
   models: {
     analysis: "llama3.1:70b",
     quick: "llama3.1:8b",

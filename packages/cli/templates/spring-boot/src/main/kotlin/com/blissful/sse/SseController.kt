@@ -20,12 +20,12 @@ import java.util.concurrent.CopyOnWriteArrayList
  *
  * Use WebSocket (/ws/events) when you also need client→server messaging.
  *
- * curl http://localhost:8080/api/events/stream
- * JS:  const es = new EventSource('/api/events/stream')
+ * curl http://localhost:8080/events/stream
+ * JS:  const es = new EventSource('/api/events/stream')  // Vite proxy strips /api
  *      es.addEventListener('greeting.created', e => console.log(JSON.parse(e.data)))
  */
 @RestController
-@RequestMapping("/api/events")
+@RequestMapping("/events")
 class SseController(private val objectMapper: ObjectMapper) {
 
     private val logger = LoggerFactory.getLogger(javaClass)

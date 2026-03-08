@@ -169,6 +169,9 @@ function replaceVariables(content: string, variables: TemplateVariables): string
   return result;
 }
 
+/** Exposed for template-watch mode in dev.ts */
+export { replaceVariables, isBinaryFile };
+
 /** Core project templates (backend / frontend scaffolding). */
 export function getAvailableTemplates(): string[] {
   return ["spring-boot", "react-vite"];

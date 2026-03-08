@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 
+dev-app/
+
 # Build output
 dist/
 *.tsbuildinfo

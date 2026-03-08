@@ -151,7 +151,11 @@ export async function generateDockerCompose(projectDir: string, name: string, da
       OTEL_TRACES_EXPORTER: "otlp",
       JAVA_TOOL_OPTIONS: "-javaagent:/otel-agent.jar",
       ...(database === "postgres" || database === "postgres-redis"
-        ? { DATABASE_URL: `postgresql://${name.replace(/-/g, "_")}:localdev@postgres:5432/${name.replace(/-/g, "_")}` }
+        ? {
+            DATABASE_URL: `jdbc:postgresql://postgres:5432/${name.replace(/-/g, "_")}`,
+            DB_USERNAME: name.replace(/-/g, "_"),
+            DB_PASSWORD: "localdev",
+          }
         : {}),
       ...(database === "redis" || database === "postgres-redis"
         ? { REDIS_URL: "redis://redis:6379" }
@@ -314,6 +318,25 @@ export async function generateDockerCompose(projectDir: string, name: string, da
         ".:/workspace:rw",
         `${name}-agent-state:/data/agent-state`,
       ],
+    };
+  });
+
+  // Scraper plugins (Scrapy-based web scrapers → Kafka)
+  const scrapers = plugins.filter(p => p.type === "scraper");
+  scrapers.forEach((plugin) => {
+    services[plugin.instance] = {
+      build: {
+        context: `./${plugin.instance}`,
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${name}-${plugin.instance}`,
+      environment: {
+        KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
+        SCRAPED_TOPIC: "scraped-articles",
+        SCRAPE_INTERVAL_MINUTES: "15",
+      },
+      depends_on: { kafka: { condition: "service_healthy" } },
+      restart: "unless-stopped",
     };
   });
 
@@ -502,38 +525,35 @@ function generateYaml(obj: unknown, indent = 0): string {
 }
 
 async function generateNginxConf(projectDir: string): Promise<void> {
-  const backendPaths = [
-    "/hello", "/health", "/ready", "/live", "/startup",
-    "/echo", "/greetings", "/ws/", "/actuator",
-  ];
-
-  const locationBlocks = backendPaths
-    .map((p) => `    location ${p} {\n        proxy_pass http://backend:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
-    .join("\n\n");
-
-  const wsBlock = `    location /ws/ {
-        proxy_pass http://backend:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }`;
-
-  const defaultLocation = `    location / {
-        proxy_pass http://frontend:80;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }`;
-
   const serverBlock = `server {
     listen 80;
     server_name localhost;
 
-${locationBlocks}
+    location /api/ {
+        proxy_pass http://backend:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # SSE support
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
 
-${wsBlock}
+    location /ws/ {
+        proxy_pass http://backend:8080/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
 
-${defaultLocation}
+    location / {
+        proxy_pass http://frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
 }`;
 
   await fs.writeFile(path.join(projectDir, "nginx.conf"), serverBlock + "\n");

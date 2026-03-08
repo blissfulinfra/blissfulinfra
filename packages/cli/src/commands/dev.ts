@@ -2,11 +2,15 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import { watch } from "chokidar";
 import { execa } from "execa";
 import { loadConfig, type ProjectConfig } from "../utils/config.js";
 import { toExecError } from "../utils/errors.js";
+import { replaceVariables, isBinaryFile, getTemplateDir } from "../utils/template.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AppProcess = any;
@@ -436,10 +440,137 @@ async function startLocalDevMode(config: ProjectConfig): Promise<void> {
   console.log();
 }
 
+// ── Template development mode ─────────────────────────────────────────────
+// Watches packages/cli/templates/{spring-boot,react-vite}/src/** and syncs
+// changed files (with template variable substitution applied) into a running
+// scaffolded project so that Vite HMR and Spring devtools pick them up live.
+
+const TEMPLATE_MAP: Record<string, { templateName: string; destSubDir: string }> = {
+  "spring-boot": { templateName: "spring-boot", destSubDir: "backend" },
+  "react-vite":  { templateName: "react-vite",  destSubDir: "frontend" },
+};
+
+async function syncTemplateFile(
+  changedAbsPath: string,
+  templateSrcDir: string,
+  destDir: string,
+  variables: Parameters<typeof replaceVariables>[1]
+): Promise<void> {
+  const relPath = path.relative(templateSrcDir, changedAbsPath);
+  const destPath = path.join(destDir, relPath);
+
+  // Ensure parent directory exists
+  await fs.mkdir(path.dirname(destPath), { recursive: true });
+
+  if (isBinaryFile(changedAbsPath)) {
+    await fs.copyFile(changedAbsPath, destPath);
+  } else {
+    const raw = await fs.readFile(changedAbsPath, "utf-8");
+    await fs.writeFile(destPath, replaceVariables(raw, variables));
+  }
+}
+
+async function startTemplateDev(projectName: string): Promise<void> {
+  // Resolve the scaffolded project directory
+  const projectDir = path.resolve(process.cwd(), projectName);
+  const config = await loadConfig(projectDir);
+  if (!config) {
+    console.error(chalk.red(`No blissful-infra.yaml found in ${projectDir}`));
+    console.error(chalk.dim(`Scaffold the project first: blissful-infra start ${projectName}`));
+    process.exit(1);
+  }
+
+  const variables: Parameters<typeof replaceVariables>[1] = {
+    projectName: config.name,
+    database: config.database || "postgres",
+    deployTarget: "local-only",
+  };
+
+  console.log();
+  console.log(chalk.bold.cyan("🔄 Template Dev Mode"));
+  console.log(chalk.dim(`Syncing template changes → ${projectName}/`));
+  console.log();
+
+  const watchEntries: Array<{ srcDir: string; destDir: string; label: string }> = [];
+
+  for (const [key, { templateName, destSubDir }] of Object.entries(TEMPLATE_MAP)) {
+    const templateSrcDir = path.join(getTemplateDir(templateName), "src");
+    const destDir = path.join(projectDir, destSubDir, "src");
+
+    try {
+      await fs.access(templateSrcDir);
+      await fs.access(destDir);
+      watchEntries.push({ srcDir: templateSrcDir, destDir, label: key });
+      console.log(chalk.dim(`  ${key}: packages/cli/templates/${templateName}/src → ${projectName}/${destSubDir}/src`));
+    } catch {
+      console.log(chalk.dim(`  ${key}: skipped (dest ${projectName}/${destSubDir}/src not found)`));
+    }
+  }
+
+  if (watchEntries.length === 0) {
+    console.error(chalk.red("No template directories found to watch."));
+    process.exit(1);
+  }
+
+  console.log();
+  console.log(chalk.dim("Vite HMR handles frontend changes automatically."));
+  console.log(chalk.dim("For backend: run `./gradlew classes -t` in another terminal to auto-compile."));
+  console.log();
+
+  const watchPaths = watchEntries.map(e => e.srcDir);
+
+  const watcher = watch(watchPaths, {
+    persistent: true,
+    ignoreInitial: true,
+    usePolling: false,
+  });
+
+  const handleChange = async (absPath: string, event: string) => {
+    const entry = watchEntries.find(e => absPath.startsWith(e.srcDir));
+    if (!entry) return;
+
+    const rel = path.relative(entry.srcDir, absPath);
+    console.log(chalk.yellow(`[${entry.label}] ${event}: ${rel}`));
+
+    try {
+      if (event === "unlink") {
+        const destPath = path.join(entry.destDir, rel);
+        await fs.rm(destPath, { force: true });
+        console.log(chalk.dim(`  deleted ${path.relative(process.cwd(), destPath)}`));
+      } else {
+        await syncTemplateFile(absPath, entry.srcDir, entry.destDir, variables);
+        const destPath = path.join(entry.destDir, rel);
+        console.log(chalk.green(`  → ${path.relative(process.cwd(), destPath)}`));
+      }
+    } catch (err) {
+      console.error(chalk.red(`  sync error: ${err}`));
+    }
+  };
+
+  watcher.on("change", p => handleChange(p, "changed"));
+  watcher.on("add",    p => handleChange(p, "added"));
+  watcher.on("unlink", p => handleChange(p, "deleted"));
+
+  console.log(chalk.green("✓ Watching template sources — edit away!"));
+  console.log(chalk.dim("  Press Ctrl+C to stop"));
+  console.log();
+
+  process.on("SIGINT", async () => {
+    await watcher.close();
+    process.exit(0);
+  });
+}
+
 export const devCommand = new Command("dev")
   .description("Start development mode with hot reload")
   .option("--local", "Run locally instead of in Docker (requires matching JDK)")
-  .action(async (opts: { local?: boolean }) => {
+  .option("--templates <project>", "Template dev mode: watch template sources and sync to a scaffolded project")
+  .action(async (opts: { local?: boolean; templates?: string }) => {
+    if (opts.templates) {
+      await startTemplateDev(opts.templates);
+      return;
+    }
+
     // Load project config
     const config = await loadConfig();
     if (!config) {

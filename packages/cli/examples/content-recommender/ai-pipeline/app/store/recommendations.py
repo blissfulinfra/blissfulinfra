@@ -1,7 +1,8 @@
 """
 ClickHouse storage layer for the content recommender.
 
-Two tables:
+Three tables:
+  articles          — scraped HN articles (deduped by id via ReplacingMergeTree)
   user_events       — raw engagement signals (view_start, view_complete, rating, search)
   recommendations   — model output, deduplicated by (user_id, item_id) via ReplacingMergeTree
 
@@ -29,6 +30,20 @@ def init_tables(host: str, port: int, database: str) -> bool:
 
         _client = clickhouse_connect.get_client(host=host, port=port, database=database)
         _client.command(f"CREATE DATABASE IF NOT EXISTS {database}")
+
+        # Articles scraped from HN — ReplacingMergeTree dedupes on id
+        _client.command(f"""
+            CREATE TABLE IF NOT EXISTS {database}.articles (
+                id          String,
+                title       String,
+                url         String,
+                score       Int32,
+                tags        Array(String),
+                scraped_at  DateTime DEFAULT now()
+            )
+            ENGINE = ReplacingMergeTree(scraped_at)
+            ORDER BY id
+        """)
 
         _client.command(f"""
             CREATE TABLE IF NOT EXISTS {database}.user_events (
@@ -180,6 +195,78 @@ def event_count(database: str = "pipeline_db") -> int:
         return 0
     try:
         result = _client.query(f"SELECT count() FROM {database}.user_events")
+        return int(result.result_rows[0][0])
+    except Exception:
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Article store — populated by the Scrapy scraper via Kafka
+# ---------------------------------------------------------------------------
+
+def store_article(article: dict) -> None:
+    """
+    Upsert a scraped article.
+    ReplacingMergeTree deduplicates on id, so re-scraping the same HN story is a no-op.
+    """
+    if _client is None:
+        return
+    try:
+        from datetime import datetime
+        _client.insert(
+            "articles",
+            [[
+                article["id"],
+                article.get("title", ""),
+                article.get("url", ""),
+                int(article.get("score", 0)),
+                article.get("tags", []),
+                datetime.utcnow(),
+            ]],
+            column_names=["id", "title", "url", "score", "tags", "scraped_at"],
+        )
+    except Exception as e:
+        logger.debug("Failed to store article %s: %s", article.get("id"), e)
+
+
+def get_articles(limit: int = 500) -> list[dict]:
+    """
+    Load scraped articles for catalog building.
+    Returns empty list if ClickHouse is down or no articles exist yet.
+    """
+    if _client is None:
+        return []
+    try:
+        result = _client.query(
+            f"""
+            SELECT id, title, url, score, tags
+            FROM articles FINAL
+            ORDER BY score DESC
+            LIMIT %(limit)s
+            """,
+            parameters={"limit": limit},
+        )
+        return [
+            {
+                "id": row[0],
+                "title": row[1],
+                "url": row[2],
+                "score": row[3],
+                "tags": list(row[4]),
+            }
+            for row in result.result_rows
+        ]
+    except Exception as e:
+        logger.debug("Failed to load articles: %s", e)
+        return []
+
+
+def article_count() -> int:
+    """Return number of scraped articles stored in ClickHouse."""
+    if _client is None:
+        return 0
+    try:
+        result = _client.query("SELECT count() FROM articles FINAL")
         return int(result.result_rows[0][0])
     except Exception:
         return 0

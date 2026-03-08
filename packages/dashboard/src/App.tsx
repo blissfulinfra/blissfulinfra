@@ -62,7 +62,7 @@ interface Project {
 
 interface Service {
   name: string
-  status: 'running' | 'stopped' | 'starting'
+  status: 'running' | 'stopped' | 'starting' | 'unhealthy'
   port?: number
 }
 
@@ -579,10 +579,20 @@ function App() {
       if (res.ok) {
         const data: ModelsResponse = await res.json()
         setModels(data)
-        setAiProvider(data.provider)
-        // Set default to recommended model if not already selected
-        if (!selectedModel && data.recommended) {
-          setSelectedModel(data.recommended.model)
+        // Only update provider if none is set yet (don't override user's explicit choice)
+        if (!aiProvider) {
+          setAiProvider(data.provider)
+        }
+        // Set default model if none selected, or if current model no longer exists
+        const currentStillValid = data.models.some(m => m.name === selectedModel)
+        if (!currentStillValid) {
+          if (data.recommended) {
+            setSelectedModel(data.recommended.model)
+            setAiProvider(data.recommended.provider as 'claude' | 'ollama')
+          } else if (data.models.length > 0) {
+            setSelectedModel(data.models[0].name)
+            setAiProvider(data.models[0].provider)
+          }
         }
       }
     } catch (e) {
@@ -1289,7 +1299,13 @@ function App() {
       const res = await fetch(`/api/projects/${selectedProject.name}/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userMessage, model: selectedModel || undefined, provider: aiProvider || undefined }),
+        body: JSON.stringify({
+          query: userMessage,
+          model: selectedModel || undefined,
+          // Always derive provider from the selected model so Ollama models work
+          // even when Claude is also available
+          provider: models?.models.find(m => m.name === selectedModel)?.provider ?? aiProvider ?? undefined,
+        }),
       })
 
       if (res.ok) {
@@ -1333,6 +1349,8 @@ function App() {
         return 'bg-green-400'
       case 'stopped':
         return 'bg-red-400'
+      case 'unhealthy':
+        return 'bg-orange-400'
       case 'starting':
         return 'bg-yellow-400'
       default:
@@ -1466,6 +1484,20 @@ function App() {
                   <div className="mt-1 text-xs text-gray-500">
                     {project.type} {project.backend && `/ ${project.backend}`}
                   </div>
+                  {project.services.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
+                      {project.services.map((service) => (
+                        <span
+                          key={service.name}
+                          className="flex items-center gap-1 text-xs text-gray-400"
+                          title={`${service.name}: ${service.status}${service.port ? ` (:${service.port})` : ''}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot(service.status)}`} />
+                          {service.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1718,44 +1750,72 @@ function App() {
               ) : activeTab === 'chat' ? (
                 <div className="flex-1 flex flex-col">
                   {/* Provider & Model Selector */}
-                  <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
-                    {aiProvider && (
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        aiProvider === 'claude' ? 'bg-purple-900 text-purple-300' : 'bg-blue-900 text-blue-300'
-                      }`}>
-                        {aiProvider === 'claude' ? 'Claude' : 'Ollama'}
-                      </span>
-                    )}
-                    <label className="text-sm text-gray-400">Model:</label>
+                  <div className="border-b border-gray-800 px-4 py-3 space-y-2">
                     {!models?.available ? (
-                      <span className="text-sm text-yellow-400">
-                        No AI provider available - set ANTHROPIC_API_KEY or start Ollama
-                      </span>
-                    ) : models.models.length === 0 ? (
-                      <span className="text-sm text-yellow-400">
-                        No models available
-                      </span>
+                      <p className="text-sm text-yellow-400">
+                        No AI provider available — set ANTHROPIC_API_KEY or start Ollama
+                      </p>
                     ) : (
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                      >
-                        {models.models.map((model) => (
-                          <option key={model.name} value={model.name}>
-                            {model.displayName || model.name}
-                            {model.name === models.recommended?.model ? ' (recommended)' : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Provider toggle buttons — one per connected provider */}
+                        {(['claude', 'ollama'] as const)
+                          .filter(p => models.models.some(m => m.provider === p))
+                          .map(p => (
+                            <button
+                              key={p}
+                              onClick={() => {
+                                setAiProvider(p)
+                                // Auto-select first model of the new provider
+                                const first = models.models.find(m => m.provider === p)
+                                if (first) setSelectedModel(first.name)
+                              }}
+                              className={`px-2.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                                aiProvider === p
+                                  ? p === 'claude'
+                                    ? 'bg-purple-700 text-purple-100'
+                                    : 'bg-blue-700 text-blue-100'
+                                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                              }`}
+                            >
+                              {p === 'claude' ? 'Claude' : 'Ollama'}
+                              {models.models.some(m => m.provider === p) && (
+                                <span className="ml-1 text-[10px] opacity-70">
+                                  ●
+                                </span>
+                              )}
+                            </button>
+                          ))
+                        }
+
+                        <label className="text-sm text-gray-400">Model:</label>
+                        {models.models.filter(m => m.provider === aiProvider).length === 0 ? (
+                          <span className="text-sm text-yellow-400">No models for this provider</span>
+                        ) : (
+                          <select
+                            value={selectedModel}
+                            onChange={(e) => setSelectedModel(e.target.value)}
+                            className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                          >
+                            {models.models
+                              .filter(m => m.provider === aiProvider)
+                              .map((model) => (
+                                <option key={model.name} value={model.name}>
+                                  {model.displayName || model.name}
+                                  {model.name === models.recommended?.model ? ' ★' : ''}
+                                </option>
+                              ))}
+                          </select>
+                        )}
+
+                        <button
+                          onClick={fetchModels}
+                          className="p-1.5 hover:bg-gray-700 rounded transition-colors ml-auto"
+                          title="Refresh providers"
+                        >
+                          <RefreshCw className="w-4 h-4 text-gray-400" />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      onClick={fetchModels}
-                      className="p-1.5 hover:bg-gray-700 rounded transition-colors"
-                      title="Refresh models"
-                    >
-                      <RefreshCw className="w-4 h-4 text-gray-400" />
-                    </button>
                   </div>
 
                   {/* Chat Messages */}

@@ -4,6 +4,6 @@
   "backend": "spring-boot",
   "frontend": "react-vite",
   "database": "postgres",
-  "plugins": ["ai-pipeline"],
-  "tags": ["ml", "recommendations", "kafka", "clickhouse", "mlflow"]
+  "plugins": ["ai-pipeline", "scraper"],
+  "tags": ["ml", "recommendations", "kafka", "clickhouse", "mlflow", "scrapy", "web-scraping"]
 }

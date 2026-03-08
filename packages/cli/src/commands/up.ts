@@ -228,7 +228,9 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
         JAVA_TOOL_OPTIONS: "-javaagent:/otel-agent.jar",
         ...(config.database === "postgres" || config.database === "postgres-redis"
           ? {
-              DATABASE_URL: `postgresql://${config.name.replace(/-/g, "_")}:localdev@postgres:5432/${config.name.replace(/-/g, "_")}`,
+              DATABASE_URL: `jdbc:postgresql://postgres:5432/${config.name.replace(/-/g, "_")}`,
+              DB_USERNAME: config.name.replace(/-/g, "_"),
+              DB_PASSWORD: "localdev",
             }
           : {}),
         ...(config.database === "redis" || config.database === "postgres-redis"

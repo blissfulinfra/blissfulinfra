@@ -5,17 +5,20 @@ Extends the base blissful-infra ai-pipeline template with:
   - Real-time engagement event ingestion (POST /events)
   - Personalized recommendations (GET /recommendations/{user_id})
   - Global trending (GET /trending)
-  - Full content catalog (GET /catalog)
+  - Full content catalog (GET /catalog) — backed by scraped HN articles
   - Automatic model retraining triggered by event volume threshold
+  - Scrapy web scraper ingestion via Kafka (scraped-articles topic)
 
 Data flow:
+  Scrapy scraper → Kafka(scraped-articles) → this service → ClickHouse(articles)
   Frontend → Spring Boot → Kafka(content-events) → this service
   this service → ClickHouse(user_events) → retrain trigger
   this service → ClickHouse(recommendations) → Spring Boot → Frontend
 """
 
-import asyncio
+import json
 import logging
+import os
 import threading
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -24,7 +27,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from . import config
-from .data.catalog import CATALOG, CATALOG_BY_ID
+from .data.catalog import CATALOG, CATALOG_BY_ID, get_catalog
 from .model.recommender import Recommender
 from .store import recommendations as store
 
@@ -40,6 +43,13 @@ _in_memory_events: list[tuple] = []  # fallback when ClickHouse is unavailable
 _event_count_since_retrain = 0
 _retrain_lock = threading.Lock()
 _mlflow_connected = False
+
+# Dynamic catalog — updated as scraped articles arrive
+_current_catalog: list[dict] = CATALOG
+_catalog_by_id: dict[str, dict] = CATALOG_BY_ID.copy()
+_catalog_source: str = "synthetic"
+_catalog_lock = threading.Lock()
+_new_articles_since_retrain = 0
 
 
 # ------------------------------------------------------------------ #
@@ -92,6 +102,16 @@ def _retrain_background() -> None:
     events = store.get_all_events(config.CLICKHOUSE_DB) or _in_memory_events
 
     if recommender is not None:
+        # Sync catalog if it has grown (e.g. new scraped articles)
+        with _catalog_lock:
+            current = list(_current_catalog)
+        if len(current) != len(recommender._item_ids):
+            recommender._catalog = current
+            recommender._item_ids = [item["id"] for item in current]
+            recommender._item_index = {id_: i for i, id_ in enumerate(recommender._item_ids)}
+            recommender._build_content_index()
+            logger.info("Content index rebuilt: %d items", len(current))
+
         recommender.train(events)
         metadata = recommender.get_training_metadata()
         _log_training_to_mlflow(metadata)
@@ -116,12 +136,79 @@ def _maybe_trigger_retrain() -> None:
 
 
 # ------------------------------------------------------------------ #
+# Scraped article ingestion                                            #
+# ------------------------------------------------------------------ #
+
+def _ingest_article(article: dict) -> None:
+    """
+    Store a scraped article in ClickHouse and update the in-memory catalog.
+    Triggers a retrain after RETRAIN_THRESHOLD new articles.
+    """
+    global _current_catalog, _catalog_by_id, _catalog_source, _new_articles_since_retrain
+
+    article_id = article.get("id")
+    if not article_id:
+        return
+
+    # Persist to ClickHouse (best-effort)
+    store.store_article(article)
+
+    # Build catalog item from article
+    from .data.catalog import _articles_to_catalog
+    items = _articles_to_catalog([article])
+    if not items:
+        return
+    item = items[0]
+
+    with _catalog_lock:
+        _catalog_by_id[item["id"]] = item
+        # Rebuild list from dict to avoid duplicates (re-scraping same story)
+        _current_catalog = list(_catalog_by_id.values())
+        _catalog_source = "scraped"
+
+    _new_articles_since_retrain += 1
+    if _new_articles_since_retrain >= config.RETRAIN_THRESHOLD:
+        _new_articles_since_retrain = 0
+        if recommender is not None:
+            thread = threading.Thread(target=_retrain_background, daemon=True)
+            thread.start()
+
+
+def _start_scraper_consumer() -> None:
+    """
+    Background thread: consume from `scraped-articles` Kafka topic and
+    ingest each article into ClickHouse + in-memory catalog.
+    """
+    scraped_topic = os.getenv("SCRAPED_TOPIC", "scraped-articles")
+    bootstrap = config.KAFKA_BOOTSTRAP_SERVERS
+
+    try:
+        from kafka import KafkaConsumer
+        consumer = KafkaConsumer(
+            scraped_topic,
+            bootstrap_servers=bootstrap,
+            value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+            auto_offset_reset="earliest",
+            enable_auto_commit=True,
+            group_id=f"{config.PROJECT_NAME}-scraper-ingestor",
+        )
+        logger.info("Scraper consumer started (topic: %s)", scraped_topic)
+        for message in consumer:
+            try:
+                _ingest_article(message.value)
+            except Exception as exc:
+                logger.debug("Failed to ingest article: %s", exc)
+    except Exception as exc:
+        logger.warning("Scraper Kafka consumer unavailable: %s — scraper integration disabled", exc)
+
+
+# ------------------------------------------------------------------ #
 # Lifespan                                                             #
 # ------------------------------------------------------------------ #
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global recommender, _mlflow_connected
+    global recommender, _mlflow_connected, _current_catalog, _catalog_by_id, _catalog_source
 
     # Initialize ClickHouse tables
     store.init_tables(config.CLICKHOUSE_HOST, config.CLICKHOUSE_PORT, config.CLICKHOUSE_DB)
@@ -129,11 +216,25 @@ async def lifespan(app: FastAPI):
     # Connect MLflow
     _mlflow_connected = _setup_mlflow()
 
-    # Build the recommender (trains on SEED_INTERACTIONS internally)
+    # Load catalog — use scraped articles if any exist, else synthetic fallback
+    loaded_catalog = get_catalog(store)
+    if loaded_catalog is not CATALOG:
+        _current_catalog = loaded_catalog
+        _catalog_by_id = {item["id"]: item for item in loaded_catalog}
+        _catalog_source = "scraped"
+        logger.info("Loaded %d scraped articles as catalog", len(loaded_catalog))
+    else:
+        logger.info("No scraped articles yet — using synthetic catalog (%d items)", len(CATALOG))
+
+    # Build the recommender on the active catalog
     recommender = Recommender(
+        catalog=_current_catalog,
         collab_weight=config.COLLAB_WEIGHT,
         min_interactions_for_collab=config.MIN_INTERACTIONS_FOR_COLLAB,
     )
+
+    # Start background Kafka consumer for scraped articles
+    threading.Thread(target=_start_scraper_consumer, daemon=True).start()
 
     # Log initial training state
     metadata = recommender.get_training_metadata()
@@ -214,7 +315,7 @@ def ingest_event(event: EngagementEvent):
     Persists to ClickHouse and triggers model retraining when the
     accumulated event count crosses RETRAIN_THRESHOLD.
     """
-    if event.item_id not in CATALOG_BY_ID:
+    if event.item_id not in _catalog_by_id:
         raise HTTPException(status_code=404, detail=f"Item '{event.item_id}' not in catalog")
 
     allowed_types = {"view_start", "view_complete", "rating", "search"}
@@ -230,7 +331,7 @@ def ingest_event(event: EngagementEvent):
 
     _maybe_trigger_retrain()
 
-    return {"accepted": True, "item": CATALOG_BY_ID[event.item_id]["title"]}
+    return {"accepted": True, "item": _catalog_by_id[event.item_id]["title"]}
 
 
 @app.get("/recommendations/{user_id}", response_model=RecommendationResponse)
@@ -285,15 +386,29 @@ def get_trending(top_k: int = None):
     return {"trending": recommender.trending(k)}
 
 
+@app.get("/catalog/source")
+def catalog_source():
+    """
+    Returns whether the catalog is backed by scraped HN articles or the
+    synthetic fallback. Once the Scrapy scraper has completed its first run
+    (~15 minutes after startup), this will switch to 'scraped'.
+    """
+    return {
+        "source": _catalog_source,
+        "count": len(_current_catalog),
+        "clickhouse_articles": store.article_count(),
+    }
+
+
 @app.get("/catalog")
-def get_catalog():
-    """Full content catalog — used by the frontend to render the browse page."""
-    return {"items": CATALOG, "count": len(CATALOG)}
+def get_catalog_endpoint():
+    """Full content catalog — HN articles (scraped) or synthetic fallback."""
+    return {"items": _current_catalog, "count": len(_current_catalog), "source": _catalog_source}
 
 
 @app.get("/catalog/{item_id}")
 def get_catalog_item(item_id: str):
-    item = CATALOG_BY_ID.get(item_id)
+    item = _catalog_by_id.get(item_id)
     if not item:
         raise HTTPException(status_code=404, detail=f"Item '{item_id}' not found")
     return item

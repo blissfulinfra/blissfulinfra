@@ -1,8 +1,65 @@
 """
-Synthetic content catalog for the content-recommender example.
-50 items spanning multiple genres — used for cold-start recommendations
-and seeding the model with initial interaction data.
+Content catalog for the content-recommender example.
+
+Provides two catalog sources:
+  1. Scraped HN articles — loaded from ClickHouse once the scraper has run (~15 min)
+  2. Synthetic movie catalog — 50 items used as fallback until real data arrives
+
+Use get_catalog(ch) to get whichever source is available.
 """
+from __future__ import annotations
+import math
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    pass  # avoid circular imports
+
+
+def get_catalog(ch=None) -> list[dict]:
+    """
+    Return the active catalog.
+
+    Tries ClickHouse scraped articles first. Falls back to the synthetic
+    CATALOG if no articles have been scraped yet or ClickHouse is down.
+    """
+    if ch is not None:
+        try:
+            from app.store.recommendations import get_articles
+            articles = get_articles(limit=500)
+            if articles:
+                return _articles_to_catalog(articles)
+        except Exception:
+            pass
+    return CATALOG
+
+
+def _articles_to_catalog(articles: list[dict]) -> list[dict]:
+    """
+    Map scraped HN article dicts to the same shape the Recommender expects:
+      {id, title, genres, tags, year, rating}
+
+    - genres  = first 3 tags (topic labels extracted by the spider)
+    - rating  = HN score normalised to 1–10 scale (log-compressed)
+    - year    = current year (articles don't have a release year)
+    """
+    import datetime
+    current_year = datetime.datetime.utcnow().year
+
+    result = []
+    for a in articles:
+        tags = a.get("tags") or []
+        score = a.get("score", 1)
+        # Log-compress score into 1–10 range: log10(score+1) / log10(max_score+1) * 9 + 1
+        rating = round(min(10.0, max(1.0, math.log10(score + 1) / math.log10(1001) * 9 + 1)), 1)
+        result.append({
+            "id": a["id"],
+            "title": a["title"],
+            "genres": tags[:3] if tags else ["tech"],
+            "tags": tags,
+            "year": current_year,
+            "rating": rating,
+        })
+    return result
 
 CATALOG = [
     # Sci-Fi

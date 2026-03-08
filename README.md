@@ -270,18 +270,40 @@ blissful-infra start my-app --plugins ai-pipeline
 git clone https://github.com/cavanpage/blissful-infra.git
 cd blissful-infra && npm install
 
-# Build the CLI
-cd packages/cli && npm run build
-
-# Create a test project with linked templates (edits reflect immediately)
-node dist/index.js start test-app --link
-
-# Cleanup
-docker compose -f test-app/docker-compose.yaml down
-rm -rf test-app
+# Build the CLI (run from repo root)
+cd packages/cli && npm run build && cd ../..
 ```
 
-> **Note:** In link mode, template variables like `{{PROJECT_NAME}}` won't be substituted since files are symlinked. Use `--link` for developing template code, then test without it to verify substitution.
+#### Working on templates
+
+Templates live in `packages/cli/templates/`. They are copied into scaffolded projects with `{{PROJECT_NAME}}` and `{{#IF_POSTGRES}}` blocks resolved at scaffold time.
+
+**Live dev workflow — edit templates, see changes instantly:**
+
+```bash
+# Terminal 1 — scaffold a dev project (once)
+blissful-infra start dev-app
+
+# Terminal 2 — watch templates and sync changes to the running project
+blissful-infra dev --templates dev-app
+```
+
+Any file you save under `packages/cli/templates/react-vite/src/` or `packages/cli/templates/spring-boot/src/` is immediately processed and copied to `dev-app/frontend/src/` or `dev-app/backend/src/`.
+
+- **Frontend changes** — Vite HMR picks them up in the browser with no restart.
+- **Backend changes** — run `./gradlew classes -t` inside `dev-app/backend/` in a third terminal; Spring Boot devtools restarts the app on each recompile.
+
+```bash
+# Terminal 3 (backend only) — continuous Kotlin compilation
+cd dev-app/backend && ./gradlew classes -t
+```
+
+**Cleanup**
+
+```bash
+docker compose -f dev-app/docker-compose.yaml down -v
+rm -rf dev-app
+```
 
 ---
 

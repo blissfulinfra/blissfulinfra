@@ -67,7 +67,7 @@ Keep responses concise and focused. Use markdown formatting for code blocks and 
 
 interface Service {
   name: string;
-  status: "running" | "stopped" | "starting";
+  status: "running" | "stopped" | "starting" | "unhealthy";
   port?: number;
 }
 
@@ -939,7 +939,7 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
   try {
     const { stdout } = await execa(
       "docker",
-      ["compose", "ps", "--format", "json"],
+      ["compose", "ps", "-a", "--format", "json"],
       {
         cwd: projectDir,
         reject: false,
@@ -953,9 +953,11 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
         const container = JSON.parse(line);
         const name = container.Service || container.Name;
         const state = container.State?.toLowerCase() || "unknown";
+        const health = (container.Health || "").toLowerCase();
         const isRunning = state === "running";
+        const isUnhealthy = isRunning && health === "unhealthy";
 
-        if (isRunning) anyRunning = true;
+        if (isRunning && !isUnhealthy) anyRunning = true;
 
         // Extract port from container
         let port: number | undefined;
@@ -966,7 +968,7 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
 
         services.push({
           name,
-          status: isRunning ? "running" : "stopped",
+          status: isUnhealthy ? "unhealthy" : isRunning ? "running" : "stopped",
           port,
         });
       } catch {

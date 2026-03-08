@@ -16,14 +16,18 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
-  const {
-    onMessage,
-    onOpen,
-    onClose,
-    onError,
-    reconnectInterval = 3000,
-    maxReconnectAttempts = 5,
-  } = options
+  // Store callbacks in refs so they never invalidate `connect`
+  const onMessageRef = useRef(options.onMessage)
+  const onOpenRef = useRef(options.onOpen)
+  const onCloseRef = useRef(options.onClose)
+  const onErrorRef = useRef(options.onError)
+  useEffect(() => { onMessageRef.current = options.onMessage }, [options.onMessage])
+  useEffect(() => { onOpenRef.current = options.onOpen }, [options.onOpen])
+  useEffect(() => { onCloseRef.current = options.onClose }, [options.onClose])
+  useEffect(() => { onErrorRef.current = options.onError }, [options.onError])
+
+  const reconnectInterval = options.reconnectInterval ?? 3000
+  const maxReconnectAttempts = options.maxReconnectAttempts ?? 5
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
@@ -37,14 +41,13 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
       ws.onopen = () => {
         setConnected(true)
         reconnectAttemptsRef.current = 0
-        onOpen?.()
+        onOpenRef.current?.()
       }
 
       ws.onclose = () => {
         setConnected(false)
-        onClose?.()
+        onCloseRef.current?.()
 
-        // Attempt to reconnect
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++
           reconnectTimeoutRef.current = setTimeout(connect, reconnectInterval)
@@ -52,26 +55,26 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
       }
 
       ws.onerror = (error) => {
-        onError?.(error)
+        onErrorRef.current?.(error)
       }
 
       ws.onmessage = (event) => {
         const data = event.data
         setMessages((prev) => [...prev, data])
-        onMessage?.(data)
+        onMessageRef.current?.(data)
       }
 
       wsRef.current = ws
     } catch {
       // WebSocket connection failed
     }
-  }, [url, onMessage, onOpen, onClose, onError, reconnectInterval, maxReconnectAttempts])
+  }, [url, reconnectInterval, maxReconnectAttempts])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
     }
-    reconnectAttemptsRef.current = maxReconnectAttempts // Prevent reconnection
+    reconnectAttemptsRef.current = maxReconnectAttempts
     wsRef.current?.close()
   }, [maxReconnectAttempts])
 

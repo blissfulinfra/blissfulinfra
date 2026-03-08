@@ -34,7 +34,7 @@ except ImportError:
     HAS_IMPLICIT = False
     logging.warning("implicit library not available; falling back to content-based only")
 
-from ..data.catalog import CATALOG, CATALOG_BY_ID, SEED_INTERACTIONS
+from ..data.catalog import CATALOG, SEED_INTERACTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ class Recommender:
 
     def __init__(
         self,
+        catalog: Optional[list[dict]] = None,
         collab_weight: float = 0.7,
         min_interactions_for_collab: int = 5,
         als_factors: int = 50,
@@ -67,8 +68,12 @@ class Recommender:
         self.als_iterations = als_iterations
         self.als_regularization = als_regularization
 
-        # Content-based: built once from catalog, never changes
-        self._item_ids: list[str] = [item["id"] for item in CATALOG]
+        # Use provided catalog or fall back to synthetic default
+        active_catalog = catalog if catalog is not None else CATALOG
+
+        # Content-based: built from catalog, can be refreshed via rebuild_content_index()
+        self._catalog = active_catalog
+        self._item_ids: list[str] = [item["id"] for item in active_catalog]
         self._item_index: dict[str, int] = {id_: i for i, id_ in enumerate(self._item_ids)}
         self._content_matrix: Optional[np.ndarray] = None
         self._vectorizer: Optional[TfidfVectorizer] = None
@@ -90,8 +95,11 @@ class Recommender:
         self._trained_at: Optional[float] = None
         self._model_version = "1.0"
 
-        # Seed model with catalog interactions
-        self.train(list(SEED_INTERACTIONS))
+        # Seed model with catalog interactions (only for synthetic catalog)
+        if catalog is None:
+            self.train(list(SEED_INTERACTIONS))
+        else:
+            self.train([])
 
     # ------------------------------------------------------------------ #
     # Content-based index                                                  #
@@ -99,8 +107,8 @@ class Recommender:
 
     def _build_content_index(self) -> None:
         docs = []
-        for item in CATALOG:
-            text = " ".join(item["genres"]) + " " + " ".join(item["tags"])
+        for item in self._catalog:
+            text = " ".join(item.get("genres", [])) + " " + " ".join(item.get("tags", []))
             docs.append(text)
 
         self._vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1)
@@ -264,7 +272,7 @@ class Recommender:
             source = "content"
         else:
             # Cold start with no watch history — use catalog rating as proxy
-            final_scores = np.array([item["rating"] / 10.0 for item in CATALOG], dtype=np.float32)
+            final_scores = np.array([item["rating"] / 10.0 for item in self._catalog], dtype=np.float32)
             source = "trending"
 
         # Zero out already-watched items
@@ -281,7 +289,7 @@ class Recommender:
         for idx in top_indices:
             if final_scores[idx] < 0:
                 continue
-            item = CATALOG[idx]
+            item = self._catalog[idx]
             results.append({
                 "id": item["id"],
                 "title": item["title"],
@@ -304,7 +312,7 @@ class Recommender:
             matrix = self._user_item_matrix
 
         if matrix is None or matrix.nnz == 0:
-            sorted_catalog = sorted(CATALOG, key=lambda x: x["rating"], reverse=True)
+            sorted_catalog = sorted(self._catalog, key=lambda x: x["rating"], reverse=True)
             return [
                 {**item, "score": round(item["rating"] / 10.0, 4), "source": "trending"}
                 for item in sorted_catalog[:top_k]
@@ -317,7 +325,7 @@ class Recommender:
         i_min, i_max = item_scores.min(), item_scores.max()
         results = []
         for idx in top_indices:
-            item = CATALOG[idx]
+            item = self._catalog[idx]
             score = float((item_scores[idx] - i_min) / (i_max - i_min + 1e-9))
             results.append({
                 "id": item["id"],
