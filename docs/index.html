@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Enterprise infrastructure on your laptop. One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required." />
+  <title>blissful-infra — Enterprise infrastructure on your laptop</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <span class="nav-logo">blissful-infra</span>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#examples">Examples</a>
+        <a href="#mcp">MCP</a>
+        <a href="https://github.com/cavanpage/blissful-infra" class="nav-github" target="_blank" rel="noopener">GitHub →</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="badge">Open Source · MIT License</div>
+      <h1>Enterprise infrastructure<br/><span class="gradient">on your laptop.</span></h1>
+      <p class="hero-sub">
+        One command scaffolds a full-stack app with CI/CD, observability, Kafka, Postgres,
+        Grafana, Jenkins, and an AI debugging agent — all wired together and running in Docker.
+        No cloud required.
+      </p>
+      <div class="hero-actions">
+        <div class="install-block">
+          <span class="install-label">Install</span>
+          <code class="install-cmd">npm install -g blissful-infra</code>
+          <button class="copy-btn" onclick="copyInstall(this)" title="Copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+        <a href="https://github.com/cavanpage/blissful-infra" class="btn-outline" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <div class="hero-terminal">
+        <div class="terminal-bar">
+          <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+          <span class="terminal-title">zsh</span>
+        </div>
+        <pre class="terminal-body"><span class="t-dim">$</span> blissful-infra start my-app --database postgres-redis
+
+<span class="t-green">✔</span> Scaffolded project        <span class="t-dim">my-app/</span>
+<span class="t-green">✔</span> Generated docker-compose  <span class="t-dim">12 services</span>
+<span class="t-green">✔</span> Flyway migrations applied <span class="t-dim">V1__init.sql</span>
+<span class="t-green">✔</span> Kafka topics created      <span class="t-dim">events, dlq</span>
+<span class="t-green">✔</span> Registered with Jenkins   <span class="t-dim">http://localhost:8081</span>
+
+<span class="t-dim">Services running:</span>
+  Frontend   → <span class="t-blue">http://localhost:3000</span>
+  Backend    → <span class="t-blue">http://localhost:8080</span>
+  Grafana    → <span class="t-blue">http://localhost:3001</span>
+  Dashboard  → <span class="t-blue">http://localhost:3002</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="section-inner">
+      <h2 class="section-title">Everything wired in from day one</h2>
+      <p class="section-sub">blissful-infra doesn't just orchestrate services you wrote — it creates them, fully configured and connected.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Full-stack scaffolding</h3>
+          <p>Spring Boot, FastAPI, Express, or Go backend. React or Next.js frontend. Generated as real, readable code in your project directory.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📡</div>
+          <h3>Event streaming</h3>
+          <p>Kafka wired to your backend out of the box. WebSocket and SSE endpoints in every template. Dead-letter queues configured automatically.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🗄️</div>
+          <h3>Database layer</h3>
+          <p>Postgres with Flyway migrations. Redis with Spring Cache annotations. Choose <code>postgres-redis</code> for a cache-aside pattern from day one.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Observability</h3>
+          <p>Prometheus, Grafana, and Loki pre-configured. Three dashboards provisioned automatically: Service Overview, JVM Metrics, Infrastructure.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔁</div>
+          <h3>CI/CD pipeline</h3>
+          <p>A shared Jenkins instance manages every project. Jenkinsfile generated per project. Trigger builds, view stage results from the dashboard.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>AI agent</h3>
+          <p>Ask Claude or Ollama to diagnose production issues. The agent has access to your logs, metrics, and service health in real time.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">☸️</div>
+          <h3>Kubernetes-ready</h3>
+          <p>Kustomize manifests, Argo CD application configs, canary rollout specs, and chaos tests generated alongside your Docker setup.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧩</div>
+          <h3>Plugins</h3>
+          <p>Add an ML data platform, a Scrapy web scraper, or a LangGraph agent service with a single flag. Each plugin wires itself into Kafka automatically.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart -->
+  <section class="section section-alt" id="quickstart">
+    <div class="section-inner">
+      <h2 class="section-title">Up in under a minute</h2>
+      <p class="section-sub">Prerequisites: Docker Desktop running, Node.js 18+</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h4>Install</h4>
+            <pre class="code-block">npm install -g blissful-infra</pre>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h4>Create a project</h4>
+            <pre class="code-block">blissful-infra start my-app --backend spring-boot --database postgres-redis</pre>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h4>Open the dashboard</h4>
+            <pre class="code-block">blissful-infra dashboard</pre>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h4>Add an AI/ML pipeline</h4>
+            <pre class="code-block">blissful-infra start my-app --plugins ai-pipeline,scraper</pre>
+          </div>
+        </div>
+      </div>
+      <div class="services-table">
+        <h3>Services started</h3>
+        <table>
+          <thead><tr><th>Service</th><th>URL</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Frontend</td><td><code>localhost:3000</code></td><td>React + Vite</td></tr>
+            <tr><td>Backend API</td><td><code>localhost:8080</code></td><td>Spring Boot / FastAPI / Go</td></tr>
+            <tr><td>Grafana</td><td><code>localhost:3001</code></td><td>Metrics dashboards</td></tr>
+            <tr><td>Dashboard</td><td><code>localhost:3002</code></td><td>Project management UI</td></tr>
+            <tr><td>Jenkins</td><td><code>localhost:8081</code></td><td>CI/CD pipelines</td></tr>
+            <tr><td>MLflow</td><td><code>localhost:5001</code></td><td>ML experiment tracking</td></tr>
+            <tr><td>ClickHouse</td><td><code>localhost:8123</code></td><td>Columnar analytics</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Examples -->
+  <section class="section" id="examples">
+    <div class="section-inner">
+      <h2 class="section-title">Reference examples</h2>
+      <p class="section-sub">Fully runnable projects that demonstrate real production patterns.</p>
+      <div class="examples-grid">
+        <div class="example-card">
+          <div class="example-header">
+            <span class="example-tag">ML · Kafka · ClickHouse</span>
+          </div>
+          <h3>Content Recommender</h3>
+          <p>Real-time personalized recommendations using ALS collaborative filtering. Scrapy scrapes Hacker News every 15 minutes — articles flow Kafka → ClickHouse → model retrain. Automatic fallback to synthetic data before the first crawl.</p>
+          <div class="example-stack">
+            <span>Spring Boot</span><span>React</span><span>Kafka</span><span>ClickHouse</span><span>MLflow</span><span>Scrapy</span>
+          </div>
+          <pre class="code-block">blissful-infra example content-recommender</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MCP -->
+  <section class="section section-alt" id="mcp">
+    <div class="section-inner mcp-inner">
+      <div class="mcp-text">
+        <h2 class="section-title">Control your infra from Claude</h2>
+        <p>blissful-infra ships an MCP server. Point Claude Desktop or Claude Code at it and manage your entire local platform through conversation — no context switching.</p>
+        <ul class="mcp-list">
+          <li>Create, start, and stop projects</li>
+          <li>Read logs and diagnose errors</li>
+          <li>Check service health and metrics</li>
+          <li>Trigger CI pipelines and deployments</li>
+          <li>Roll back a broken release</li>
+        </ul>
+      </div>
+      <div class="mcp-code">
+        <div class="code-label">claude_desktop_config.json</div>
+        <pre class="code-block">{
+  "mcpServers": {
+    "blissful-infra": {
+      "command": "npx",
+      "args": ["-y", "blissful-infra", "mcp"]
+    }
+  }
+}</pre>
+        <div class="mcp-example">
+          <div class="chat-bubble user">Why is the backend in my-app restarting? Check the logs.</div>
+          <div class="chat-bubble assistant">I'll check the logs now…<br/><br/>The backend is OOMKilled — heap usage hit 512 MB. The <code>GET /products</code> endpoint is querying without pagination. I'd recommend adding <code>Pageable</code> to the repository method and setting a max page size of 100.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stack -->
+  <section class="section" id="stack">
+    <div class="section-inner">
+      <h2 class="section-title">The full stack</h2>
+      <div class="stack-grid">
+        <div class="stack-group">
+          <h4>Backends</h4>
+          <ul><li>Kotlin + Spring Boot</li><li>Python + FastAPI</li><li>Node + Express</li><li>Go + Chi</li></ul>
+        </div>
+        <div class="stack-group">
+          <h4>Frontends</h4>
+          <ul><li>React + Vite + Tailwind</li><li>Next.js + Tailwind</li></ul>
+        </div>
+        <div class="stack-group">
+          <h4>Data</h4>
+          <ul><li>Postgres + Flyway</li><li>Redis (Spring Cache)</li><li>Kafka + Zookeeper</li><li>ClickHouse</li></ul>
+        </div>
+        <div class="stack-group">
+          <h4>Observability</h4>
+          <ul><li>Prometheus</li><li>Grafana</li><li>Loki</li><li>Jaeger</li></ul>
+        </div>
+        <div class="stack-group">
+          <h4>CI/CD</h4>
+          <ul><li>Jenkins</li><li>Argo CD</li><li>Kustomize</li><li>Trivy security scans</li></ul>
+        </div>
+        <div class="stack-group">
+          <h4>ML / AI</h4>
+          <ul><li>MLflow</li><li>Mage</li><li>Scrapy</li><li>Claude + Ollama</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-logo">blissful-infra</span>
+      <div class="footer-links">
+        <a href="https://github.com/cavanpage/blissful-infra" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/cavanpage/blissful-infra/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/cavanpage/blissful-infra/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      </div>
+      <span class="footer-license">MIT License</span>
+    </div>
+  </footer>
+
+  <script>
+    function copyInstall(btn) {
+      navigator.clipboard.writeText('npm install -g blissful-infra');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+      setTimeout(() => {
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
