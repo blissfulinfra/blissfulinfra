@@ -150,6 +150,25 @@ The backend and frontend are generated from templates. Choose the stack that fit
 blissful-infra start my-app --backend fastapi --frontend react-vite
 ```
 
+### Databases
+
+| Option           | What you get                                                       |
+|------------------|--------------------------------------------------------------------|
+| `none`           | No database                                                        |
+| `postgres`       | Postgres + Flyway migrations + JPA entities + repository layer     |
+| `redis`          | Redis + Spring Cache (`@Cacheable` / `@CacheEvict`)                |
+| `postgres-redis` | Both — Postgres for persistence, Redis as a read-through cache     |
+
+```bash
+# Postgres only
+blissful-infra start my-app --database postgres
+
+# Postgres + Redis (recommended for production-like setups)
+blissful-infra start my-app --database postgres-redis
+```
+
+With `postgres-redis` the generated backend includes a `ProductService` with `@Cacheable` on reads and `@CacheEvict` on writes, so you can see cache hit/miss patterns in Grafana from day one.
+
 ### Monitoring
 
 Every project includes Prometheus and Grafana by default. Prometheus scrapes your backend's `/actuator/prometheus` endpoint. Three dashboards are provisioned automatically: Service Overview, JVM Metrics, and Infrastructure.
