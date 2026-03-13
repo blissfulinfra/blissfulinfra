@@ -25,6 +25,7 @@ import { canaryCommand } from "./commands/canary.js";
 // Phase 5 commands
 import { analyzeCommand, analyzeAction, suggestCommand, suggestAction } from "./commands/analyze.js";
 import { exampleCommand } from "./commands/example.js";
+import { mcpCommand } from "./commands/mcp.js";
 
 const program = new Command();
 
@@ -64,6 +65,7 @@ program.addCommand(suggestCommand);
 
 // Examples
 program.addCommand(exampleCommand);
+program.addCommand(mcpCommand);
 
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {

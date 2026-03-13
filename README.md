@@ -196,6 +196,60 @@ blissful-infra dashboard
 | Environments | Deploy and rollback across environments                   |
 | Settings     | Configure alert thresholds and log retention              |
 
+### MCP Server
+
+blissful-infra ships an [MCP](https://modelcontextprotocol.io) server so Claude can orchestrate your infrastructure directly — creating projects, reading logs, checking health, triggering builds, and deploying — without you leaving the chat.
+
+**Requirements:** the dashboard must be running (`blissful-infra dashboard`) before you start the MCP server.
+
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "blissful-infra": {
+      "command": "npx",
+      "args": ["-y", "blissful-infra", "mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+**Claude Code** — add to your project's `.mcp.json` or run:
+
+```bash
+# Start the MCP server pointed at your running dashboard
+blissful-infra mcp --api http://localhost:3002
+```
+
+Once connected, you can say things like:
+
+> "Create a new project called fraud-detector with postgres-redis"
+> "What's the health of all my running projects?"
+> "Show me ERROR logs from the backend service in my-app"
+> "Why is the backend in my-app restarting? Check the logs and diagnose."
+> "Deploy my-app to staging"
+> "Roll back my-app in production to the previous revision"
+
+**Available MCP tools:**
+
+| Tool | What it does |
+|---|---|
+| `list_projects` | List all projects and status |
+| `get_project` | Status of a specific project |
+| `create_project` | Scaffold a new project |
+| `start_project` / `stop_project` | docker compose up/down |
+| `delete_project` | Stop and remove a project |
+| `get_health` | Service health for a project |
+| `get_metrics` / `get_metrics_summary` | CPU, memory, latency, error rate |
+| `get_logs` | Recent container logs |
+| `search_logs` | Search logs by service, level, text |
+| `query_agent` | Ask the AI to diagnose a problem |
+| `get_pipeline` / `run_pipeline` | Jenkins CI status and trigger |
+| `deploy` / `rollback` | Argo CD deployments |
+| `list_environments` | Available deploy environments |
+
 ### Commands
 
 **Core**
@@ -209,6 +263,8 @@ blissful-infra dashboard
 | `down [name]`        | Stop a project                       |
 | `dev [name]`         | Development mode with hot reload     |
 | `logs [name]`        | View project logs                    |
+| `dashboard`          | Launch the web dashboard             |
+| `mcp`                | Start the MCP server for Claude      |
 
 **CI/CD & Deployments**
 
