@@ -28,6 +28,15 @@
     "kubernetes"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cavanpage/blissful-infra.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://cavanpage.github.io/blissful-infra",
+  "bugs": {
+    "url": "https://github.com/cavanpage/blissful-infra/issues"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
