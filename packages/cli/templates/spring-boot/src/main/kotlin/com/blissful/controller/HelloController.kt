@@ -4,13 +4,8 @@ import com.blissful.event.EventPublisher
 import com.blissful.event.GreetingEvent
 import com.blissful.websocket.EventWebSocketHandler
 {{#IF_POSTGRES}}
-import com.blissful.entity.Greeting
-import com.blissful.repository.GreetingRepository
+import com.blissful.service.GreetingService
 {{/IF_POSTGRES}}
-{{#IF_REDIS}}
-import org.springframework.cache.annotation.CacheEvict
-import org.springframework.cache.annotation.Cacheable
-{{/IF_REDIS}}
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -28,18 +23,11 @@ data class HelloResponse(
 )
 {{/IF_NO_POSTGRES}}
 
-data class EchoRequest(
-    val data: Any?
-)
-
-data class EchoResponse(
-    val echo: Any?
-)
+data class EchoRequest(val data: Any?)
+data class EchoResponse(val echo: Any?)
 
 {{#IF_POSTGRES}}
-data class GreetingHistoryResponse(
-    val greetings: List<GreetingDto>
-)
+data class GreetingHistoryResponse(val greetings: List<GreetingDto>)
 
 data class GreetingDto(
     val id: Long,
@@ -52,82 +40,35 @@ data class GreetingDto(
 @RestController
 class HelloController(
     private val eventPublisher: EventPublisher,
-{{#IF_POSTGRES}}
     private val webSocketHandler: EventWebSocketHandler,
-    private val greetingRepository: GreetingRepository
+{{#IF_POSTGRES}}
+    private val greetingService: GreetingService
 {{/IF_POSTGRES}}
-{{#IF_NO_POSTGRES}}
-    private val webSocketHandler: EventWebSocketHandler
-{{/IF_NO_POSTGRES}}
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-{{#IF_REDIS}}
-    @CacheEvict(value = ["greetings"], allEntries = true)
-{{/IF_REDIS}}
     @GetMapping("/hello")
     fun hello(): HelloResponse {
         logger.info("Received hello request")
-
-        val event = GreetingEvent(
-            eventId = UUID.randomUUID().toString(),
-            name = "World"
-        )
-        eventPublisher.publish(event)
-
-{{#IF_POSTGRES}}
-        // Save greeting to database
-        val saved = greetingRepository.save(
-            Greeting(name = "World", message = "Hello, World!")
-        )
-        val totalCount = greetingRepository.count()
-{{/IF_POSTGRES}}
-
-        // Notify WebSocket clients
+        eventPublisher.publish(GreetingEvent(eventId = UUID.randomUUID().toString(), name = "World"))
         webSocketHandler.broadcast("greeting", mapOf("name" to "World", "message" to "Hello, World!"))
-
 {{#IF_POSTGRES}}
-        return HelloResponse(
-            message = "Hello, World!",
-            savedId = saved.id,
-            totalGreetings = totalCount
-        )
+        val saved = greetingService.save("World", "Hello, World!")
+        return HelloResponse(message = "Hello, World!", savedId = saved.id, totalGreetings = greetingService.count())
 {{/IF_POSTGRES}}
 {{#IF_NO_POSTGRES}}
         return HelloResponse(message = "Hello, World!")
 {{/IF_NO_POSTGRES}}
     }
 
-{{#IF_REDIS}}
-    @CacheEvict(value = ["greetings"], allEntries = true)
-{{/IF_REDIS}}
     @GetMapping("/hello/{name}")
     fun helloName(@PathVariable name: String): HelloResponse {
         logger.info("Received hello request for name: {}", name)
-
-        val event = GreetingEvent(
-            eventId = UUID.randomUUID().toString(),
-            name = name
-        )
-        eventPublisher.publish(event)
-
-{{#IF_POSTGRES}}
-        // Save greeting to database
-        val saved = greetingRepository.save(
-            Greeting(name = name, message = "Hello, $name!")
-        )
-        val totalCount = greetingRepository.count()
-{{/IF_POSTGRES}}
-
-        // Notify WebSocket clients
+        eventPublisher.publish(GreetingEvent(eventId = UUID.randomUUID().toString(), name = name))
         webSocketHandler.broadcast("greeting", mapOf("name" to name, "message" to "Hello, $name!"))
-
 {{#IF_POSTGRES}}
-        return HelloResponse(
-            message = "Hello, $name!",
-            savedId = saved.id,
-            totalGreetings = totalCount
-        )
+        val saved = greetingService.save(name, "Hello, $name!")
+        return HelloResponse(message = "Hello, $name!", savedId = saved.id, totalGreetings = greetingService.count())
 {{/IF_POSTGRES}}
 {{#IF_NO_POSTGRES}}
         return HelloResponse(message = "Hello, $name!")
@@ -141,42 +82,23 @@ class HelloController(
     }
 
 {{#IF_POSTGRES}}
-{{#IF_REDIS}}
-    @Cacheable("greetings")
-{{/IF_REDIS}}
     @GetMapping("/greetings")
     fun getGreetings(): GreetingHistoryResponse {
-        logger.info("Fetching recent greetings from database")
-        val greetings = greetingRepository.findTop10ByOrderByCreatedAtDesc()
-        return GreetingHistoryResponse(
-            greetings = greetings.map { g ->
-                GreetingDto(
-                    id = g.id!!,
-                    name = g.name,
-                    message = g.message,
-                    createdAt = g.createdAt.toString()
-                )
-            }
-        )
+        logger.info("Fetching recent greetings")
+        return GreetingHistoryResponse(greetings = greetingService.findRecent().map { it.toDto() })
     }
 
-{{#IF_REDIS}}
-    @Cacheable(value = ["greetings"], key = "#name")
-{{/IF_REDIS}}
     @GetMapping("/greetings/{name}")
     fun getGreetingsByName(@PathVariable name: String): GreetingHistoryResponse {
         logger.info("Fetching greetings for name: {}", name)
-        val greetings = greetingRepository.findByNameIgnoreCase(name)
-        return GreetingHistoryResponse(
-            greetings = greetings.map { g ->
-                GreetingDto(
-                    id = g.id!!,
-                    name = g.name,
-                    message = g.message,
-                    createdAt = g.createdAt.toString()
-                )
-            }
-        )
+        return GreetingHistoryResponse(greetings = greetingService.findByName(name).map { it.toDto() })
     }
+
+    private fun com.blissful.entity.Greeting.toDto() = GreetingDto(
+        id = id!!,
+        name = name,
+        message = message,
+        createdAt = createdAt.toString()
+    )
 {{/IF_POSTGRES}}
 }
