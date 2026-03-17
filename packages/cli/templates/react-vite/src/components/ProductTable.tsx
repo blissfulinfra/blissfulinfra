@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { ProductCreateDialog } from './ProductCreateDialog'
 
 interface Product {
   id: number
@@ -30,6 +31,7 @@ async function fetchProducts(category?: string, inStock?: boolean): Promise<Prod
 export function ProductTable() {
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out'>('all')
+  const [showCreate, setShowCreate] = useState(false)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['products', categoryFilter, stockFilter],
@@ -41,6 +43,8 @@ export function ProductTable() {
   })
 
   return (
+    <>
+    <ProductCreateDialog open={showCreate} onClose={() => setShowCreate(false)} />
     <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
       {/* Header + filters */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b">
@@ -52,6 +56,12 @@ export function ProductTable() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setShowCreate(true)}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            + New
+          </button>
           {/* Category filter */}
           <div className="flex rounded-md border overflow-hidden text-xs">
             {CATEGORIES.map(cat => (
@@ -159,5 +169,6 @@ export function ProductTable() {
         </table>
       </div>
     </div>
+    </>
   )
 }
