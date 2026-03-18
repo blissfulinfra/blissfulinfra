@@ -83,7 +83,7 @@ Your AI stack is now running:
 
 ```bash
 # Install
-npm install -g @blissful-infra/cli@alpha
+npm install -g @blissful-infra/cli
 
 # Create and run a fullstack app
 blissful-infra start my-app

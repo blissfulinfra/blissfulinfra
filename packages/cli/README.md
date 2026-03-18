@@ -3,7 +3,7 @@
 One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required.
 
 ```bash
-npm install -g @blissful-infra/cli@alpha
+npm install -g @blissful-infra/cli
 blissful-infra start my-app
 ```
 
@@ -24,7 +24,7 @@ blissful-infra start my-app
 
 ```bash
 # Install
-npm install -g @blissful-infra/cli@alpha
+npm install -g @blissful-infra/cli
 
 # Create and start a project
 blissful-infra start my-app --backend spring-boot --database postgres
@@ -77,7 +77,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "blissful-infra": {
       "command": "npx",
-      "args": ["-y", "@blissful-infra/cli@alpha", "mcp"]
+      "args": ["-y", "@blissful-infra/cli", "mcp"]
     }
   }
 }
