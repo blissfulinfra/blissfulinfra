@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: packages/cli/package-lock.json
+
+      - name: Install dependencies
+        run: npm install --prefix packages/cli
+
+      - name: Build
+        run: npm run build --prefix packages/cli
+
+      - name: Typecheck
+        run: npm run typecheck --prefix packages/cli
+
+  install-test:
+    name: npm install test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install from npm
+        run: npm install -g @blissful-infra/cli
+
+      - name: Verify CLI works
+        run: blissful-infra --version
