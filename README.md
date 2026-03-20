@@ -6,6 +6,9 @@
 
 One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required.
 
+[![CI](https://github.com/cavanpage/blissful-infra/actions/workflows/ci.yml/badge.svg)](https://github.com/cavanpage/blissful-infra/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@blissful-infra/cli)](https://www.npmjs.com/package/@blissful-infra/cli)
+
 ---
 
 [What is blissful-infra?](#what-is-blissful-infra) · [Use Cases](#use-cases) · [Quickstart](#quickstart) · [Basics](#basics) · [Next Steps](#next-steps)
