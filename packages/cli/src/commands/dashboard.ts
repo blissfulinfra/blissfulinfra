@@ -84,7 +84,7 @@ export async function dashboardAction(opts: { port?: string; open?: boolean; dir
   const workingDir = opts.dir || process.cwd();
 
   const apiPort = parseInt(opts.port || "3002", 10);
-  const dashboardPort = 3001;
+  const dashboardPort = 5173;
   const shouldOpen = opts.open !== false;
   const startJenkins = opts.noJenkins !== true;
 
@@ -110,7 +110,7 @@ export async function dashboardAction(opts: { port?: string; open?: boolean; dir
 
   console.log();
   console.log(chalk.green("Blissful Infra Orchestrator"));
-  console.log(chalk.dim("  Dashboard:  ") + chalk.cyan(`http://localhost:${dashboardPort}`));
+  console.log(chalk.dim("  Dashboard:  ") + chalk.cyan(`http://localhost:${dashboardPort}`) + chalk.dim(" (Vite dev server)"));
   console.log(chalk.dim("  API:        ") + chalk.cyan(`http://localhost:${apiPort}`));
   console.log(chalk.dim("  Projects:   ") + chalk.cyan(workingDir));
   if (jenkinsStarted) {

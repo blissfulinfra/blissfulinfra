@@ -5,8 +5,15 @@ import { cn } from '@/lib/utils'
 interface ChatMessage {
   id: string
   kind: 'chat' | 'system'
-  from?: string       // display name of sender (chat messages)
-  sessionId?: string  // used to detect own messages
+  from?: string
+  sessionId?: string
+  text: string
+  timestamp: number
+}
+
+interface HistoryMessage {
+  from: string
+  sessionId: string
   text: string
   timestamp: number
 }
@@ -19,7 +26,7 @@ interface WsPayload {
   oldName?: string
   newName?: string
   count?: number
-  message?: string
+  messages?: HistoryMessage[]
 }
 
 interface WsEvent {
@@ -60,8 +67,22 @@ export function ChatWindow() {
           case 'connected':
             setMySessionId(payload.sessionId ?? null)
             setMyName(payload.name ?? '')
-            setOnlineCount(prev => prev + 1)
+            setOnlineCount(payload.count ?? 1)
             pushSystem(`Connected as ${payload.name}`, timestamp)
+            break
+
+          case 'history':
+            if (payload.messages?.length) {
+              const historical: ChatMessage[] = payload.messages.map(m => ({
+                id: `hist-${m.timestamp}-${m.sessionId}`,
+                kind: 'chat',
+                from: m.from,
+                sessionId: m.sessionId,
+                text: m.text,
+                timestamp: m.timestamp,
+              }))
+              setChatMessages(prev => [...historical, ...prev])
+            }
             break
 
           case 'chat':
@@ -100,7 +121,6 @@ export function ChatWindow() {
     },
   })
 
-  // Auto-scroll to the latest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
@@ -132,40 +152,38 @@ export function ChatWindow() {
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-sm">Live Chat</span>
-          <span
-            className={cn(
-              'h-2 w-2 rounded-full',
-              connected ? 'bg-green-500' : 'bg-yellow-400'
-            )}
-          />
+          <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-green-500' : 'bg-yellow-400')} />
           <span className="text-xs text-muted-foreground">
             {connected ? `${onlineCount} online` : 'reconnecting…'}
           </span>
         </div>
-        {/* Inline rename */}
-        <div className="flex items-center gap-1">
-          <input
-            className="h-6 w-28 rounded border px-2 text-xs bg-background"
-            placeholder={myName || 'Set name…'}
-            value={pendingName}
-            onChange={e => setPendingName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleRename()}
-          />
-          <button
-            onClick={handleRename}
-            disabled={!pendingName.trim()}
-            className="h-6 px-2 text-xs rounded border bg-muted hover:bg-muted/80 disabled:opacity-40"
-          >
-            Rename
-          </button>
-        </div>
+        {/* Name setting */}
+        {connected && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground mr-1">{myName}</span>
+            <input
+              className="h-6 w-28 rounded border px-2 text-xs bg-background"
+              placeholder="Change name…"
+              value={pendingName}
+              onChange={e => setPendingName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleRename()}
+            />
+            <button
+              onClick={handleRename}
+              disabled={!pendingName.trim()}
+              className="h-6 px-2 text-xs rounded border bg-muted hover:bg-muted/80 disabled:opacity-40"
+            >
+              Set
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Message list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {chatMessages.length === 0 && (
           <p className="text-center text-xs text-muted-foreground pt-8">
-            No messages yet — say hello!
+            No messages yet. Say hello!
           </p>
         )}
 
@@ -182,21 +200,16 @@ export function ChatWindow() {
 
           const isOwn = msg.sessionId === mySessionId
           return (
-            <div
-              key={msg.id}
-              className={cn('flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}
-            >
+            <div key={msg.id} className={cn('flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
               <span className="text-xs text-muted-foreground px-1">
                 {isOwn ? 'You' : msg.from}
               </span>
-              <div
-                className={cn(
-                  'max-w-[75%] rounded-2xl px-3 py-2 text-sm break-words',
-                  isOwn
-                    ? 'bg-primary text-primary-foreground rounded-br-sm'
-                    : 'bg-muted rounded-bl-sm'
-                )}
-              >
+              <div className={cn(
+                'max-w-[75%] rounded-2xl px-3 py-2 text-sm break-words',
+                isOwn
+                  ? 'bg-primary text-primary-foreground rounded-br-sm'
+                  : 'bg-muted rounded-bl-sm'
+              )}>
                 {msg.text}
               </div>
               <span className="text-[10px] text-muted-foreground px-1">

@@ -1,6 +1,7 @@
 package com.blissful.websocket
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.web.socket.CloseStatus
@@ -8,6 +9,7 @@ import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 data class WebSocketEvent(
     val type: String,
@@ -15,20 +17,27 @@ data class WebSocketEvent(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-// Incoming message shape sent by clients
 private data class ClientMessage(val type: String, val payload: Map<String, Any?> = emptyMap())
+
+private data class PersistedMessage(
+    val from: String,
+    val sessionId: String,
+    val text: String,
+    val timestamp: Long,
+)
 
 class EventWebSocketHandler : TextWebSocketHandler() {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    // sessionId → WebSocketSession
     private val sessions = ConcurrentHashMap<String, WebSocketSession>()
-
-    // sessionId → display name (e.g. "User-a1b2")
     private val names = ConcurrentHashMap<String, String>()
 
-    private val objectMapper = ObjectMapper()
+    // Rolling in-memory history — last 50 chat messages
+    private val history = CopyOnWriteArrayList<PersistedMessage>()
+    private val maxHistory = 50
+
+    private val objectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
         val name = "User-${session.id.take(4)}"
@@ -36,13 +45,21 @@ class EventWebSocketHandler : TextWebSocketHandler() {
         names[session.id] = name
         logger.info("WebSocket connected: {} ({}), total: {}", name, session.id, sessions.size)
 
-        // Tell the joining client their assigned name and session id
+        // Tell the joining client their name, session id, and current user count
         send(session, WebSocketEvent(
             type = "connected",
-            payload = mapOf("sessionId" to session.id, "name" to name)
+            payload = mapOf("sessionId" to session.id, "name" to name, "count" to sessions.size)
         ))
 
-        // Notify everyone else that a user joined
+        // Replay recent history to the joining client
+        if (history.isNotEmpty()) {
+            send(session, WebSocketEvent(
+                type = "history",
+                payload = mapOf("messages" to history.toList())
+            ))
+        }
+
+        // Notify everyone else
         broadcast(WebSocketEvent(
             type = "user-joined",
             payload = mapOf("name" to name, "count" to sessions.size)
@@ -67,22 +84,23 @@ class EventWebSocketHandler : TextWebSocketHandler() {
             val incoming = objectMapper.readValue<ClientMessage>(message.payload)
 
             when (incoming.type) {
-                // Client sends: { type: "chat", payload: { text: "hello" } }
                 "chat" -> {
                     val text = incoming.payload["text"] as? String ?: return
                     logger.debug("Chat from {}: {}", senderName, text)
 
+                    val ts = System.currentTimeMillis()
+
+                    // Persist to history
+                    history.add(PersistedMessage(from = senderName, sessionId = session.id, text = text, timestamp = ts))
+                    if (history.size > maxHistory) history.removeAt(0)
+
                     broadcast(WebSocketEvent(
                         type = "chat",
-                        payload = mapOf(
-                            "from" to senderName,
-                            "sessionId" to session.id,
-                            "text" to text,
-                        )
+                        payload = mapOf("from" to senderName, "sessionId" to session.id, "text" to text),
+                        timestamp = ts,
                     ))
                 }
 
-                // Client sends: { type: "set-name", payload: { name: "Alice" } }
                 "set-name" -> {
                     val newName = (incoming.payload["name"] as? String)
                         ?.trim()
@@ -92,15 +110,13 @@ class EventWebSocketHandler : TextWebSocketHandler() {
 
                     val oldName = names[session.id] ?: senderName
                     names[session.id] = newName
-                    logger.info("Rename: {} → {}", oldName, newName)
+                    logger.info("Rename: {} -> {}", oldName, newName)
 
-                    // Confirm to the renaming client
                     send(session, WebSocketEvent(
                         type = "name-changed",
                         payload = mapOf("name" to newName)
                     ))
 
-                    // Notify everyone
                     broadcast(WebSocketEvent(
                         type = "user-renamed",
                         payload = mapOf("oldName" to oldName, "newName" to newName)
@@ -120,7 +136,6 @@ class EventWebSocketHandler : TextWebSocketHandler() {
         names.remove(session.id)
     }
 
-    /** Broadcast an event to all connected sessions, optionally excluding one. */
     fun broadcast(event: WebSocketEvent, exclude: String? = null) {
         val message = TextMessage(objectMapper.writeValueAsString(event))
         sessions.forEach { (id, session) ->

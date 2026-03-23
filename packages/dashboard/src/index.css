@@ -1,6 +1,41 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-body {
-  @apply bg-gray-900 text-gray-100;
+@theme {
+  /* Remap Tailwind's gray scale to ArgoCD navy tones */
+  --color-gray-950: #070a12;
+  --color-gray-900: #0b0e1a;
+  --color-gray-800: #111827;
+  --color-gray-750: #162030;
+  --color-gray-700: #1a2236;
+  --color-gray-600: #1e2d45;
+  --color-gray-500: #253352;
+  --color-gray-400: #8899b4;
+  --color-gray-300: #b0c0d8;
+  --color-gray-200: #d0dcea;
+  --color-gray-100: #e2e8f0;
+
+  /* Remap blue to our accent */
+  --color-blue-600: #3b7ef4;
+  --color-blue-500: #4f8ef7;
+  --color-blue-400: #6ba3ff;
+  --color-blue-300: #90beff;
+
+  /* Indigo → same accent */
+  --color-indigo-500: #4f8ef7;
+  --color-indigo-600: #3b7ef4;
 }
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #0b0e1a;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #253352; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2e4170; }

@@ -4,7 +4,7 @@
 
 **Enterprise infrastructure on your laptop.**
 
-One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required.
+One command creates and runs a full-stack app with CI/CD, observability, and an AI agent. No cloud required.
 
 [![CI](https://github.com/cavanpage/blissful-infra/actions/workflows/ci.yml/badge.svg)](https://github.com/cavanpage/blissful-infra/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@blissful-infra/cli)](https://www.npmjs.com/package/@blissful-infra/cli)
@@ -19,7 +19,7 @@ One command creates and runs a full-stack app with CI/CD, observability, and an 
 
 ## What is blissful-infra?
 
-blissful-infra is a CLI that scaffolds and runs production-grade full-stack applications locally. Run one command and get a backend API, React frontend, Kafka message bus, Postgres database, Prometheus metrics, Grafana dashboards, Jenkins CI/CD pipeline, and an AI debugging agent — all wired together and running in Docker.
+blissful-infra is a CLI that scaffolds and runs production-grade full-stack applications locally. Run one command and get a backend API, React frontend, Kafka message bus, Postgres database, Prometheus metrics, Grafana dashboards, Jenkins CI/CD pipeline, and an AI debugging agent. Everything is wired together and running in Docker.
 
 ```bash
 blissful-infra start my-app
@@ -31,7 +31,7 @@ blissful-infra organizes your local stack into a single managed environment and 
 
 **What makes it different from tools like Tilt or Garden:**
 
-Those tools orchestrate services you already wrote. blissful-infra also *creates* them — scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start. It's the difference between a toolkit and a complete local platform.
+Those tools orchestrate services you already wrote. blissful-infra also *creates* them, scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start. It's the difference between a toolkit and a complete local platform.
 
 ---
 
@@ -50,7 +50,7 @@ blissful-infra start my-app --backend spring-boot --database postgres --plugins 
 
 ### Standardizing dev environments across a team
 
-Every developer runs the same stack. `blissful-infra up` in a project directory reads the `blissful-infra.yaml` config and starts the exact same services, ports, and configuration — no "works on my machine" drift.
+Every developer runs the same stack. `blissful-infra up` in a project directory reads the `blissful-infra.yaml` config and starts the exact same services, ports, and configuration. No "works on my machine" drift.
 
 ```bash
 git clone git@github.com:your-org/my-app.git
@@ -59,11 +59,11 @@ cd my-app && blissful-infra up
 
 ### Learning enterprise infrastructure patterns
 
-blissful-infra is designed to be a working reference for how production systems are built — event-driven microservices, Kafka streams, Kubernetes manifests, GitOps with Argo CD, canary deployments, chaos testing, and observability with Prometheus and Grafana. Everything is generated as real, readable code in your project directory.
+blissful-infra is designed to be a working reference for how production systems are built. Event-driven microservices, Kafka streams, Kubernetes manifests, GitOps with Argo CD, canary deployments, chaos testing, and observability with Prometheus and Grafana. Everything is generated as real, readable code in your project directory.
 
 ### Building AI/ML-powered services
 
-The `ai-pipeline` plugin deploys a full ML data platform alongside your app — a Python FastAPI service that classifies Kafka events with scikit-learn, plus ClickHouse for prediction storage, MLflow for experiment tracking, and Mage for visual pipeline orchestration.
+The `ai-pipeline` plugin deploys a full ML data platform alongside your app. A Python FastAPI service classifies Kafka events with scikit-learn, with ClickHouse for prediction storage, MLflow for experiment tracking, and Mage for visual pipeline orchestration.
 
 ```bash
 blissful-infra start my-app --plugins ai-pipeline
@@ -113,7 +113,7 @@ Your app is now running:
 
 ### Projects
 
-A blissful-infra project is a directory with a `blissful-infra.yaml` config file and a generated `docker-compose.yaml`. Every service — backend, frontend, Kafka, databases, monitoring — is defined in that compose file and managed together.
+A blissful-infra project is a directory with a `blissful-infra.yaml` config file and a generated `docker-compose.yaml`. Every service (backend, frontend, Kafka, databases, monitoring) is defined in that compose file and managed together.
 
 ```
 my-app/
@@ -160,7 +160,7 @@ blissful-infra start my-app --backend fastapi --frontend react-vite
 | `none`           | No database                                                        |
 | `postgres`       | Postgres + Flyway migrations + JPA entities + repository layer     |
 | `redis`          | Redis + Spring Cache (`@Cacheable` / `@CacheEvict`)                |
-| `postgres-redis` | Both — Postgres for persistence, Redis as a read-through cache     |
+| `postgres-redis` | Both. Postgres for persistence, Redis as a read-through cache      |
 
 ```bash
 # Postgres only
@@ -201,7 +201,7 @@ blissful-infra dashboard
 
 ### MCP Server
 
-blissful-infra ships an [MCP](https://modelcontextprotocol.io) server so Claude can orchestrate your infrastructure directly — creating projects, reading logs, checking health, triggering builds, and deploying — without you leaving the chat.
+blissful-infra ships an [MCP](https://modelcontextprotocol.io) server so Claude can orchestrate your infrastructure directly. Create projects, read logs, check health, trigger builds, and deploy without leaving the chat.
 
 **Requirements:** the dashboard must be running (`blissful-infra dashboard`) before you start the MCP server.
 
@@ -222,7 +222,6 @@ blissful-infra ships an [MCP](https://modelcontextprotocol.io) server so Claude 
 **Claude Code** — add to your project's `.mcp.json` or run:
 
 ```bash
-# Start the MCP server pointed at your running dashboard
 blissful-infra mcp --api http://localhost:3002
 ```
 
@@ -306,7 +305,7 @@ Reference implementations showing blissful-infra applied to real-world problems.
 # List available examples
 blissful-infra example list
 
-# Scaffold an example project (no Docker started — inspect first)
+# Scaffold an example project (inspect before running)
 blissful-infra example content-recommender
 
 # Then start it
@@ -317,7 +316,7 @@ cd content-recommender && blissful-infra up
 |---------|---------|-------|
 | **[Content Recommender](./examples/content-recommender/)** | Real-time personalized recommendations for a streaming platform | Spring Boot + ALS collaborative filtering + ClickHouse + MLflow |
 
-The `example` command scaffolds a complete, runnable project using the base templates plus the example's custom overrides (ML model, data layer, endpoints). No boilerplate to write — inspect the generated code, then run it.
+The `example` command scaffolds a complete, runnable project using the base templates plus the example's custom overrides. No boilerplate to write. Inspect the generated code, then run it.
 
 ---
 
@@ -369,7 +368,7 @@ blissful-infra dev --templates dev-app
 Any file you save under `packages/cli/templates/react-vite/src/` or `packages/cli/templates/spring-boot/src/` is immediately processed and copied to `dev-app/frontend/src/` or `dev-app/backend/src/`.
 
 - **Frontend changes** — Vite HMR picks them up in the browser with no restart.
-- **Backend changes** — run `./gradlew classes -t` inside `dev-app/backend/` in a third terminal; Spring Boot devtools restarts the app on each recompile.
+- **Backend changes** — run `./gradlew classes -t` inside `dev-app/backend/` in a third terminal. Spring Boot devtools restarts the app on each recompile.
 
 ```bash
 # Terminal 3 (backend only) — continuous Kotlin compilation
