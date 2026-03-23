@@ -5,6 +5,7 @@ import com.blissful.event.GreetingEvent
 import com.blissful.websocket.EventWebSocketHandler
 {{#IF_POSTGRES}}
 import com.blissful.service.GreetingService
+import com.blissful.service.ChatMessageService
 {{/IF_POSTGRES}}
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.*
@@ -35,6 +36,16 @@ data class GreetingDto(
     val message: String,
     val createdAt: String
 )
+
+data class ChatMessageDto(
+    val id: Long,
+    val sessionId: String,
+    val author: String,
+    val body: String,
+    val createdAt: String
+)
+
+data class ChatHistoryResponse(val messages: List<ChatMessageDto>, val total: Int)
 {{/IF_POSTGRES}}
 
 @RestController
@@ -42,7 +53,8 @@ class HelloController(
     private val eventPublisher: EventPublisher,
     private val webSocketHandler: EventWebSocketHandler,
 {{#IF_POSTGRES}}
-    private val greetingService: GreetingService
+    private val greetingService: GreetingService,
+    private val chatMessageService: ChatMessageService
 {{/IF_POSTGRES}}
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -92,6 +104,23 @@ class HelloController(
     fun getGreetingsByName(@PathVariable name: String): GreetingHistoryResponse {
         logger.info("Fetching greetings for name: {}", name)
         return GreetingHistoryResponse(greetings = greetingService.findByName(name).map { it.toDto() })
+    }
+
+    @GetMapping("/messages")
+    fun getMessages(@RequestParam(defaultValue = "50") limit: Int): ChatHistoryResponse {
+        val messages = chatMessageService.findRecent(limit.coerceIn(1, 200))
+        return ChatHistoryResponse(
+            messages = messages.map {
+                ChatMessageDto(
+                    id = it.id!!,
+                    sessionId = it.sessionId,
+                    author = it.author,
+                    body = it.body,
+                    createdAt = it.createdAt.toString()
+                )
+            },
+            total = messages.size
+        )
     }
 
     private fun com.blissful.entity.Greeting.toDto() = GreetingDto(

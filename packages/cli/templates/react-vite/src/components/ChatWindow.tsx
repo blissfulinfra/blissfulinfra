@@ -39,6 +39,18 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+const COOKIE_NAME = 'chat_name'
+
+function getChatNameCookie(): string | null {
+  const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(`${COOKIE_NAME}=`))
+  return match ? decodeURIComponent(match.split('=')[1]) : null
+}
+
+function setChatNameCookie(name: string) {
+  const maxAge = 60 * 60 * 24 * 365 // 1 year
+  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(name)};max-age=${maxAge};path=/;SameSite=Lax`
+}
+
 export function ChatWindow() {
   const [mySessionId, setMySessionId] = useState<string | null>(null)
   const [myName, setMyName] = useState<string>('')
@@ -64,12 +76,15 @@ export function ChatWindow() {
         const { type, payload, timestamp } = event
 
         switch (type) {
-          case 'connected':
+          case 'connected': {
             setMySessionId(payload.sessionId ?? null)
-            setMyName(payload.name ?? '')
             setOnlineCount(payload.count ?? 1)
+            // If we have a saved name and haven't sent it yet, restore it
+            // Server already read the cookie and used it as the initial name
+            setMyName(payload.name ?? '')
             pushSystem(`Connected as ${payload.name}`, timestamp)
             break
+          }
 
           case 'history':
             if (payload.messages?.length) {
@@ -108,6 +123,7 @@ export function ChatWindow() {
 
           case 'name-changed':
             setMyName(payload.name ?? '')
+            if (payload.name) setChatNameCookie(payload.name)
             pushSystem(`You are now known as ${payload.name}`, timestamp)
             break
 

@@ -10,6 +10,9 @@ import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+{{#IF_POSTGRES}}
+import com.blissful.service.ChatMessageService
+{{/IF_POSTGRES}}
 
 data class WebSocketEvent(
     val type: String,
@@ -26,7 +29,14 @@ private data class PersistedMessage(
     val timestamp: Long,
 )
 
-class EventWebSocketHandler : TextWebSocketHandler() {
+class EventWebSocketHandler(
+{{#IF_POSTGRES}}
+    private val chatMessageService: ChatMessageService? = null
+{{/IF_POSTGRES}}
+{{#IF_NO_POSTGRES}}
+    // no-arg constructor when Postgres is not enabled
+{{/IF_NO_POSTGRES}}
+) : TextWebSocketHandler() {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -40,7 +50,15 @@ class EventWebSocketHandler : TextWebSocketHandler() {
     private val objectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
-        val name = "User-${session.id.take(4)}"
+        val cookieName = session.handshakeHeaders["Cookie"]
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("chat_name=") }
+            ?.removePrefix("chat_name=")
+            ?.trim()
+            ?.take(20)
+            ?.ifBlank { null }
+        val name = cookieName ?: "User-${session.id.take(4)}"
         sessions[session.id] = session
         names[session.id] = name
         logger.info("WebSocket connected: {} ({}), total: {}", name, session.id, sessions.size)
@@ -90,9 +108,16 @@ class EventWebSocketHandler : TextWebSocketHandler() {
 
                     val ts = System.currentTimeMillis()
 
-                    // Persist to history
+                    // Persist to in-memory history
                     history.add(PersistedMessage(from = senderName, sessionId = session.id, text = text, timestamp = ts))
                     if (history.size > maxHistory) history.removeAt(0)
+
+                    // Persist to DB if available
+{{#IF_POSTGRES}}
+                    try { chatMessageService?.save(session.id, senderName, text) } catch (e: Exception) {
+                        logger.warn("Failed to persist chat message: {}", e.message)
+                    }
+{{/IF_POSTGRES}}
 
                     broadcast(WebSocketEvent(
                         type = "chat",
