@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState, KeyboardEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { cn } from '@/lib/utils'
+
+type MessageSource = 'live' | 'persisted'
 
 interface ChatMessage {
   id: string
   kind: 'chat' | 'system'
+  source?: MessageSource
   from?: string
   sessionId?: string
-  text: string
-  timestamp: number
-}
-
-interface HistoryMessage {
-  from: string
-  sessionId: string
   text: string
   timestamp: number
 }
@@ -26,7 +23,6 @@ interface WsPayload {
   oldName?: string
   newName?: string
   count?: number
-  messages?: HistoryMessage[]
 }
 
 interface WsEvent {
@@ -35,25 +31,69 @@ interface WsEvent {
   timestamp: number
 }
 
+interface PersistedMsg {
+  id: number
+  author: string
+  body: string
+  createdAt: string
+}
+
+interface MessagesResponse {
+  messages: PersistedMsg[]
+  total: number
+}
+
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 const COOKIE_NAME = 'chat_name'
 
+function getChatNameCookie(): string | null {
+  const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(`${COOKIE_NAME}=`))
+  return match ? decodeURIComponent(match.split('=')[1]) : null
+}
+
 function setChatNameCookie(name: string) {
-  const maxAge = 60 * 60 * 24 * 365 // 1 year
+  const maxAge = 60 * 60 * 24 * 365
   document.cookie = `${COOKIE_NAME}=${encodeURIComponent(name)};max-age=${maxAge};path=/;SameSite=Lax`
+}
+
+async function fetchMessages(): Promise<MessagesResponse> {
+  const res = await fetch('/api/messages?limit=50')
+  if (!res.ok) throw new Error('Failed to fetch messages')
+  return res.json()
 }
 
 export function ChatWindow() {
   const [mySessionId, setMySessionId] = useState<string | null>(null)
-  const [myName, setMyName] = useState<string>('')
+  const [myName, setMyName] = useState<string>(getChatNameCookie() ?? '')
   const [pendingName, setPendingName] = useState<string>('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [onlineCount, setOnlineCount] = useState(0)
+  const liveIdsRef = useRef<Set<string>>(new Set())
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Load persisted history from Postgres on mount
+  const { data: history } = useQuery({
+    queryKey: ['chat-history'],
+    queryFn: fetchMessages,
+    staleTime: Infinity, // only load once per mount
+  })
+
+  useEffect(() => {
+    if (!history?.messages.length) return
+    const msgs: ChatMessage[] = history.messages.map(m => ({
+      id: `db-${m.id}`,
+      kind: 'chat',
+      source: 'persisted',
+      from: m.author,
+      text: m.body,
+      timestamp: new Date(m.createdAt).getTime(),
+    }))
+    setChatMessages(msgs)
+  }, [history])
 
   const pushSystem = (text: string, timestamp = Date.now()) => {
     setChatMessages(prev => [...prev, {
@@ -71,40 +111,27 @@ export function ChatWindow() {
         const { type, payload, timestamp } = event
 
         switch (type) {
-          case 'connected': {
+          case 'connected':
             setMySessionId(payload.sessionId ?? null)
             setOnlineCount(payload.count ?? 1)
-            // If we have a saved name and haven't sent it yet, restore it
-            // Server already read the cookie and used it as the initial name
             setMyName(payload.name ?? '')
             pushSystem(`Connected as ${payload.name}`, timestamp)
             break
-          }
 
-          case 'history':
-            if (payload.messages?.length) {
-              const historical: ChatMessage[] = payload.messages.map(m => ({
-                id: `hist-${m.timestamp}-${m.sessionId}`,
-                kind: 'chat',
-                from: m.from,
-                sessionId: m.sessionId,
-                text: m.text,
-                timestamp: m.timestamp,
-              }))
-              setChatMessages(prev => [...historical, ...prev])
-            }
-            break
-
-          case 'chat':
+          case 'chat': {
+            const id = `msg-${timestamp}-${payload.sessionId}`
+            liveIdsRef.current.add(id)
             setChatMessages(prev => [...prev, {
-              id: `msg-${timestamp}-${Math.random()}`,
+              id,
               kind: 'chat',
+              source: 'live',
               from: payload.from,
               sessionId: payload.sessionId,
               text: payload.text ?? '',
               timestamp,
             }])
             break
+          }
 
           case 'user-joined':
             setOnlineCount(payload.count ?? 0)
@@ -168,7 +195,6 @@ export function ChatWindow() {
             {connected ? `${onlineCount} online` : 'reconnecting…'}
           </span>
         </div>
-        {/* Name setting */}
         {connected && (
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground mr-1">{myName}</span>
@@ -209,7 +235,11 @@ export function ChatWindow() {
             )
           }
 
-          const isOwn = msg.sessionId === mySessionId
+          // For live messages use session ID; for persisted use name match
+          const isOwn = msg.source === 'live'
+            ? msg.sessionId === mySessionId
+            : msg.from === myName
+
           return (
             <div key={msg.id} className={cn('flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
               <span className="text-xs text-muted-foreground px-1">
@@ -217,9 +247,9 @@ export function ChatWindow() {
               </span>
               <div className={cn(
                 'max-w-[75%] rounded-2xl px-3 py-2 text-sm break-words',
-                isOwn
-                  ? 'bg-primary text-primary-foreground rounded-br-sm'
-                  : 'bg-muted rounded-bl-sm'
+                isOwn && msg.source === 'live' && 'bg-primary text-primary-foreground rounded-br-sm',
+                isOwn && msg.source === 'persisted' && 'bg-primary/60 text-primary-foreground rounded-br-sm',
+                !isOwn && 'bg-muted rounded-bl-sm',
               )}>
                 {msg.text}
               </div>

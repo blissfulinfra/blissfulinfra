@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-# Stop and remove all running blissful-infra project containers
+# Stop and remove all running blissful-infra project containers, then delete directories
 echo "Bringing down blissful-infra projects..."
 for dir in */; do
   if [ -f "${dir}docker-compose.yaml" ]; then
-    echo "  stopping ${dir%/}"
-    docker compose -f "${dir}docker-compose.yaml" down 2>/dev/null || true
+    echo "  stopping and removing ${dir%/}"
+    docker compose -f "${dir}docker-compose.yaml" down --volumes 2>/dev/null || true
+    rm -rf "${dir}"
   fi
 done
 
