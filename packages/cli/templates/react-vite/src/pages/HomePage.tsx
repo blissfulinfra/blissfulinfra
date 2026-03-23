@@ -47,6 +47,15 @@ export default function HomePage() {
         </p>
       </section>
 
+      {/* Side-by-side: WebSocket chat + SSE event feed */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <ChatWindow />
+        <LiveFeed />
+      </div>
+
+      {/* Persisted chat history loaded from Postgres */}
+      <MessageHistoryFeed />
+      
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <Card.Header>
@@ -93,15 +102,6 @@ export default function HomePage() {
           </Card.Content>
         </Card>
       </div>
-
-      {/* Side-by-side: WebSocket chat + SSE event feed */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <ChatWindow />
-        <LiveFeed />
-      </div>
-
-      {/* Persisted chat history loaded from Postgres */}
-      <MessageHistoryFeed />
     </div>
   )
 }

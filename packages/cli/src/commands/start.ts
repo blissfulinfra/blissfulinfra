@@ -144,10 +144,19 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     },
     container_name: `${name}-backend`,
     ports: ["8080:8080"],
+    healthcheck: {
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"],
+      interval: "10s",
+      timeout: "5s",
+      retries: 5,
+      start_period: "30s",
+    },
     environment: {
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
       OTEL_SERVICE_NAME: `${name}-backend`,
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317",
+      // Port 4318 = OTLP/HTTP (default for OTel Java agent v2.x)
+      // Port 4317 = OTLP/gRPC — do NOT use with the HTTP exporter
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318",
       OTEL_TRACES_EXPORTER: "otlp",
       JAVA_TOOL_OPTIONS: "-javaagent:/otel-agent.jar",
       ...(database === "postgres" || database === "postgres-redis"
