@@ -117,6 +117,36 @@ async function rebuildDockerApp(_config: ProjectConfig): Promise<void> {
   }
 }
 
+async function hasDevComposeOverride(): Promise<boolean> {
+  try {
+    await fs.access(path.join(process.cwd(), "docker-compose.dev.yaml"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function startDockerDevModeWithDevTools(_config: ProjectConfig): Promise<void> {
+  console.log();
+  console.log(chalk.bold.cyan("Spring Boot DevTools mode (Docker)"));
+  console.log(chalk.dim("classes -t + bootRun inside the container — DevTools restarts the JVM on each recompile (~2-3 s)"));
+  console.log();
+
+  const spinner = ora("Starting dev container...").start();
+  try {
+    await execa(
+      "docker",
+      ["compose", "-f", "docker-compose.yaml", "-f", "docker-compose.dev.yaml", "up", "--build", "app"],
+      { stdio: "inherit" }
+    );
+    spinner.succeed("Dev container stopped");
+  } catch (error) {
+    spinner.fail("Dev container exited with error");
+    const execError = toExecError(error);
+    if (execError.stderr) console.error(chalk.red(execError.stderr));
+  }
+}
+
 async function ensureInfraRunning(includeApp: boolean): Promise<boolean> {
   const spinner = ora("Checking infrastructure...").start();
 
@@ -154,6 +184,13 @@ async function ensureInfraRunning(includeApp: boolean): Promise<boolean> {
 }
 
 async function startDockerDevMode(config: ProjectConfig): Promise<void> {
+  // If the project has a docker-compose.dev.yaml (Spring Boot DevTools), use the
+  // fast path: source is volume-mounted and only the JVM restarts on change.
+  if (await hasDevComposeOverride()) {
+    await startDockerDevModeWithDevTools(config);
+    return;
+  }
+
   console.log();
   console.log(chalk.bold.cyan("🐳 Docker Development Mode"));
   console.log(chalk.dim("Watching for changes, rebuilding in Docker..."));
@@ -363,13 +400,84 @@ async function rebuild(projectType: string, config: ProjectConfig): Promise<void
   }
 }
 
+async function startGradleDevTools(config: ProjectConfig): Promise<void> {
+  console.log();
+  console.log(chalk.bold.cyan("Spring Boot DevTools (local)"));
+  console.log(chalk.dim("Incremental compiler (classes -t) + bootRun in parallel"));
+  console.log(chalk.dim("DevTools restarts the JVM in ~2-3 s when you save a .kt file"));
+  console.log();
+
+  await ensureInfraRunning(false);
+
+  const env = {
+    ...process.env,
+    KAFKA_BOOTSTRAP_SERVERS: "localhost:9092",
+    DATABASE_URL: `postgresql://${config.name.replace(/-/g, "_")}:localdev@localhost:5432/${config.name.replace(/-/g, "_")}`,
+    REDIS_URL: "redis://localhost:6379",
+    SPRING_DEVTOOLS_RESTART_ENABLED: "true",
+  };
+
+  console.log(chalk.dim("Starting ./gradlew classes -t ..."));
+  const compiler = execa("./gradlew", ["classes", "-t", "--no-daemon", "-q"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env,
+    reject: false,
+  });
+  // Surface compiler output so errors are visible
+  compiler.stdout?.on("data", (d: Buffer) => {
+    const line = d.toString().trim();
+    if (line) console.log(chalk.dim(`[compiler] ${line}`));
+  });
+  compiler.stderr?.on("data", (d: Buffer) => {
+    const line = d.toString().trim();
+    if (line) console.log(chalk.yellow(`[compiler] ${line}`));
+  });
+
+  // Give the compiler a moment to run its first pass before bootRun starts
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  console.log(chalk.dim("Starting ./gradlew bootRun ..."));
+  const app = execa("./gradlew", ["bootRun", "--no-daemon"], {
+    stdio: "inherit",
+    env,
+    reject: false,
+  });
+  state.appProcess = app;
+
+  console.log();
+  console.log(chalk.green("Dev server running"));
+  console.log(chalk.dim("  Application: "), chalk.cyan("http://localhost:8080"));
+  console.log(chalk.dim("  Press Ctrl+C to stop"));
+  console.log();
+
+  const shutdown = async () => {
+    console.log(chalk.yellow("\nShutting down..."));
+    compiler.kill("SIGTERM");
+    app.kill("SIGTERM");
+    state.appProcess = null;
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  await app;
+}
+
 async function startLocalDevMode(config: ProjectConfig): Promise<void> {
+  const projectType = await detectProjectType();
+
+  // For Gradle (Spring Boot) use DevTools instead of the stop/build/restart cycle
+  if (projectType === "gradle-kotlin" || projectType === "gradle") {
+    await startGradleDevTools(config);
+    return;
+  }
+
   console.log();
   console.log(chalk.bold.cyan("🔥 Local Development Mode"));
   console.log(chalk.dim("Watching for changes..."));
   console.log();
 
-  const projectType = await detectProjectType();
   console.log(chalk.dim(`Detected project type: ${projectType}`));
 
   if (projectType === "unknown") {
@@ -408,10 +516,7 @@ async function startLocalDevMode(config: ProjectConfig): Promise<void> {
   const handleChange = (filePath: string) => {
     console.log(chalk.yellow(`\n📝 Changed: ${path.relative(process.cwd(), filePath)}`));
 
-    // Debounce rapid changes
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
+    if (debounceTimer) clearTimeout(debounceTimer);
 
     debounceTimer = setTimeout(() => {
       rebuild(projectType, config);
@@ -422,7 +527,6 @@ async function startLocalDevMode(config: ProjectConfig): Promise<void> {
   watcher.on("add", handleChange);
   watcher.on("unlink", handleChange);
 
-  // Handle shutdown
   const shutdown = async () => {
     console.log(chalk.yellow("\n\nShutting down..."));
     await watcher.close();
