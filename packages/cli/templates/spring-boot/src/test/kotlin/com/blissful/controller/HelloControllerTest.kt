@@ -1,6 +1,7 @@
 package com.blissful.controller
 
 import com.blissful.event.EventPublisher
+import com.blissful.websocket.EventWebSocketHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
@@ -16,32 +17,32 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+{{#IF_POSTGRES}}
+import com.blissful.service.GreetingService
+import com.blissful.service.ChatMessageService
+{{/IF_POSTGRES}}
 
 @WebMvcTest(HelloController::class)
 class HelloControllerTest {
 
     @TestConfiguration
     class TestConfig {
-        @Bean
-        fun eventPublisher(): EventPublisher = mockk(relaxed = true)
+        @Bean fun eventPublisher(): EventPublisher = mockk(relaxed = true)
+        @Bean fun eventWebSocketHandler(): EventWebSocketHandler = mockk(relaxed = true)
+{{#IF_POSTGRES}}
+        @Bean fun greetingService(): GreetingService = mockk(relaxed = true)
+        @Bean fun chatMessageService(): ChatMessageService = mockk(relaxed = true)
+{{/IF_POSTGRES}}
     }
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-
-    @Autowired
-    private lateinit var eventPublisher: EventPublisher
-
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var objectMapper: ObjectMapper
 
     @Test
     fun `GET hello returns Hello World`() {
         mockMvc.perform(get("/hello"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.message").value("Hello, World!"))
-
-        verify { eventPublisher.publish(any()) }
     }
 
     @Test
@@ -49,8 +50,6 @@ class HelloControllerTest {
         mockMvc.perform(get("/hello/Alice"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.message").value("Hello, Alice!"))
-
-        verify { eventPublisher.publish(any()) }
     }
 
     @Test

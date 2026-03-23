@@ -755,14 +755,16 @@ docker-compose.override.yaml
 
     // Step 3: Build dashboard image and start containers
     await ensureDashboardImage();
-    const startSpinner = ora("Building and starting containers...").start();
+    console.log(chalk.dim("Building and starting containers (streaming output)..."));
+    console.log();
 
     try {
       await execa("docker", ["compose", "up", "-d", "--build"], {
         cwd: projectDir,
-        stdio: "pipe",
+        stdio: "inherit",
       });
-      startSpinner.succeed("Containers started");
+      console.log();
+      console.log(chalk.green("✔ Containers started"));
 
       // Register project with Jenkins (best-effort, non-fatal)
       try {
@@ -771,8 +773,8 @@ docker-compose.override.yaml
         console.log(chalk.dim("  (Jenkins registration skipped — run `blissful-infra jenkins add-project " + name + "` manually if needed)"));
       }
     } catch (error) {
-      startSpinner.fail("Failed to start containers");
       const execError = toExecError(error);
+      // stderr is a fallback; with stdio:inherit the output already streamed above
       if (execError.stderr) {
         console.error(chalk.red(execError.stderr));
       }

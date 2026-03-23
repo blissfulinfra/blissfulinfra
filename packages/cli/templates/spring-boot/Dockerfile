@@ -1,6 +1,6 @@
 # Build stage
 # Use JDK 21 as you requested
-FROM gradle:8.5-jdk21 AS build
+FROM gradle:8.13-jdk21 AS build
 WORKDIR /app
 
 # 1. Copy the wrapper files first
