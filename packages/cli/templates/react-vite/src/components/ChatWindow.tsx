@@ -41,11 +41,6 @@ function formatTime(ts: number) {
 
 const COOKIE_NAME = 'chat_name'
 
-function getChatNameCookie(): string | null {
-  const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(`${COOKIE_NAME}=`))
-  return match ? decodeURIComponent(match.split('=')[1]) : null
-}
-
 function setChatNameCookie(name: string) {
   const maxAge = 60 * 60 * 24 * 365 // 1 year
   document.cookie = `${COOKIE_NAME}=${encodeURIComponent(name)};max-age=${maxAge};path=/;SameSite=Lax`

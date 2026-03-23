@@ -50,7 +50,7 @@ class EventWebSocketHandler(
     private val objectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
-        val cookieName = session.handshakeHeaders["Cookie"]
+        val cookieName = session.handshakeHeaders.getFirst("Cookie")
             ?.split(";")
             ?.map { it.trim() }
             ?.firstOrNull { it.startsWith("chat_name=") }

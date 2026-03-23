@@ -34,6 +34,9 @@ export async function copyTemplate(
   await copyDir(templateDir, destDir, variables);
 }
 
+// Directories that should never be copied out of a template
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "target", ".gradle"]);
+
 async function copyDir(
   srcDir: string,
   destDir: string,
@@ -44,6 +47,8 @@ async function copyDir(
   const entries = await fs.readdir(srcDir, { withFileTypes: true });
 
   for (const entry of entries) {
+    if (SKIP_DIRS.has(entry.name)) continue;
+
     const srcPath = path.join(srcDir, entry.name);
     const destPath = path.join(destDir, entry.name);
 
