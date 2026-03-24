@@ -1268,12 +1268,26 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
 
     try {
       if (check.url) {
-        // HTTP health check
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
+        // HTTP health check — for frontend in Docker mode, fall back to host Vite dev server
+        const urls = [check.url];
+        if (DOCKER_MODE && check.name === "frontend") {
+          urls.push("http://host.docker.internal:3000");
+        }
 
-        const response = await fetch(check.url, { signal: controller.signal });
-        clearTimeout(timeout);
+        let response: Response | null = null;
+        let lastError: Error | null = null;
+        for (const url of urls) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+            response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (response.ok) { details = url.includes("host.docker.internal") ? "Vite dev server" : undefined; break; }
+          } catch (e) {
+            lastError = e instanceof Error ? e : new Error(String(e));
+          }
+        }
+        if (!response) throw lastError ?? new Error("Connection failed");
 
         responseTimeMs = Date.now() - startTime;
 
@@ -1331,8 +1345,30 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
       }
     } catch (error) {
       responseTimeMs = Date.now() - startTime;
-      status = "unhealthy";
-      details = error instanceof Error ? error.message : "Connection failed";
+      // For the frontend, fall back to host.docker.internal (Vite dev server)
+      if (check.name === "frontend" && DOCKER_MODE) {
+        try {
+          const fallbackUrl = "http://host.docker.internal:3000";
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2000);
+          const fallback = await fetch(fallbackUrl, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (fallback.ok) {
+            status = "healthy";
+            responseTimeMs = Date.now() - startTime;
+            details = "Vite dev server (local)";
+          } else {
+            status = "unhealthy";
+            details = `HTTP ${fallback.status}`;
+          }
+        } catch {
+          status = "unhealthy";
+          details = error instanceof Error ? error.message : "Connection failed";
+        }
+      } else {
+        status = "unhealthy";
+        details = error instanceof Error ? error.message : "Connection failed";
+      }
     }
 
     services.push({

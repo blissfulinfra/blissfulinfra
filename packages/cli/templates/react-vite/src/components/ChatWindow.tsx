@@ -73,7 +73,7 @@ export function ChatWindow() {
   const [input, setInput] = useState('')
   const [onlineCount, setOnlineCount] = useState(0)
   const liveIdsRef = useRef<Set<string>>(new Set())
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   // Load persisted history from Postgres on mount
   const { data: history } = useQuery({
@@ -160,7 +160,9 @@ export function ChatWindow() {
   })
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
   }, [chatMessages])
 
   const sendChat = () => {
@@ -217,7 +219,7 @@ export function ChatWindow() {
       </div>
 
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
         {chatMessages.length === 0 && (
           <p className="text-center text-xs text-muted-foreground pt-8">
             No messages yet. Say hello!
@@ -259,7 +261,6 @@ export function ChatWindow() {
             </div>
           )
         })}
-        <div ref={bottomRef} />
       </div>
 
       {/* Input bar */}

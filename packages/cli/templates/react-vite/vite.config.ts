@@ -20,6 +20,12 @@ export default defineConfig({
       '/ws': {
         target: 'ws://localhost:8080',
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err: NodeJS.ErrnoException) => {
+            if (err.code === 'EPIPE' || err.code === 'ECONNRESET') return
+            console.error('ws proxy error', err)
+          })
+        },
       },
     },
   },

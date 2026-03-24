@@ -15,6 +15,5 @@ done
 echo "Stopping Jenkins..."
 docker rm -f blissful-jenkins blissful-registry 2>/dev/null || true
 
-npm --prefix packages/cli run build
-npm --prefix packages/dashboard run build
+npm run build
 docker build --no-cache -f Dockerfile.dashboard -t blissful-infra-dashboard:latest .

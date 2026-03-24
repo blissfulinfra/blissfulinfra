@@ -617,11 +617,51 @@ async function startTemplateDev(projectName: string): Promise<void> {
   }
 
   console.log();
-  console.log(chalk.dim("Vite HMR handles frontend changes automatically."));
-  console.log(chalk.dim("For backend: run `./gradlew classes -t` in another terminal to auto-compile."));
-  console.log();
 
   const watchPaths = watchEntries.map(e => e.srcDir);
+
+  // Stop the Docker frontend container so we can take port 3000 with Vite
+  const frontendContainer = `${projectName}-frontend`;
+  try {
+    await execa("docker", ["stop", frontendContainer], { stdio: "pipe" });
+    console.log(chalk.dim(`Stopped Docker container ${frontendContainer} — Vite will take port 3000`));
+  } catch {
+    // container not running, that's fine
+  }
+
+  // Repoint nginx → Vite dev server on the host
+  const nginxConf = path.join(projectDir, "nginx.conf");
+  try {
+    const existing = await fs.readFile(nginxConf, "utf-8");
+    const patched = existing.replace(
+      /proxy_pass\s+http:\/\/frontend:[^;]+;/,
+      "proxy_pass http://host.docker.internal:3000;"
+    );
+    await fs.writeFile(nginxConf, patched);
+    const nginxContainer = `${projectName}-nginx`;
+    await execa("docker", ["exec", nginxContainer, "nginx", "-s", "reload"], { stdio: "pipe" });
+    console.log(chalk.dim("Nginx reloaded — routing frontend traffic to Vite dev server"));
+  } catch {
+    // nginx not running or no conf, skip
+  }
+
+  // Start Vite dev server in the scaffolded frontend directory
+  const frontendDir = path.join(projectDir, "frontend");
+  let viteProc: ReturnType<typeof execa> | null = null;
+  try {
+    await fs.access(path.join(frontendDir, "package.json"));
+    const spinner = ora("Installing frontend dependencies…").start();
+    await execa("npm", ["install"], { cwd: frontendDir, stdio: "pipe" });
+    spinner.succeed("Frontend dependencies installed");
+    console.log(chalk.dim(`Starting Vite dev server in ${projectName}/frontend …`));
+    viteProc = execa("npm", ["run", "dev"], { cwd: frontendDir, stdio: "inherit" });
+    viteProc.catch(() => {}); // errors surface via stdio
+  } catch {
+    console.log(chalk.dim("No frontend/package.json found — skipping Vite"));
+  }
+
+  console.log(chalk.dim("For backend: run `./gradlew classes -t` in another terminal to auto-compile."));
+  console.log();
 
   const watcher = watch(watchPaths, {
     persistent: true,
@@ -661,6 +701,16 @@ async function startTemplateDev(projectName: string): Promise<void> {
 
   process.on("SIGINT", async () => {
     await watcher.close();
+    viteProc?.kill();
+    // Restore nginx.conf to point back at the Docker frontend container
+    try {
+      const conf = await fs.readFile(nginxConf, "utf-8");
+      const restored = conf.replace(
+        /proxy_pass\s+http:\/\/host\.docker\.internal:[^;]+;/,
+        "proxy_pass http://frontend:80;"
+      );
+      await fs.writeFile(nginxConf, restored);
+    } catch { /* best-effort */ }
     process.exit(0);
   });
 }
