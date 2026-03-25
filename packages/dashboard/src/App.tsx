@@ -1553,28 +1553,73 @@ function App() {
                   </div>
                 </div>
 
-                {/* Services */}
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {selectedProject.services.map((service) => (
-                    <div
-                      key={service.name}
-                      className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-sm"
-                    >
-                      <span className={`w-2 h-2 rounded-full ${statusDot(service.status)}`} />
-                      <span>{service.name}</span>
-                      {service.port && (
-                        <a
-                          href={`http://localhost:${service.port}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-400 hover:underline"
+                {/* Service Health */}
+                {currentHealth.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {currentHealth.map((service) => {
+                      const svcMeta = selectedProject.services.find(s => s.name === service.name)
+                      return (
+                        <div
+                          key={service.name}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border ${
+                            service.status === 'healthy'
+                              ? 'border-green-500/50 bg-green-500/10'
+                              : service.status === 'unhealthy'
+                              ? 'border-red-500/50 bg-red-500/10'
+                              : 'border-gray-600 bg-gray-700/50'
+                          }`}
                         >
-                          :{service.port}
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                          {service.status === 'healthy' ? (
+                            <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                          ) : service.status === 'unhealthy' ? (
+                            <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                          ) : (
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          )}
+                          <span className="capitalize">{service.name}</span>
+                          {svcMeta?.port && (
+                            <a
+                              href={`http://localhost:${svcMeta.port}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:underline"
+                            >
+                              :{svcMeta.port}
+                            </a>
+                          )}
+                          {service.status === 'unhealthy' && service.details && (
+                            <span className="text-red-300 text-xs ml-1">{service.details}</span>
+                          )}
+                          {service.status === 'healthy' && service.responseTimeMs !== undefined && (
+                            <span className="text-gray-500 text-xs">{service.responseTimeMs}ms</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {selectedProject.services.map((service) => (
+                      <div
+                        key={service.name}
+                        className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-sm"
+                      >
+                        <span className={`w-2 h-2 rounded-full ${statusDot(service.status)}`} />
+                        <span>{service.name}</span>
+                        {service.port && (
+                          <a
+                            href={`http://localhost:${service.port}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400 hover:underline"
+                          >
+                            :{service.port}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Tabs */}
@@ -1966,51 +2011,6 @@ function App() {
                                   </div>
                                   <div className="text-sm text-gray-300 mt-1">
                                     {alert.metric}: {alert.value.toFixed(2)} (threshold: {alert.threshold})
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Service Health Status */}
-                        {currentHealth.length > 0 && (
-                          <div className="bg-gray-800 rounded-lg p-4">
-                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                              <Activity className="w-5 h-5 text-green-400" />
-                              Service Health
-                            </h3>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                              {currentHealth.map((service) => (
-                                <div
-                                  key={service.name}
-                                  className={`p-3 rounded-lg border-2 ${
-                                    service.status === 'healthy'
-                                      ? 'border-green-500 bg-green-500/10'
-                                      : service.status === 'unhealthy'
-                                      ? 'border-red-500 bg-red-500/10'
-                                      : 'border-gray-600 bg-gray-700/50'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 mb-2">
-                                    {service.status === 'healthy' ? (
-                                      <CheckCircle className="w-4 h-4 text-green-400" />
-                                    ) : service.status === 'unhealthy' ? (
-                                      <XCircle className="w-4 h-4 text-red-400" />
-                                    ) : (
-                                      <HelpCircle className="w-4 h-4 text-gray-400" />
-                                    )}
-                                    <span className="font-medium text-sm capitalize">{service.name}</span>
-                                  </div>
-                                  <div className="text-xs text-gray-400 space-y-1">
-                                    {service.responseTimeMs !== undefined && (
-                                      <div>Response: {service.responseTimeMs}ms</div>
-                                    )}
-                                    {service.details && (
-                                      <div className="truncate" title={service.details}>
-                                        {service.details}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                               ))}

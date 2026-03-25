@@ -1,0 +1,70 @@
+---
+title: Blissful Infra
+description: Full-stack infrastructure orchestration for modern development teams
+template: splash
+hero:
+  tagline: Full-stack infrastructure orchestration for modern development teams
+  title: Enterprise infrastructure on your laptop
+  image:
+    file: ../../../public/favicon.svg
+  actions:
+    - text: Get Started
+      link: /getting-started
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/cavanpage/blissful-infra
+      icon: external
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+One command creates and runs a full-stack app with CI/CD, observability, and an AI agent. No cloud required.
+
+```bash
+npm install -g @blissful-infra/cli
+blissful-infra start my-app
+```
+
+Your app is running at `http://localhost:3000` in under a minute — backend, frontend, databases, message bus, tracing, metrics, CI/CD, and a local web dashboard all wired together and managed as a unit.
+
+## Features
+
+<CardGrid stagger>
+  <Card title="Infrastructure Orchestration" icon="setting">
+    One command scaffolds and boots a complete Docker Compose stack: Spring Boot API, React frontend, Kafka, Postgres, Redis, Jaeger tracing, Prometheus, Grafana, Loki, and nginx — all wired together automatically.
+  </Card>
+  <Card title="Full-Stack Templates" icon="document">
+    Choose from battle-tested templates for your backend (Spring Boot, FastAPI, Express, Go Chi) and frontend (React+Vite, Next.js). Templates use variable substitution so generated code is project-specific from the start.
+  </Card>
+  <Card title="AI-Powered Development" icon="star">
+    A built-in AI debugging agent connects to your running stack via MCP. Ask Claude to diagnose errors, check service health, read logs, trigger builds, and deploy — without leaving your chat window.
+  </Card>
+  <Card title="Developer Dashboard" icon="laptop">
+    A local web UI gives you real-time log streaming, CPU/memory/latency metrics, Jenkins pipeline status, environment management, and AI chat in one place at `http://localhost:3002`.
+  </Card>
+</CardGrid>
+
+## What gets created
+
+Running `blissful-infra start my-app` scaffolds a complete project directory and boots all services:
+
+| Service     | URL                        | Purpose                              |
+|-------------|----------------------------|--------------------------------------|
+| Frontend    | http://localhost:3000      | React + Vite app served via nginx    |
+| Backend API | http://localhost:8080      | Spring Boot REST + WebSocket API     |
+| Dashboard   | http://localhost:3002      | blissful-infra management UI         |
+| Grafana     | http://localhost:3001      | Pre-provisioned metrics dashboards   |
+| Prometheus  | http://localhost:9090      | Metrics scraping from `/actuator`    |
+| Jaeger      | http://localhost:16686     | Distributed trace viewer             |
+| Jenkins     | http://localhost:8081      | CI/CD pipelines (admin/admin)        |
+| Kafka       | localhost:9092             | Event streaming message bus          |
+| Postgres    | localhost:5432             | Primary relational database          |
+| Redis       | localhost:6379             | Cache layer (with postgres-redis)    |
+| Loki        | localhost:3100             | Structured log aggregation           |
+| Registry    | localhost:5050             | Local Docker image registry          |
+
+## No cloud required
+
+blissful-infra runs entirely on your laptop. Docker Desktop is the only external dependency. There are no cloud accounts to configure, no Kubernetes clusters to provision, and no YAML to hand-write. Everything that would normally require a DevOps team is handled for you.

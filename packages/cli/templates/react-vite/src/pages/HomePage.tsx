@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChatWindow } from '@/components/ChatWindow'
 import { LiveFeed } from '@/components/LiveFeed'
-import { MessageHistoryFeed } from '@/components/MessageHistoryFeed'
 
 interface HealthResponse {
   status: string
@@ -53,9 +52,6 @@ export default function HomePage() {
         <LiveFeed />
       </div>
 
-      {/* Persisted chat history loaded from Postgres */}
-      <MessageHistoryFeed />
-      
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <Card.Header>

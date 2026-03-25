@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, KeyboardEvent } from 'react'
+import { useEffect, useState, KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { cn } from '@/lib/utils'
@@ -73,7 +73,6 @@ export function ChatWindow() {
   const [input, setInput] = useState('')
   const [onlineCount, setOnlineCount] = useState(0)
   const liveIdsRef = useRef<Set<string>>(new Set())
-  const bottomRef = useRef<HTMLDivElement>(null)
 
   // Load persisted history from Postgres on mount
   const { data: history } = useQuery({
@@ -159,9 +158,6 @@ export function ChatWindow() {
     },
   })
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
 
   const sendChat = () => {
     const text = input.trim()
@@ -217,7 +213,7 @@ export function ChatWindow() {
       </div>
 
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
         {chatMessages.length === 0 && (
           <p className="text-center text-xs text-muted-foreground pt-8">
             No messages yet. Say hello!
@@ -259,7 +255,6 @@ export function ChatWindow() {
             </div>
           )
         })}
-        <div ref={bottomRef} />
       </div>
 
       {/* Input bar */}
