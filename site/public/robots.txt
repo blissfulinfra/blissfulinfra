@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://blissful-infra.com/sitemap-index.xml
