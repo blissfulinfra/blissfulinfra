@@ -18,7 +18,7 @@ jobs:
 
       - name: Build
         working-directory: site
-        run: npm install && npm run build
+        run: npm ci && npm run build
 
       - name: Deploy to Cloudflare Pages
         working-directory: site
