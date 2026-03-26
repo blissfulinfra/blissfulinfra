@@ -6,9 +6,9 @@ export default defineConfig({
     starlight({
       title: 'Blissful Infra',
       description: 'Full-stack infrastructure orchestration for modern development teams',
-      social: {
-        github: 'https://github.com/cavanpage/blissful-infra',
-      },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/cavanpage/blissful-infra' },
+      ],
       customCss: ['./src/styles/custom.css'],
       sidebar: [
         { label: 'Getting Started', link: '/getting-started' },
