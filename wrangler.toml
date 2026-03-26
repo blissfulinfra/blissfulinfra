@@ -1,4 +1,4 @@
-name = "blissful-infra-docs"
+name = 'blissful-infra'
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "./site/dist"
 
