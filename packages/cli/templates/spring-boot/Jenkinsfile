@@ -10,6 +10,8 @@ pipeline {
         GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
         // Enable Docker BuildKit for layer caching
         DOCKER_BUILDKIT = '1'
+        // blissful-infra dashboard API (host.docker.internal reaches the host from inside Docker)
+        BLISSFUL_API_URL = 'http://host.docker.internal:3002'
     }
 
     options {
@@ -23,8 +25,22 @@ pipeline {
         stage('Initialize') {
             steps {
                 script {
-                    // Record build start time
                     env.BUILD_START_TIME = System.currentTimeMillis().toString()
+                    // Register deployment with dashboard API
+                    def gitSha = env.GIT_COMMIT ?: 'unknown'
+                    def response = sh(
+                        script: """curl -s -X POST ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/deployments \
+                            -H 'Content-Type: application/json' \
+                            -d '{"gitSha":"${gitSha}","status":"running"}' || echo '{}'""",
+                        returnStdout: true
+                    ).trim()
+                    try {
+                        def json = readJSON text: response
+                        env.DEPLOYMENT_ID = json.id ?: ''
+                    } catch (Exception e) {
+                        echo "Could not register deployment: ${e.message}"
+                        env.DEPLOYMENT_ID = ''
+                    }
                 }
             }
         }
@@ -114,6 +130,31 @@ pipeline {
                 script {
                     sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
                     sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                not { changeRequest() }
+            }
+            steps {
+                script {
+                    echo "Restarting ${PROJECT_NAME} containers with new image..."
+                    sh """curl -s -X POST ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/up \
+                        -H 'Content-Type: application/json' || true"""
+                    // Wait for backend to become healthy
+                    sh """
+                        for i in \$(seq 1 24); do
+                            STATUS=\$(curl -s -o /dev/null -w '%{http_code}' http://host.docker.internal:8080/actuator/health || echo '000')
+                            if [ "\$STATUS" = "200" ]; then
+                                echo "Backend healthy after \$((i * 5))s"
+                                break
+                            fi
+                            echo "Waiting for backend... (\$i/24)"
+                            sleep 5
+                        done
+                    """
                 }
             }
         }
@@ -235,12 +276,22 @@ pipeline {
         success {
             script {
                 echo "Pipeline completed successfully for ${PROJECT_NAME}"
+                if (env.DEPLOYMENT_ID) {
+                    sh """curl -s -X PATCH ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/deployments/${env.DEPLOYMENT_ID} \
+                        -H 'Content-Type: application/json' \
+                        -d '{"status":"success"}' || true"""
+                }
                 sendSlackNotification('success')
             }
         }
         failure {
             script {
                 echo "Pipeline failed for ${PROJECT_NAME}"
+                if (env.DEPLOYMENT_ID) {
+                    sh """curl -s -X PATCH ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/deployments/${env.DEPLOYMENT_ID} \
+                        -H 'Content-Type: application/json' \
+                        -d '{"status":"failed"}' || true"""
+                }
                 sendSlackNotification('failure')
             }
         }
