@@ -54,6 +54,12 @@ import {
   clearLogs,
   type LogRetentionConfig,
 } from "../utils/log-storage.js";
+import {
+  saveDeployment,
+  updateDeployment,
+  loadDeployments,
+  type DeploymentRecord,
+} from "../utils/deployment-storage.js";
 
 const SYSTEM_PROMPT = `You are a helpful infrastructure assistant for the blissful-infra project. You help developers understand their application logs, diagnose issues, and suggest improvements.
 
@@ -150,7 +156,7 @@ export function createApiServer(workingDir: string, port = 3002) {
   const server = http.createServer(async (req, res) => {
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (req.method === "OPTIONS") {
@@ -810,6 +816,98 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // GET /api/projects/:name/deployments - List deployment records
+      const deploymentsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/deployments$/);
+      if (req.method === "GET" && deploymentsMatch) {
+        const projectName = deploymentsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const limit = url.searchParams.get("limit")
+          ? parseInt(url.searchParams.get("limit")!, 10)
+          : 50;
+        const deployments = await loadDeployments(projectDir, limit);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ deployments }));
+        return;
+      }
+
+      // POST /api/projects/:name/deployments - Create deployment record
+      if (req.method === "POST" && deploymentsMatch) {
+        const projectName = deploymentsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const { gitSha, status = "running" } = JSON.parse(body || "{}");
+
+        if (!gitSha) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing gitSha" }));
+          return;
+        }
+
+        const now = Date.now();
+        const id = `deploy-${now}`;
+        const latencyBefore = await queryPrometheusP95(projectName);
+        const jaegerTraceUrl = buildJaegerTraceUrl(now - 5 * 60 * 1000, now);
+
+        const record: DeploymentRecord = {
+          id,
+          timestamp: now,
+          projectName,
+          gitSha,
+          status: status as DeploymentRecord["status"],
+          regression: false,
+          ...(latencyBefore !== null ? { latencyBefore } : {}),
+          jaegerTraceUrl,
+        };
+
+        await saveDeployment(projectDir, record);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(record));
+        return;
+      }
+
+      // PATCH /api/projects/:name/deployments/:id - Update deployment record
+      const deploymentByIdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/deployments\/([^/]+)$/);
+      if (req.method === "PATCH" && deploymentByIdMatch) {
+        const projectName = deploymentByIdMatch[1];
+        const deploymentId = deploymentByIdMatch[2];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const { status, latencyAfter } = JSON.parse(body || "{}");
+
+        // Load existing record to compute delta
+        const deployments = await loadDeployments(projectDir, 200);
+        const existing = deployments.find((d) => d.id === deploymentId);
+
+        const updates: Partial<DeploymentRecord> = {};
+        if (status !== undefined) updates.status = status;
+        if (latencyAfter !== undefined) {
+          updates.latencyAfter = latencyAfter;
+          if (existing?.latencyBefore !== undefined && existing.latencyBefore > 0) {
+            const delta = latencyAfter - existing.latencyBefore;
+            updates.latencyDelta = delta;
+            updates.regression = delta / existing.latencyBefore > 0.2;
+          } else {
+            updates.latencyDelta = undefined;
+            updates.regression = false;
+          }
+          // Build Jaeger URL for the deploy window
+          if (existing) {
+            updates.jaegerTraceUrl = buildJaegerTraceUrl(existing.timestamp, Date.now());
+          }
+        }
+
+        const found = await updateDeployment(projectDir, deploymentId, updates);
+        if (!found) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Deployment not found" }));
+          return;
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
       // Static file serving for dashboard (Docker/production mode)
       const dashboardDistDir = process.env.DASHBOARD_DIST_DIR;
       if (dashboardDistDir && !url.pathname.startsWith("/api/")) {
@@ -890,6 +988,42 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
     });
     req.on("error", reject);
   });
+}
+
+/**
+ * Query Prometheus for the P95 HTTP latency over the last 5 minutes.
+ * Returns the value in milliseconds, or null on failure.
+ */
+async function queryPrometheusP95(projectName: string): Promise<number | null> {
+  const prometheusHost = DOCKER_MODE ? "prometheus" : "localhost";
+  const prometheusUrl = `http://${prometheusHost}:9090/api/v1/query`;
+  const query = `histogram_quantile(0.95, rate(http_server_requests_seconds_bucket{job="${projectName}"}[5m]))`;
+
+  try {
+    const url = new URL(prometheusUrl);
+    url.searchParams.set("query", query);
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      data?: { result?: Array<{ value: [number, string] }> };
+    };
+    const result = data.data?.result;
+    if (!result || result.length === 0) return null;
+    const valueStr = result[0].value?.[1];
+    if (!valueStr || valueStr === "NaN") return null;
+    const seconds = parseFloat(valueStr);
+    if (isNaN(seconds)) return null;
+    return seconds * 1000; // convert to milliseconds
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a Jaeger UI URL for a given time window.
+ */
+function buildJaegerTraceUrl(startMs: number, endMs: number): string {
+  return `http://localhost:16686/search?service=backend&start=${startMs * 1000}&end=${endMs * 1000}&limit=20`;
 }
 
 async function listProjects(workingDir: string): Promise<ProjectStatus[]> {

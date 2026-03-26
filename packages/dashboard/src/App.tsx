@@ -481,7 +481,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'settings'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
     timestamps: [],
@@ -514,6 +514,9 @@ function App() {
   const [environments, setEnvironments] = useState<EnvironmentInfo[]>([])
   const [deployingEnv, setDeployingEnv] = useState<string | null>(null)
   const [rollingBackEnv, setRollingBackEnv] = useState<string | null>(null)
+
+  // Deployments state
+  const [deployments, setDeployments] = useState<any[]>([])
 
   // Settings state
   const [alertThresholds, setAlertThresholds] = useState<AlertThreshold[]>([])
@@ -1161,6 +1164,23 @@ function App() {
   }, [selectedProject?.name, activeTab])
 
   useEffect(() => {
+    if (selectedProject && activeTab === 'deployments') {
+      const fetchDeployments = async () => {
+        try {
+          const res = await fetch(`/api/projects/${selectedProject.name}/deployments`)
+          if (res.ok) {
+            const data = await res.json()
+            setDeployments(data.deployments || [])
+          }
+        } catch (e) {
+          console.error('Failed to fetch deployments:', e)
+        }
+      }
+      fetchDeployments()
+    }
+  }, [selectedProject?.name, activeTab])
+
+  useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
@@ -1694,6 +1714,17 @@ function App() {
                 >
                   <Server className="w-4 h-4" />
                   Environments
+                </button>
+                <button
+                  onClick={() => setActiveTab('deployments')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'deployments'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <ArrowUpCircle className="w-4 h-4" />
+                  Deployments
                 </button>
                 <button
                   onClick={() => setActiveTab('settings')}
@@ -2331,6 +2362,72 @@ function App() {
                         <Server className="w-12 h-12 mx-auto mb-3 opacity-50" />
                         <p>No environments found</p>
                       </div>
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'deployments' ? (
+                <div className="flex-1 overflow-auto p-6 space-y-4">
+                  {deployments.length === 0 ? (
+                    <div className="flex items-center justify-center min-h-[200px] text-gray-500 text-sm">
+                      No deployments recorded yet
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {deployments.map((d: any) => {
+                        const shortSha = d.gitSha ? d.gitSha.slice(0, 7) : 'unknown'
+                        const statusColor =
+                          d.status === 'success' ? 'bg-green-900 text-green-300' :
+                          d.status === 'failed' ? 'bg-red-900 text-red-300' :
+                          'bg-blue-900 text-blue-300'
+                        const hasDelta = d.latencyDelta !== undefined && d.latencyDelta !== null
+                        const deltaColor = d.regression
+                          ? 'bg-red-900 text-red-300'
+                          : hasDelta && d.latencyDelta < 0
+                            ? 'bg-green-900 text-green-300'
+                            : 'bg-gray-700 text-gray-400'
+                        return (
+                          <div
+                            key={d.id}
+                            className="bg-gray-800 rounded-lg border border-gray-700 p-4 space-y-2"
+                          >
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="font-mono text-sm text-blue-400">{shortSha}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusColor}`}>
+                                {d.status}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-auto">
+                                {new Date(d.timestamp).toLocaleString()}
+                              </span>
+                            </div>
+                            {hasDelta && (
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-2 py-0.5 rounded font-medium ${deltaColor}`}>
+                                  {d.latencyDelta > 0 ? '+' : ''}{d.latencyDelta.toFixed(1)}ms latency delta
+                                  {d.regression ? ' ⚠ regression' : ''}
+                                </span>
+                                {d.latencyBefore !== undefined && (
+                                  <span className="text-xs text-gray-500">
+                                    P95 before: {d.latencyBefore.toFixed(1)}ms → after: {d.latencyAfter?.toFixed(1)}ms
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {d.regression && d.jaegerTraceUrl && (
+                              <div>
+                                <a
+                                  href={d.jaegerTraceUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors w-fit"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  View Traces
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
