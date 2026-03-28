@@ -40,6 +40,10 @@ dependencies {
 {{#IF_REDIS}}
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 {{/IF_REDIS}}
+{{#IF_KEYCLOAK}}
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+{{/IF_KEYCLOAK}}
 
     // Kotlin
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")

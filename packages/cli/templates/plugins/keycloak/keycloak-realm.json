@@ -1,0 +1,121 @@
+{
+  "realm": "{{PROJECT_NAME}}",
+  "enabled": true,
+  "displayName": "{{PROJECT_NAME}}",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "clients": [
+    {
+      "clientId": "api",
+      "name": "Backend API",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "api-client-secret",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {}
+    },
+    {
+      "clientId": "frontend",
+      "name": "Frontend App",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": true,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:8080"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full access — manage users, settings, all resources"
+      },
+      {
+        "name": "editor",
+        "description": "Read and write access to content resources"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only access"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@example.com",
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"]
+    },
+    {
+      "username": "bob",
+      "email": "bob@example.com",
+      "firstName": "Bob",
+      "lastName": "Editor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["editor"]
+    },
+    {
+      "username": "charlie",
+      "email": "charlie@example.com",
+      "firstName": "Charlie",
+      "lastName": "Viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["viewer"]
+    }
+  ]
+}

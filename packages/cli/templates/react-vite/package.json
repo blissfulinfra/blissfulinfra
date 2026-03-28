@@ -16,7 +16,8 @@
     "@tanstack/react-query": "^5.62.8",
     "zustand": "^5.0.2",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0"{{#IF_KEYCLOAK}},
+    "keycloak-js": "^24.0.0"{{/IF_KEYCLOAK}}
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
