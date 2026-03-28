@@ -69,14 +69,43 @@ blissful-infra runs entirely on your laptop. Docker Desktop is the only external
 
 Spin up a project, experiment with the architecture, blow it away, and start fresh. The entire stack is isolated, reproducible, and disposable on demand. Everything that would normally require a DevOps team — service discovery, observability wiring, CI/CD pipelines, database migrations — is handled for you, and it all runs offline.
 
-## Coming soon: Deploy to the cloud
+## Pricing
 
-Cloud deployment is in active development. The goal is simple: the same app you prototype locally ships to real infrastructure with one command — no Terraform, no DevOps team required.
+| | Local | Hosted | Team |
+|---|---|---|---|
+| **Price** | Free* | $5/month | Contact us |
+| **Full local sandbox** | ✅ | ✅ | ✅ |
+| **Live subdomain** (`yourapp.blissful-infra.com`) | — | ✅ | ✅ |
+| **Custom domain** | — | ✅ | ✅ |
+| **Cloudflare edge deploy** | — | ✅ | ✅ |
+| **Database, cache, queue** | Local Docker | Cloudflare D1 / KV / Queues | Managed |
+| **Projects** | Unlimited local | 1 hosted | Unlimited |
 
-The rollout starts with the most accessible platforms and expands from there:
+The free tier gets you the full local sandbox. The $5 tier is for when you're ready to share your project with the world. *Subject to terms and conditions.
 
-- **Cloudflare Workers + Pages** — edge deploy with D1, KV, and Queues as the backing services *(shipping first)*
-- **Vercel** — frontend on Vercel, serverless functions, Vercel Postgres
-- **AWS** — ECS Fargate, RDS, SQS for teams that need the full cloud stack
+[View full pricing details →](/pricing)
 
-Each platform maps your local modules to its native equivalents automatically. Watch the repo or open an issue to follow along.
+## Deploy in two commands
+
+Build locally. Ship with one more command.
+
+```bash
+# Build your sandbox
+blissful-infra start my-app
+
+# When you're ready to go live
+blissful-infra deploy
+# → Live at https://my-app.blissful-infra.com
+```
+
+Your local stack maps automatically to Cloudflare's edge infrastructure — no config changes, no cloud account to set up. The same `blissful-infra.yaml` that defines your local environment defines your production one.
+
+| Local service | Hosted equivalent |
+|---|---|
+| React + Vite frontend | Cloudflare Pages |
+| Express / Go backend | Cloudflare Worker |
+| Postgres | Cloudflare D1 |
+| Redis | Cloudflare KV |
+| Kafka | Cloudflare Queues |
+
+Vercel and AWS deploy targets are coming. [Follow along on GitHub →](https://github.com/cavanpage/blissful-infra)

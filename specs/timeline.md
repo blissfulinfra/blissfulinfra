@@ -15,7 +15,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ✅ Complete |
 | **Phase 5.5** | Foundation | Schema contracts, modularity, docs site, testing strategy | 🔧 In Progress |
-| **Phase 6** | Cloud Deploy | Cloudflare → Vercel → AWS deploy targets | ⏳ Next |
+| **Phase 6** | Cloud Hosting | $5 hosted tier — Cloudflare deploy, billing, dashboard | ⏳ Next |
 | **Phase 6.5** | Test Coverage | Vitest suite: schemas, utils, API contract, template smoke | ⏳ Next |
 | **Phase 7** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
 
@@ -844,9 +844,42 @@ Created PR #142: fix/bounded-greeting-cache
 
 ---
 
-## Phase 6: Scale
+## Phase 6: Cloud Hosting
 
-**Goal:** Support more languages, deployment targets, and team workflows.
+**Goal:** Ship the $5 hosted tier. A developer runs `blissful-infra deploy` and their project is live at `yourproject.blissful-infra.com` in under two minutes.
+
+Full spec: [cloud-hosting.md](./cloud-hosting.md)
+
+### 6a — Foundation ⏳
+- [ ] Control plane API (Cloudflare Worker + D1 — dogfoods the product)
+- [ ] GitHub OAuth auth flow + JWT storage in `~/.blissful-infra/auth.json`
+- [ ] Polar.sh billing integration: subscribe, webhook lifecycle, subscription status check
+- [ ] `blissful-infra deploy --target cloudflare` CLI command
+- [ ] Subdomain provisioning via Cloudflare API (`*.blissful-infra.com` wildcard DNS)
+- [ ] React + Vite frontend → Cloudflare Pages deploy
+- [ ] Express backend → Cloudflare Worker deploy
+
+### 6b — Data Layer ⏳
+- [ ] Cloudflare D1 provisioning + Flyway migration auto-conversion (Postgres → SQLite dialect)
+- [ ] Cloudflare KV namespace provisioning (maps from Redis)
+- [ ] Cloudflare Queues provisioning (maps from Kafka)
+- [ ] Module mapping validated end-to-end for a full scaffolded project
+
+### 6c — Dashboard + Custom Domains ⏳
+- [ ] `/dashboard` page on blissful-infra.com — manage hosted projects, deployment history, resource usage
+- [ ] Custom domain CNAME flow (`blissful-infra deploy --domain myapp.com`)
+- [ ] Billing management via Polar.sh portal (subscription status, cancel)
+- [ ] `/pricing` page on blissful-infra.com
+- [ ] `/deploy/cloudflare` docs page
+
+### 6d — Spring Boot + Containers ⏳
+- [ ] Worker adapter for Spring Boot (lightweight JS proxy until Cloudflare Containers GA)
+- [ ] Cloudflare Containers integration when GA (full JVM support)
+
+### 6e — Additional Deploy Targets ⏳
+- [ ] `blissful-infra deploy --target vercel` (frontend on Vercel, serverless functions, Vercel Postgres)
+- [ ] `blissful-infra deploy --target aws` (ECS Fargate + RDS + SQS)
+- [ ] Unified deploy command reads `deploy.target` from `blissful-infra.yaml`
 
 ### 6.1 Additional Templates
 - [ ] FastAPI (Python)
@@ -854,13 +887,6 @@ Created PR #142: fix/bounded-greeting-cache
 - [ ] Go Chi
 - [ ] React + Vite frontend
 - [ ] Fullstack monorepo
-
-### 6.2 Cloud Deployment
-- [ ] EKS support
-- [ ] GKE support
-- [ ] AKS support
-- [ ] Cloud-specific configurations
-- [ ] Cost estimation
 
 ### 6.3 Dashboard v2
 - [ ] Pipeline visualization
