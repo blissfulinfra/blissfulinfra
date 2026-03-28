@@ -1070,8 +1070,9 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
 
   // If no services from docker, infer from config
   if (services.length === 0) {
-    const isFullstack = config.type === "fullstack";
-    const isFrontendOnly = config.type === "frontend";
+    const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
+    const isFullstack = derivedType === "fullstack";
+    const isFrontendOnly = derivedType === "frontend";
 
     if (!isFrontendOnly) {
       services.push({ name: "app", status: "stopped", port: 8080 });
@@ -1095,7 +1096,7 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
     name: config.name,
     path: projectDir,
     status: anyRunning ? "running" : "stopped",
-    type: config.type || "backend",
+    type: config.backend ?? "app",
     backend: config.backend,
     frontend: config.frontend,
     database: config.database,
@@ -1312,7 +1313,7 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
   }
 
   // Kafka health check
-  if (config?.type !== "frontend") {
+  if (!config?.frontend || config?.backend) {
     healthChecks.push({ name: "kafka", url: "", port: 9092 });
   }
 
@@ -1784,7 +1785,7 @@ async function getProjectEnvironments(
   }
 
   // Check Kubernetes environments if not local-only
-  if (config?.deployTarget !== "local-only") {
+  if ((config?.deploy?.target ?? "local-only") !== "local-only") {
     const kubeEnvs = ["staging", "production"];
 
     for (const env of kubeEnvs) {

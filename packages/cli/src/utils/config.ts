@@ -12,11 +12,7 @@ export type {
   ProjectConfig,
   PluginInstance,
   PluginConfig,
-  RegistryConfig,
-  KubernetesConfig,
-  ArgoCDConfig,
   PipelineConfig,
-  CanaryConfig,
 } from "@blissful-infra/shared";
 
 /**
@@ -94,11 +90,10 @@ function parseYaml(content: string): ProjectConfig {
 
   const raw = {
     name: config.name || "unnamed",
-    type: config.type || "backend",
     backend: config.backend,
     frontend: config.frontend,
     database: config.database || "none",
-    deployTarget: config.deploy_target || "local-only",
+    deploy: config.deploy_target ? { target: config.deploy_target } : undefined,
     monitoring: (config.monitoring === "default" ? "default" : "prometheus") as "default" | "prometheus",
     plugins: config.plugins ? parsePluginSpecs(config.plugins.split(",").map(p => p.trim()).filter(Boolean)) : undefined,
     pluginConfigs: parsePluginConfigs(content),

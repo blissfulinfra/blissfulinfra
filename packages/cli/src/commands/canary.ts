@@ -14,7 +14,7 @@ import {
 } from "../utils/rollouts.js";
 
 function getNamespace(config: ProjectConfig | null): string {
-  return config?.kubernetes?.namespace || config?.name || "default";
+  return config?.name || "default";
 }
 
 function getProjectName(config: ProjectConfig | null, projectDir: string): string {

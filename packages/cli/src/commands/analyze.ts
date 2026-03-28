@@ -99,7 +99,7 @@ function formatAnalysisResult(result: AnalysisResult): void {
 async function runAnalysis(projectDir: string, options: AnalyzeOptions): Promise<void> {
   const config = await loadConfig(projectDir);
   const projectName = config?.name || path.basename(projectDir);
-  const namespace = config?.kubernetes?.namespace || projectName;
+  const namespace = projectName;
 
   // Initialize knowledge base if needed
   await initializeKnowledgeBase(projectDir);

@@ -117,7 +117,8 @@ async function runLocalPipeline(
   opts: PipelineOptions
 ): Promise<void> {
   const projectType = await detectProjectType(projectDir);
-  const backendDir = config.type === "fullstack" ? path.join(projectDir, "backend") : projectDir;
+  const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
+  const backendDir = derivedType === "fullstack" ? path.join(projectDir, "backend") : projectDir;
   const registryUrl = "localhost:5050";
   const imageTag = `${registryUrl}/${config.name}:local`;
 

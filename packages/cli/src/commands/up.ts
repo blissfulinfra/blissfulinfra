@@ -75,8 +75,9 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
     console.log();
     console.log(chalk.green("Services running:"));
 
-    const isFrontendOnly = config.type === "frontend";
-    const isFullstack = config.type === "fullstack";
+    const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
+    const isFrontendOnly = derivedType === "frontend";
+    const isFullstack = derivedType === "fullstack";
 
     // Show expected services based on config
     if (isFrontendOnly) {
@@ -142,8 +143,9 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
 
 async function generateDockerCompose(config: ProjectConfig, projectDir: string): Promise<void> {
   const services: Record<string, unknown> = {};
-  const isFrontendOnly = config.type === "frontend";
-  const isFullstack = config.type === "fullstack";
+  const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
+  const isFrontendOnly = derivedType === "frontend";
+  const isFullstack = derivedType === "fullstack";
 
   // Kafka service (KRaft mode - no Zookeeper) - skip for frontend-only
   if (!isFrontendOnly) {

@@ -218,7 +218,7 @@ export async function deployAction(
   }
 
   // Check deploy target
-  if (config.deployTarget === "local-only") {
+  if ((config.deploy?.target ?? "local-only") === "local-only") {
     console.error(chalk.red("Deploy requires kubernetes or cloud target."));
     console.error(chalk.dim("Update deploy_target in blissful-infra.yaml to 'kubernetes' or 'cloud'"));
     process.exit(1);

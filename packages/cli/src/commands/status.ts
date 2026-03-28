@@ -260,7 +260,7 @@ export async function statusAction(name?: string): Promise<void> {
   }
 
   // Get cluster status if not local-only
-  if (config.deployTarget !== "local-only") {
+  if ((config.deploy?.target ?? "local-only") !== "local-only") {
     const hasArgoCD = await checkArgoCDAvailable();
     const hasKubectl = await checkKubectlAvailable();
 
@@ -286,7 +286,7 @@ export async function statusAction(name?: string): Promise<void> {
     console.log(chalk.dim("Start local environment:"));
     console.log(chalk.cyan("  blissful-infra up"));
     console.log();
-    if (config.deployTarget !== "local-only") {
+    if ((config.deploy?.target ?? "local-only") !== "local-only") {
       console.log(chalk.dim("Deploy to staging:"));
       console.log(chalk.cyan("  blissful-infra deploy --env staging"));
     }

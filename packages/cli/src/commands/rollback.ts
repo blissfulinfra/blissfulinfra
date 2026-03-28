@@ -239,7 +239,7 @@ export async function rollbackAction(
   }
 
   // Check deploy target
-  if (config.deployTarget === "local-only") {
+  if ((config.deploy?.target ?? "local-only") === "local-only") {
     console.error(chalk.red("Rollback requires kubernetes or cloud target."));
     process.exit(1);
   }

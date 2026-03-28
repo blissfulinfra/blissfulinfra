@@ -1,20 +1,66 @@
 import { z } from "zod";
 
-export const RegistryConfigSchema = z.object({
-  type: z.enum(["local", "ecr", "gcr", "acr"]),
-  url: z.string(),
+// ---------------------------------------------------------------------------
+// Deploy targets
+// ---------------------------------------------------------------------------
+
+export const DeployTargetSchema = z.enum([
+  "local-only",
+  "cloudflare",
+  "vercel",
+  "aws",
+]);
+
+// Per-platform adapter config — only the relevant block is required for the
+// chosen deploy target.
+
+export const CloudflareDeployConfigSchema = z.object({
+  accountId: z.string().optional(),
+  workerName: z.string().optional(),
+  pagesProject: z.string().optional(),
+});
+
+export const VercelDeployConfigSchema = z.object({
+  orgId: z.string().optional(),
+  projectId: z.string().optional(),
+});
+
+export const AwsDeployConfigSchema = z.object({
   region: z.string().optional(),
+  cluster: z.string().optional(),
+  registry: z.object({
+    type: z.enum(["ecr", "gcr", "acr", "local"]),
+    url: z.string(),
+  }).optional(),
 });
 
-export const KubernetesConfigSchema = z.object({
-  context: z.string().optional(),
-  namespace: z.string().optional(),
+export const DeployConfigSchema = z.object({
+  target: DeployTargetSchema.default("local-only"),
+  cloudflare: CloudflareDeployConfigSchema.optional(),
+  vercel: VercelDeployConfigSchema.optional(),
+  aws: AwsDeployConfigSchema.optional(),
 });
 
-export const ArgoCDConfigSchema = z.object({
-  server: z.string().optional(),
-  project: z.string().optional(),
+// ---------------------------------------------------------------------------
+// Modules — named capabilities with local Docker implementations.
+// Each module type maps to a platform-native equivalent at deploy time.
+//
+//   database  → Postgres container | CF D1 | Vercel Postgres | AWS RDS
+//   cache     → Redis container    | CF KV | Upstash Redis   | AWS ElastiCache
+//   queue     → Kafka container    | CF Queues | Upstash QStash | AWS SQS
+// ---------------------------------------------------------------------------
+
+export const DatabaseModuleSchema = z.object({
+  engine: z.enum(["postgres", "redis", "postgres-redis", "none"]).default("postgres"),
 });
+
+export const ModulesSchema = z.object({
+  database: DatabaseModuleSchema.optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Pipeline (CI)
+// ---------------------------------------------------------------------------
 
 export const PipelineConfigSchema = z.object({
   parallelTests: z.boolean().optional(),
@@ -22,26 +68,9 @@ export const PipelineConfigSchema = z.object({
   buildCache: z.boolean().optional(),
 });
 
-const CanaryStepSchema = z.object({
-  weight: z.number(),
-  pause: z.string(),
-});
-
-const CanaryMetricSchema = z.object({
-  name: z.string(),
-  threshold: z.string(),
-  query: z.string().optional(),
-});
-
-export const CanaryConfigSchema = z.object({
-  enabled: z.boolean().optional(),
-  steps: z.array(CanaryStepSchema).optional(),
-  analysis: z.object({
-    interval: z.string().optional(),
-    failureLimit: z.number().optional(),
-    metrics: z.array(CanaryMetricSchema).optional(),
-  }).optional(),
-});
+// ---------------------------------------------------------------------------
+// Plugins
+// ---------------------------------------------------------------------------
 
 export const PluginInstanceSchema = z.object({
   type: z.string(),
@@ -55,28 +84,32 @@ export const PluginConfigSchema = z.object({
   predictions_topic: z.string().optional(),
 });
 
+// ---------------------------------------------------------------------------
+// Root project config (blissful-infra.yaml)
+// ---------------------------------------------------------------------------
+
 export const ProjectConfigSchema = z.object({
   name: z.string(),
-  type: z.string(),
   backend: z.string().optional(),
   frontend: z.string().optional(),
-  database: z.string(),
-  deployTarget: z.string(),
-  registry: RegistryConfigSchema.optional(),
-  kubernetes: KubernetesConfigSchema.optional(),
-  argocd: ArgoCDConfigSchema.optional(),
+  // Legacy flat field — prefer modules.database going forward
+  database: z.string().optional(),
+  deploy: DeployConfigSchema.optional(),
+  modules: ModulesSchema.optional(),
   pipeline: PipelineConfigSchema.optional(),
-  canary: CanaryConfigSchema.optional(),
   monitoring: z.enum(["default", "prometheus"]).optional(),
   plugins: z.array(PluginInstanceSchema).optional(),
   pluginConfigs: z.record(z.string(), PluginConfigSchema).optional(),
 });
 
-export type RegistryConfig = z.infer<typeof RegistryConfigSchema>;
-export type KubernetesConfig = z.infer<typeof KubernetesConfigSchema>;
-export type ArgoCDConfig = z.infer<typeof ArgoCDConfigSchema>;
+export type DeployTarget = z.infer<typeof DeployTargetSchema>;
+export type DeployConfig = z.infer<typeof DeployConfigSchema>;
+export type CloudflareDeployConfig = z.infer<typeof CloudflareDeployConfigSchema>;
+export type VercelDeployConfig = z.infer<typeof VercelDeployConfigSchema>;
+export type AwsDeployConfig = z.infer<typeof AwsDeployConfigSchema>;
+export type DatabaseModule = z.infer<typeof DatabaseModuleSchema>;
+export type Modules = z.infer<typeof ModulesSchema>;
 export type PipelineConfig = z.infer<typeof PipelineConfigSchema>;
-export type CanaryConfig = z.infer<typeof CanaryConfigSchema>;
 export type PluginInstance = z.infer<typeof PluginInstanceSchema>;
 export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

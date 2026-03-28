@@ -52,10 +52,11 @@ export async function checkPorts(
  */
 export function getRequiredPorts(config: ProjectConfig): { port: number; service: string }[] {
   const ports: { port: number; service: string }[] = [];
-  const isFrontendOnly = config.type === "frontend";
+  const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
+  const isFrontendOnly = derivedType === "frontend";
 
   // Frontend port
-  if (config.type === "frontend" || config.type === "fullstack") {
+  if (derivedType === "frontend" || derivedType === "fullstack") {
     ports.push({ port: 3000, service: "Frontend" });
   }
 

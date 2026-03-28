@@ -609,7 +609,7 @@ export const startCommand = new Command("start")
     const monitoring = opts.monitoring === false ? "default" : "prometheus";
 
     // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ deployTarget: "local-only", name:"gg", type: "fullstack", database, plugins, monitoring });
+    const requiredPorts = getRequiredPorts({ name: "gg", backend, frontend, database, plugins, monitoring });
     const portResults = await checkPorts(requiredPorts);
     const conflicts = portResults.filter((p) => p.inUse);
 

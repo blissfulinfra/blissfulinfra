@@ -91,8 +91,8 @@ export async function stopLocalRegistry(): Promise<void> {
  * Get registry URL from config
  */
 export function getRegistryUrl(config: ProjectConfig): string {
-  if (config.registry) {
-    return config.registry.url;
+  if (config.deploy?.aws?.registry) {
+    return config.deploy.aws.registry.url;
   }
 
   // Default to local registry
@@ -111,7 +111,7 @@ export function getImageName(config: ProjectConfig, tag = "latest"): string {
  * Login to container registry
  */
 export async function loginToRegistry(config: ProjectConfig): Promise<void> {
-  const registry = config.registry;
+  const registry = config.deploy?.aws?.registry;
 
   if (!registry || registry.type === "local") {
     // Local registry doesn't require login
@@ -124,7 +124,7 @@ export async function loginToRegistry(config: ProjectConfig): Promise<void> {
     switch (registry.type) {
       case "ecr": {
         // AWS ECR login
-        const region = registry.region || "us-east-1";
+        const region = config.deploy?.aws?.region || "us-east-1";
         const { stdout: token } = await execa("aws", [
           "ecr",
           "get-login-password",
@@ -214,7 +214,7 @@ export async function imageExists(imageName: string): Promise<boolean> {
  * Get available tags for an image in registry
  */
 export async function getImageTags(config: ProjectConfig): Promise<string[]> {
-  const registry = config.registry;
+  const registry = config.deploy?.aws?.registry;
 
   if (!registry || registry.type === "local") {
     // Query local registry
@@ -278,7 +278,7 @@ export async function getImageTags(config: ProjectConfig): Promise<string[]> {
  */
 export function printRegistryInfo(config: ProjectConfig): void {
   const registryUrl = getRegistryUrl(config);
-  const registryType = config.registry?.type || "local";
+  const registryType = config.deploy?.aws?.registry?.type || "local";
 
   console.log();
   console.log(chalk.bold("Registry Configuration:"));
