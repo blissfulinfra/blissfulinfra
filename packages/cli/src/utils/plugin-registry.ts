@@ -54,6 +54,15 @@ export const PLUGIN_REGISTRY: Record<string, PluginDef> = {
     color: "#8b5cf6",
     ui: { path: "/docs", label: "API Docs" },
   },
+  "keycloak": {
+    displayName: "Keycloak",
+    description: "Open source IAM — OAuth2/OIDC, RBAC, user management, and admin console",
+    category: "Infrastructure",
+    defaultPort: 8001,
+    healthPath: "/health/ready",
+    color: "#4a90d9",
+    ui: { path: "/admin", label: "Admin Console" },
+  },
 };
 
 // ─── Data-platform services co-deployed alongside plugins ─────────────────────

@@ -99,6 +99,7 @@ export default defineConfig({
           label: 'Blog',
           items: [
             { label: 'Stop paying for cloud dev environments', link: '/blog/local-dev-environment' },
+            { label: "A Developer's Guide to IAM", link: '/blog/iam-guide' },
           ],
         },
       ],

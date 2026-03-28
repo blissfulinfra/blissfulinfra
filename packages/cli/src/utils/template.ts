@@ -15,6 +15,8 @@ export interface TemplateVariables {
   // Plugin instance variables
   instanceName?: string;
   apiPort?: number;
+  // Active plugin types (used for {{#IF_KEYCLOAK}} etc. conditionals in backend/frontend templates)
+  plugins?: string[];
 }
 
 export async function copyTemplate(
@@ -152,6 +154,13 @@ function replaceVariables(content: string, variables: TemplateVariables): string
   result = result.replace(
     /\{\{#IF_LOCAL_ONLY\}\}([\s\S]*?)\{\{\/IF_LOCAL_ONLY\}\}/g,
     isLocalOnly ? "$1" : ""
+  );
+
+  // Plugin conditionals
+  const hasKeycloak = variables.plugins?.includes("keycloak") ?? false;
+  result = result.replace(
+    /\{\{#IF_KEYCLOAK\}\}([\s\S]*?)\{\{\/IF_KEYCLOAK\}\}/g,
+    hasKeycloak ? "$1" : ""
   );
 
   // Replace simple variables

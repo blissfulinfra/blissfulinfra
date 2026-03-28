@@ -48,6 +48,14 @@ spring:
       cache-null-values: false
 {{/IF_REDIS}}
 
+{{#IF_KEYCLOAK}}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8001/realms/{{PROJECT_NAME}}}
+{{/IF_KEYCLOAK}}
+
 management:
   endpoints:
     web:

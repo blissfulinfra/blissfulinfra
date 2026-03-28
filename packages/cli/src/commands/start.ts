@@ -330,6 +330,33 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     };
   });
 
+  // Keycloak plugins (OAuth2/OIDC IAM server)
+  const keycloaks = plugins.filter(p => p.type === "keycloak");
+  keycloaks.forEach((plugin, index) => {
+    const port = 8001 + index;
+    services[plugin.instance] = {
+      image: "quay.io/keycloak/keycloak:24.0",
+      container_name: `${name}-${plugin.instance}`,
+      ports: [`${port}:8080`],
+      environment: {
+        KEYCLOAK_ADMIN: "admin",
+        KEYCLOAK_ADMIN_PASSWORD: "admin",
+        KC_DB: "dev-file",
+      },
+      volumes: [
+        `./${plugin.instance}/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro`,
+      ],
+      command: ["start-dev", "--import-realm"],
+      healthcheck: {
+        test: ["CMD", "curl", "-sf", "http://localhost:8080/health/ready"],
+        interval: "15s",
+        timeout: "10s",
+        retries: 10,
+        start_period: "45s",
+      },
+    };
+  });
+
   // Scraper plugins (Scrapy-based web scrapers → Kafka)
   const scrapers = plugins.filter(p => p.type === "scraper");
   scrapers.forEach((plugin) => {
@@ -654,6 +681,7 @@ export const startCommand = new Command("start")
         projectName: name,
         database,
         deployTarget: "local-only",
+        plugins: plugins.map(p => p.type),
       });
     } else {
       scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
@@ -667,6 +695,7 @@ export const startCommand = new Command("start")
         projectName: name,
         database,
         deployTarget: "local-only",
+        plugins: plugins.map(p => p.type),
       });
     } else {
       scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
@@ -827,6 +856,11 @@ docker-compose.override.yaml
       const port = 8095 + index;
       const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
       console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
+    });
+    const keycloaksOut = plugins.filter(p => p.type === "keycloak");
+    keycloaksOut.forEach((plugin, index) => {
+      const port = 8001 + index;
+      console.log(chalk.dim("  Keycloak:    ") + chalk.cyan(`http://localhost:${port}/admin`) + chalk.dim("  (admin/admin)"));
     });
     console.log(chalk.dim("  Jaeger:      ") + chalk.cyan("http://localhost:16686"));
     console.log(chalk.dim("  Loki:        ") + chalk.cyan("http://localhost:3100"));
