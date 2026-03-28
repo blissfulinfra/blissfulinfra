@@ -5,9 +5,9 @@ description: Free local sandbox. $5/month to go live. Team plans available.
 
 ## Simple pricing
 
-Build as much as you want locally for free. Pay $5/month when you're ready to ship.
+Build locally for free. Pay $5/month when you're ready to ship.
 
-### Local — Free forever
+### Local — Free*
 
 Everything you need to build and experiment:
 
@@ -17,7 +17,7 @@ Everything you need to build and experiment:
 - Local web dashboard
 - All templates and examples
 
-No credit card. No time limit. No features locked behind a paywall.
+No credit card required. *Free tier subject to terms and conditions.
 
 ```bash
 npm install -g @blissful-infra/cli
