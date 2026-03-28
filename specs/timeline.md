@@ -13,9 +13,83 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ✅ Complete |
 | **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
-| **Phase 5** | Intelligence | Full agent + knowledge base | 🔧 In Progress |
-| **Phase 6** | Scale | More templates + cloud deploy + enterprise components + plugin SDK | ⏳ Planned |
-| **Phase 7** | Autonomy | LangGraph virtual employees that build features for your apps | ⏳ Planned |
+| **Phase 5** | Intelligence | Full agent + knowledge base | ✅ Complete |
+| **Phase 5.5** | Foundation | Schema contracts, modularity, docs site, testing strategy | 🔧 In Progress |
+| **Phase 6** | Cloud Deploy | Cloudflare → Vercel → AWS deploy targets | ⏳ Next |
+| **Phase 6.5** | Test Coverage | Vitest suite: schemas, utils, API contract, template smoke | ⏳ Next |
+| **Phase 7** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
+
+---
+
+## Current State (as of 2026-03-27)
+
+The following has shipped since the original timeline was written. These items are complete and on `dev` — pending merge to `main`.
+
+### Infrastructure & Contracts
+- [x] `packages/shared` — Zod schema contract layer between CLI and dashboard (`@blissful-infra/shared`)
+- [x] All domain schemas: `deployments`, `config`, `api`, `metrics`, `alerts`, `logs`, `plugins`
+- [x] API server validates `POST /deployments` and `PATCH /deployments/:id` against shared schemas (structured 400 on bad input)
+- [x] `deployment-storage.ts` uses `DeploymentRecordSchema.safeParse` instead of unsafe casts
+- [x] `config.ts` uses `ProjectConfigSchema.parse` on loaded YAML
+- [x] Cloud deploy targets added to config schema: `local-only | cloudflare | vercel | aws`
+- [x] Module abstraction in config schema (database/cache/queue map to platform-native services at deploy time)
+
+### Documentation & Modularity
+- [x] CLAUDE.md hierarchy: root + `packages/cli` + `packages/cli/src/templates` + `packages/dashboard` + `site` + `examples` + `packages/shared`
+- [x] `specs/agentic-workflows.md` — full spec for all 5 agents ([agentic-workflows.md](./agentic-workflows.md))
+- [x] `specs/testing-strategy.md` — full test pyramid, implementation order, CI matrix ([testing-strategy.md](./testing-strategy.md))
+
+### Docs Site (blissful-infra.com)
+- [x] Astro 6 + Starlight 0.38.2 static site deployed to Cloudflare Pages
+- [x] SEO: sitemap, robots.txt, OG image, canonical URLs
+- [x] "Sandbox feel" copy throughout landing page and getting-started guide
+- [x] "Deploy to the cloud" section (Cloudflare → Vercel → AWS roadmap)
+
+### Dashboard & Deployment Tracking
+- [x] Deployments tab: deployment history, P95 latency delta, Jaeger trace links, status badges
+- [x] Jenkins pipeline wired to deployment tracking API (POST on start, PATCH on success/failure)
+- [x] Jenkins Deploy stage added: restarts containers via API, health-checks `/actuator/health`
+
+---
+
+## Immediate Next Steps
+
+These are the concrete next tasks in priority order. Each has a home in an upcoming phase.
+
+### 1. Merge dev → main + publish npm v1.2.0
+- [ ] PR `dev` → `main` (accumulated work above)
+- [ ] Set new npm token and `npm publish` v1.2.0
+- [ ] Tag release
+
+### 2. Vitest setup + schema unit tests (Phase 6.5 start)
+- [ ] Add `vitest` + `@vitest/coverage-v8` to `packages/shared` and `packages/cli`
+- [ ] Add root `vitest.config.ts` with workspace projects
+- [ ] Write schema tests for `packages/shared/src/schemas/deployments.ts` (first, no infra needed)
+- [ ] Write schema tests for `packages/shared/src/schemas/config.ts`
+- [ ] Write unit tests for `packages/cli/src/utils/template.ts` (substitution engine)
+- [ ] Write unit tests for `packages/cli/src/utils/deployment-storage.ts` (JSONL round-trip with temp dir)
+- See [testing-strategy.md](./testing-strategy.md) for full details
+
+### 3. Cloud deploy — Cloudflare first (Phase 6 start)
+- [ ] `blissful-infra deploy --target cloudflare` command
+- [ ] Map local modules to Cloudflare primitives: Postgres → D1, Redis → KV, Kafka → Queues
+- [ ] Frontend deploy via Cloudflare Pages (`wrangler pages deploy`)
+- [ ] Backend deploy via Cloudflare Workers (`wrangler deploy`)
+- [ ] Update `blissful-infra.yaml` write path to persist `deploy.cloudflare` config
+- [ ] Docs page: `site/src/content/docs/deploy/cloudflare.md`
+
+### 4. Monitor agent — Phase 7a (always-on watcher)
+- [ ] Background process started by `blissful-infra up` alongside the API server
+- [ ] Polls Prometheus every 30s, tails logs in real time
+- [ ] Incident classification against the table in [agentic-workflows.md](./agentic-workflows.md)
+- [ ] Posts classified incidents to the dashboard alerts feed
+- [ ] Executes defined runbooks (restart on unhealthy, suggest rollback on latency regression)
+- [ ] "Agent Activity" feed tab in dashboard
+
+### 5. Template smoke test — spring-boot (Phase 6.5)
+- [ ] Vitest test that scaffolds `spring-boot`, runs `docker compose build`, hits `/actuator/health`
+- [ ] Proves the smoke test pattern before adding other templates
+- [ ] Add to nightly CI matrix
 
 ---
 
