@@ -1,6 +1,6 @@
 ---
 title: Pricing
-description: Free local sandbox. $5/month to go live. Team plans available.
+description: blissful-infra is free to use locally. Deploy to blissful-infra.com for $5/month — Cloudflare edge hosting, custom domain, database, cache, and queue included.
 ---
 
 ## Simple pricing
@@ -56,7 +56,7 @@ For small teams who need more than one hosted project:
 - Priority support
 - Team access to the dashboard
 
-[Open an issue on GitHub](https://github.com/cavanpage/blissful-infra/issues) or reach out directly to discuss.
+Email [contact@studiocavan.com](mailto:contact@studiocavan.com) or reach out on [X @studiocavan](https://x.com/studiocavan) to discuss.
 
 ---
 

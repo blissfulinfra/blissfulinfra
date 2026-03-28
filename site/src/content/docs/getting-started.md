@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install blissful-infra and create your first full-stack app in under a minute.
+description: Install blissful-infra and run a full-stack app locally in under 90 seconds — Spring Boot, React, Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and an AI agent, all wired together with one command.
 ---
 
 blissful-infra is a CLI that gives you a production-grade sandbox on your laptop. In under two minutes you have a running full-stack app — backend, frontend, database, message bus, tracing, metrics, CI/CD, and a web dashboard — wired together and managed as a unit. Experiment freely. Tear it down. Start fresh. It's all local, isolated, and completely under your control.
