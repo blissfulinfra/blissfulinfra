@@ -64,6 +64,19 @@ cd site && npm run dev    # Astro dev server
 
 ---
 
+## Key specs — read before working on these areas
+
+| You want to work on… | Read |
+|---|---|
+| Cloud hosting / `blissful-infra deploy` / $5 tier | [specs/cloud-hosting.md](specs/cloud-hosting.md) |
+| Cloud deploy Cloudflare architecture | [specs/cloud-deploy.md](specs/cloud-deploy.md) |
+| Agentic workflows (Feature, Template, Test, Monitor agents) | [specs/agentic-workflows.md](specs/agentic-workflows.md) |
+| Test strategy (Vitest, integration, smoke tests) | [specs/testing-strategy.md](specs/testing-strategy.md) |
+| Phase timeline and prioritization | [specs/timeline.md](specs/timeline.md) |
+| Product vision and positioning | [specs/product.md](specs/product.md) |
+
+---
+
 ## Domain map — which CLAUDE.md to consult
 
 | You want to work on… | Read |
