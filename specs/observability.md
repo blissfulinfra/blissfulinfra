@@ -27,25 +27,24 @@ Grafana has pre-provisioned dashboards for JVM heap, HTTP request rate, error ra
 
 The core design principle: **Prometheus/Grafana is always on and never depends on Kafka**. The Kafka export path is opt-in for clients who want to pipe metrics to an enterprise backend.
 
-```
-                              ┌─────────────────────────────────┐
-                              │         Always-on (local)        │
-Spring Boot ──/actuator/─────▶│  Prometheus  ──────▶  Grafana   │
-             prometheus       │  (scrape every 15s)              │
-                              └─────────────────────────────────┘
+```mermaid
+flowchart TD
+    SB["Spring Boot"]
 
-                              ┌─────────────────────────────────┐
-                              │    Optional enterprise export    │
-Spring Boot ──OTel────────────▶  OTel Collector                  │
-             collector        │       │                           │
-                              │       ▼                           │
-                              │  Kafka metrics topic              │
-                              │       │                           │
-                              │       ├──▶ Prometheus consumer    │ (for regression tracking)
-                              │       ├──▶ Wavefront proxy        │ (enterprise swap-in)
-                              │       ├──▶ Datadog agent          │ (enterprise swap-in)
-                              │       └──▶ Honeycomb ingest       │ (enterprise swap-in)
-                              └─────────────────────────────────┘
+    subgraph primary["Always-on (local)"]
+        Prom["Prometheus\n(scrape every 15s)"] --> Grafana
+    end
+
+    subgraph export["Optional enterprise export"]
+        OTel["OTel Collector"] --> Kafka["Kafka metrics topic"]
+        Kafka --> PC["Prometheus consumer\n(regression tracking)"]
+        Kafka --> WF["Wavefront proxy"]
+        Kafka --> DD["Datadog agent"]
+        Kafka --> HC["Honeycomb ingest"]
+    end
+
+    SB -->|"/actuator/prometheus"| Prom
+    SB -->|"OTel"| OTel
 ```
 
 If Kafka goes down, the primary observability path is unaffected. The export path degrades gracefully — metrics buffer in the OTel collector and flush when Kafka recovers, up to a configurable retention limit.

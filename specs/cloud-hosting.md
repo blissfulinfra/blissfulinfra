@@ -101,30 +101,42 @@ blissful-infra deploy
 
 ### What happens under the hood
 
-```
-blissful-infra deploy
-  │
-  ├─ Read blissful-infra.yaml → determine modules
-  ├─ Authenticate with control plane API (JWT from Polar.sh session)
-  ├─ Check subscription status via Polar.sh API
-  │
-  ├─ Provision (idempotent — safe to re-run):
-  │   ├─ Cloudflare API: create/update Pages project
-  │   ├─ Cloudflare API: create/update Worker
-  │   ├─ Cloudflare API: create D1 database (if not exists)
-  │   ├─ Cloudflare API: create KV namespace (if not exists)
-  │   └─ Cloudflare API: create DNS CNAME for subdomain
-  │
-  ├─ Build:
-  │   ├─ Frontend: npm run build → dist/
-  │   └─ Backend: compile/bundle for Worker target
-  │
-  ├─ Deploy:
-  │   ├─ wrangler pages deploy dist/ --project-name {name}
-  │   ├─ wrangler deploy (Worker)
-  │   └─ wrangler d1 migrations apply {db-name}
-  │
-  └─ Return live URL + deployment ID → update local deployment tracking
+```mermaid
+flowchart TD
+    Start["blissful-infra deploy"]
+
+    subgraph auth["Auth & config"]
+        ReadYaml["Read blissful-infra.yaml\ndetermine modules"]
+        Authenticate["Authenticate with control plane API\nJWT from Polar.sh session"]
+        CheckSub["Check subscription status\nvia Polar.sh API"]
+    end
+
+    subgraph provision["Provision (idempotent)"]
+        Pages["Cloudflare API: create/update Pages project"]
+        Worker["Cloudflare API: create/update Worker"]
+        D1["Cloudflare API: create D1 database (if not exists)"]
+        KV["Cloudflare API: create KV namespace (if not exists)"]
+        DNS["Cloudflare API: create DNS CNAME for subdomain"]
+    end
+
+    subgraph build["Build"]
+        FE["Frontend: npm run build → dist/"]
+        BE["Backend: compile/bundle for Worker target"]
+    end
+
+    subgraph deploy["Deploy"]
+        DeployPages["wrangler pages deploy dist/"]
+        DeployWorker["wrangler deploy (Worker)"]
+        Migrations["wrangler d1 migrations apply"]
+    end
+
+    Done["Return live URL + deployment ID\nupdate local deployment tracking"]
+
+    Start --> ReadYaml --> Authenticate --> CheckSub
+    CheckSub --> Pages & Worker & D1 & KV & DNS
+    Pages & Worker & D1 & KV & DNS --> FE & BE
+    FE & BE --> DeployPages & DeployWorker & Migrations
+    DeployPages & DeployWorker & Migrations --> Done
 ```
 
 ---

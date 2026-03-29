@@ -13,46 +13,23 @@ Local LLM-powered agent that correlates multiple data sources to identify root c
 - Keep all data and processing local for cost and privacy
 
 ## Architecture
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Agent Core                               │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Query Router                           │   │
-│  │   - Classifies incoming queries                          │   │
-│  │   - Routes to appropriate analysis pipeline              │   │
-│  │   - Selects model based on complexity                    │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│         ┌────────────────────┼────────────────────┐            │
-│         ▼                    ▼                    ▼            │
-│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐    │
-│  │   Incident  │      │ Performance │      │ Suggestion  │    │
-│  │   Analyzer  │      │  Analyzer   │      │  Generator  │    │
-│  └─────────────┘      └─────────────┘      └─────────────┘    │
-│         │                    │                    │            │
-│         └────────────────────┼────────────────────┘            │
-│                              ▼                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                  Context Builder                         │   │
-│  │   - Gathers relevant data from all sources               │   │
-│  │   - Filters noise, ranks by relevance                    │   │
-│  │   - Builds prompt with correlated context                │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│                              ▼                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   LLM Interface                          │   │
-│  │   - Ollama client                                        │   │
-│  │   - Prompt management                                    │   │
-│  │   - Response parsing                                     │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│  Data Collectors│ │ Knowledge Base  │ │ Action Executor │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+```mermaid
+flowchart TD
+    subgraph Core["Agent Core"]
+        QR["Query Router\nClassifies queries · routes to pipeline · selects model"]
+        IA["Incident Analyzer"]
+        PA["Performance Analyzer"]
+        SG["Suggestion Generator"]
+        CB["Context Builder\nGathers data · filters noise · builds prompt"]
+        LLM["LLM Interface\nOllama client · prompt management · response parsing"]
+
+        QR --> IA & PA & SG
+        IA & PA & SG --> CB --> LLM
+    end
+
+    LLM --> DC["Data Collectors"]
+    LLM --> KB["Knowledge Base"]
+    LLM --> AE["Action Executor"]
 ```
 
 ## Components
@@ -105,19 +82,13 @@ llm:
 ```
 
 #### Model Selection Logic
-```
-Input Query
-    │
-    ▼
-┌─────────────────────────────────────┐
-│         Query Classifier            │
-│                                     │
-│  Simple status/summary? ──────────────▶ quick model (8b)
-│  Code generation needed? ─────────────▶ code model (33b)
-│  Deep analysis required? ─────────────▶ analysis model (70b)
-│  Similarity search? ──────────────────▶ embedding model
-│                                     │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Q["Input Query"] --> QC["Query Classifier"]
+    QC -->|"Simple status / summary"| Quick["quick model (8b)"]
+    QC -->|"Code generation needed"| Code["code model (33b)"]
+    QC -->|"Deep analysis required"| Analysis["analysis model (70b)"]
+    QC -->|"Similarity search"| Embed["embedding model"]
 ```
 
 #### Resource Requirements
@@ -130,22 +101,18 @@ Input Query
 | nomic-embed-text | 2GB | <1s | Embeddings |
 
 #### Fallback Strategy
-```
-Primary Model Unavailable
-    │
-    ▼
-┌─────────────────────────────────────┐
-│         Fallback Chain              │
-│                                     │
-│  1. Try smaller variant             │
-│     llama3.1:70b → llama3.1:8b      │
-│                                     │
-│  2. Queue for later if non-urgent   │
-│                                     │
-│  3. Return partial analysis with    │
-│     disclaimer if urgent            │
-│                                     │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Unavailable["Primary Model Unavailable"]
+    Smaller["1. Try smaller variant\nllama3.1:70b → llama3.1:8b"]
+    Urgent{"Urgent?"}
+    Queue["2. Queue for later"]
+    Partial["3. Return partial analysis\nwith disclaimer"]
+
+    Unavailable --> Smaller
+    Smaller -->|"still fails"| Urgent
+    Urgent -->|no| Queue
+    Urgent -->|yes| Partial
 ```
 
 ### 2. Data Collectors
@@ -308,57 +275,16 @@ queries:
 ### 3. Context Builder
 
 #### Context Assembly Pipeline
-```
-User Query: "why did the deploy fail?"
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      1. Query Understanding         │
-│                                     │
-│  Extract:                           │
-│  - Time range (last deploy)         │
-│  - Environment (staging)            │
-│  - Focus area (deployment failure)  │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      2. Data Collection             │
-│                                     │
-│  Parallel fetch from:               │
-│  - Jenkins (build logs)             │
-│  - Argo CD (sync status)            │
-│  - Kubernetes (pod events)          │
-│  - Loki (application logs)          │
-│  - Git (recent commits)             │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      3. Relevance Filtering         │
-│                                     │
-│  - Score each data chunk            │
-│  - Filter noise (health checks)     │
-│  - Deduplicate similar entries      │
-│  - Rank by timestamp proximity      │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      4. Context Assembly            │
-│                                     │
-│  - Order chronologically            │
-│  - Add source attribution           │
-│  - Include similar past incidents   │
-│  - Fit within context window        │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      5. Prompt Construction         │
-│                                     │
-│  System prompt + Context + Query    │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Q["User Query\ne.g. 'why did the deploy fail?'"]
+    A["1. Query Understanding\nExtract time range · environment · focus area"]
+    B["2. Data Collection\nParallel fetch: Jenkins · Argo CD · Kubernetes · Loki · Git"]
+    C["3. Relevance Filtering\nScore chunks · filter noise · deduplicate · rank by timestamp"]
+    D["4. Context Assembly\nOrder chronologically · source attribution · similar incidents · fit context window"]
+    E["5. Prompt Construction\nSystem prompt + Context + Query"]
+
+    Q --> A --> B --> C --> D --> E
 ```
 
 #### Relevance Scoring
@@ -385,33 +311,16 @@ const scoringWeights = {
 ```
 
 #### Context Window Management
+```mermaid
+pie title Token Budget (32,000 total)
+    "System Prompt" : 2000
+    "Similar Incidents" : 4000
+    "Collected Data" : 20000
+    "User Query" : 1000
+    "Response Buffer" : 5000
 ```
-Available Context Window: 32,000 tokens
-         │
-         ▼
-┌─────────────────────────────────────┐
-│        Token Budget Allocation      │
-│                                     │
-│  System Prompt:        2,000 tokens │
-│  Similar Incidents:    4,000 tokens │
-│  Collected Data:      20,000 tokens │
-│  User Query:           1,000 tokens │
-│  Response Buffer:      5,000 tokens │
-│                                     │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      Data Prioritization            │
-│                                     │
-│  If data exceeds budget:            │
-│  1. Summarize low-priority chunks   │
-│  2. Truncate verbose logs           │
-│  3. Keep full context for errors    │
-│  4. Reference rather than include   │
-│                                     │
-└─────────────────────────────────────┘
-```
+
+If data exceeds the collected data budget: summarize low-priority chunks → truncate verbose logs → keep full context for errors → reference rather than include.
 
 ### 4. Knowledge Base
 
@@ -471,36 +380,14 @@ knowledge_base:
 ```
 
 #### Embedding Pipeline
-```
-New Incident Data
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      Text Extraction                │
-│                                     │
-│  Combine:                           │
-│  - Error messages                   │
-│  - Stack traces (normalized)        │
-│  - Root cause description           │
-│  - Resolution steps                 │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      Embedding Generation           │
-│                                     │
-│  Model: nomic-embed-text            │
-│  Output: 768-dim vector             │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      Similarity Index               │
-│                                     │
-│  Store in vector index for          │
-│  fast similarity search             │
-│  (sqlite-vss or pgvector)           │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["New Incident Data"]
+    B["Text Extraction\nError messages · stack traces (normalized)\nroot cause · resolution steps"]
+    C["Embedding Generation\nModel: nomic-embed-text · output: 768-dim vector"]
+    D["Similarity Index\nsqlite-vss or pgvector\nfast similarity search"]
+
+    A --> B --> C --> D
 ```
 
 #### Pattern Recognition
@@ -531,248 +418,61 @@ interface PatternRecognizer {
 ```
 
 #### Learning Loop
-```
-┌─────────────────────────────────────┐
-│         Incident Occurs             │
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│      Agent Analyzes                 │
-│                                     │
-│  - Correlates data sources          │
-│  - Identifies root cause            │
-│  - Suggests fix                     │
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│      Fix Applied                    │
-│                                     │
-│  - Manual or auto-generated PR      │
-│  - Track fix attempt                │
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│      Outcome Recorded               │
-│                                     │
-│  - Did fix resolve issue?           │
-│  - Time to resolution               │
-│  - Any side effects?                │
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│      Knowledge Updated              │
-│                                     │
-│  - Store incident + resolution      │
-│  - Update pattern success rates     │
-│  - Refine future suggestions        │
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│      Next Similar Incident          │
-│                                     │
-│  - Faster recognition               │
-│  - Higher confidence fix            │
-│  - Auto-fix option if high success  │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Incident Occurs"]
+    B["Agent Analyzes\nCorrelates sources · identifies root cause · suggests fix"]
+    C["Fix Applied\nManual or auto-generated PR · track fix attempt"]
+    D["Outcome Recorded\nResolved? · time to resolution · side effects?"]
+    E["Knowledge Updated\nStore incident + resolution · update pattern success rates"]
+    F["Next Similar Incident\nFaster recognition · higher confidence · auto-fix if high success"]
+
+    A --> B --> C --> D --> E --> F --> A
 ```
 
 ### 5. Analysis Pipelines
 
 #### Root Cause Analysis Pipeline
-```
-Input: Incident identifier or "latest failure"
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      1. Scope Determination         │
-│                                     │
-│  - Identify time window             │
-│  - Identify affected components     │
-│  - Identify deployment range        │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      2. Data Collection             │
-│                                     │
-│  Parallel fetch:                    │
-│  - Deployment events                │
-│  - Error logs (filtered)            │
-│  - Metrics anomalies                │
-│  - Code changes                     │
-│  - Similar past incidents           │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      3. Timeline Construction       │
-│                                     │
-│  Build event timeline:              │
-│  14:32:01 - Deploy started          │
-│  14:32:45 - Pods scheduled          │
-│  14:33:12 - Memory spike            │
-│  14:33:18 - OOMKilled               │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      4. LLM Analysis                │
-│                                     │
-│  Prompt includes:                   │
-│  - Timeline                         │
-│  - Code changes                     │
-│  - Error patterns                   │
-│  - Similar incidents                │
-│                                     │
-│  Output:                            │
-│  - Root cause hypothesis            │
-│  - Confidence score                 │
-│  - Contributing factors             │
-│  - Suggested fixes                  │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      5. Fix Generation              │
-│                                     │
-│  If code fix possible:              │
-│  - Generate diff                    │
-│  - Validate syntax                  │
-│  - Create PR draft                  │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      6. Output                      │
-│                                     │
-│  - Structured analysis report       │
-│  - Fix PR (if applicable)           │
-│  - Knowledge base update            │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Input["Input: incident identifier or 'latest failure'"]
+    A["1. Scope Determination\nTime window · affected components · deployment range"]
+    B["2. Data Collection\nDeployment events · error logs · metrics anomalies\ncode changes · similar past incidents"]
+    C["3. Timeline Construction\nBuild chronological event timeline"]
+    D["4. LLM Analysis\nTimeline + code changes + error patterns + similar incidents\n→ root cause hypothesis · confidence · contributing factors"]
+    E{"Code fix possible?"}
+    F["5. Fix Generation\nGenerate diff · validate syntax · create PR draft"]
+    G["6. Output\nStructured report · fix PR · knowledge base update"]
+
+    Input --> A --> B --> C --> D --> E
+    E -->|yes| F --> G
+    E -->|no| G
 ```
 
 #### Performance Analysis Pipeline
-```
-Input: Performance regression detected
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      1. Baseline Comparison         │
-│                                     │
-│  Compare metrics:                   │
-│  - Old version vs new version       │
-│  - Identify degraded metrics        │
-│  - Quantify degradation             │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      2. Code Diff Analysis          │
-│                                     │
-│  - Get commits between versions     │
-│  - Identify performance-relevant    │
-│    changes (DB, loops, I/O)         │
-│  - Flag suspicious patterns         │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      3. Profile Correlation         │
-│                                     │
-│  If profiling data available:       │
-│  - Identify hot paths               │
-│  - Correlate with code changes      │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      4. LLM Analysis                │
-│                                     │
-│  Analyze code changes for:          │
-│  - N+1 queries                      │
-│  - Missing caching                  │
-│  - Blocking I/O                     │
-│  - Inefficient algorithms           │
-│  - Resource leaks                   │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      5. Optimization Suggestions    │
-│                                     │
-│  Generate specific fixes:           │
-│  - Batch queries                    │
-│  - Add caching                      │
-│  - Async processing                 │
-│  - Algorithm improvements           │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Input["Input: performance regression detected"]
+    A["1. Baseline Comparison\nOld vs new version · identify degraded metrics · quantify"]
+    B["2. Code Diff Analysis\nCommits between versions · flag performance-relevant changes\nDB · loops · I/O"]
+    C["3. Profile Correlation\nIdentify hot paths · correlate with code changes"]
+    D["4. LLM Analysis\nN+1 queries · missing caching · blocking I/O\ninefficient algorithms · resource leaks"]
+    E["5. Optimization Suggestions\nBatch queries · add caching · async processing · algorithm improvements"]
+
+    Input --> A --> B --> C --> D --> E
 ```
 
 #### Suggestion Generation Pipeline
-```
-Trigger: Scheduled (daily) or on-demand
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      1. Data Aggregation            │
-│                                     │
-│  Collect from last N days:          │
-│  - All incidents                    │
-│  - FMEA test results                │
-│  - Performance trends               │
-│  - Resource utilization             │
-│  - Deployment frequency             │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      2. Pattern Analysis            │
-│                                     │
-│  Identify:                          │
-│  - Recurring failure modes          │
-│  - Missing test coverage            │
-│  - Resource bottlenecks             │
-│  - Configuration drift              │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      3. Gap Analysis                │
-│                                     │
-│  Compare against best practices:    │
-│  - Circuit breakers configured?     │
-│  - Retry logic present?             │
-│  - Caching implemented?             │
-│  - Rate limiting enabled?           │
-│  - All chaos scenarios tested?      │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      4. Prioritization              │
-│                                     │
-│  Score suggestions by:              │
-│  - Frequency of related incidents   │
-│  - Severity of impact               │
-│  - Ease of implementation           │
-│  - Confidence in fix                │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      5. Output                      │
-│                                     │
-│  Ranked list of suggestions with:   │
-│  - Description                      │
-│  - Evidence                         │
-│  - Suggested implementation         │
-│  - Expected impact                  │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Trigger["Trigger: scheduled (daily) or on-demand"]
+    A["1. Data Aggregation\nIncidents · FMEA results · performance trends\nresource utilization · deployment frequency"]
+    B["2. Pattern Analysis\nRecurring failures · missing test coverage\nresource bottlenecks · configuration drift"]
+    C["3. Gap Analysis\nCircuit breakers · retry logic · caching\nrate limiting · chaos scenario coverage"]
+    D["4. Prioritization\nScore by: incident frequency · severity · ease of fix · confidence"]
+    E["5. Output\nRanked suggestions: description · evidence · implementation · expected impact"]
+
+    Trigger --> A --> B --> C --> D --> E
 ```
 
 ### 6. Action Executor
@@ -829,35 +529,20 @@ actions:
 ```
 
 #### Approval Flow
-```
-Agent Suggests Action
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      Check Approval Required        │
-│                                     │
-│  High-risk actions require          │
-│  explicit user approval:            │
-│  - Rollbacks                        │
-│  - Config changes                   │
-│  - Production deployments           │
-└─────────────────────────────────────┘
-         │
-         ├── No approval needed ──────────▶ Execute
-         │
-         ▼
-┌─────────────────────────────────────┐
-│      Request Approval               │
-│                                     │
-│  CLI: "Apply rollback? [y/N]"       │
-│  Dashboard: Approval button         │
-│  Slack: Interactive message         │
-└─────────────────────────────────────┘
-         │
-         ├── Approved ────────────────────▶ Execute
-         │
-         ▼
-         Cancelled
+```mermaid
+flowchart TD
+    A["Agent Suggests Action"]
+    B{"Approval required?\nRollbacks · config changes · prod deployments"}
+    Execute["Execute"]
+    Request["Request Approval\nCLI prompt · dashboard button · Slack message"]
+    Approved{"Approved?"}
+    Cancelled["Cancelled"]
+
+    A --> B
+    B -->|no| Execute
+    B -->|yes| Request --> Approved
+    Approved -->|yes| Execute
+    Approved -->|no| Cancelled
 ```
 
 ## Interfaces

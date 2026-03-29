@@ -15,20 +15,15 @@ The platform is TypeScript running on Node. The templates generate applications 
 
 ## Test Pyramid
 
-```
-                    ┌─────────┐
-                    │  E2E    │  — Full `blissful-infra start` → running stack → verify
-                    ├─────────┤
-                  ┌─┤Template │  — Scaffold → compile → docker build → /health check
-                  │ │ Smoke   │
-                  │ ├─────────┤
-                  │ │  API    │  — CLI API server responses match @blissful-infra/shared schemas
-                  │ │Contract │
-                  │ ├─────────┤
-                  │ │ Integ.  │  — CLI commands against real Docker (start/up/down/logs)
-                  │ ├─────────┤
-                  └─┤  Unit   │  — Utils, schema validation, template substitution, pure functions
-                    └─────────┘
+```mermaid
+flowchart TD
+    E2E["E2E\nFull blissful-infra start → running stack → verify"]
+    Smoke["Template Smoke\nScaffold → compile → docker build → /health check"]
+    Contract["API Contract\nCLI API server responses match @blissful-infra/shared schemas"]
+    Integration["Integration\nCLI commands against real Docker (start/up/down/logs)"]
+    Unit["Unit\nUtils, schema validation, template substitution, pure functions"]
+
+    Unit --> Integration --> Contract --> Smoke --> E2E
 ```
 
 More unit tests than integration tests, more integration than E2E. Template smoke tests are a separate lane — they run less frequently and require more infrastructure.

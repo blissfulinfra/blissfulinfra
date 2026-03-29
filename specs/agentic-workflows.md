@@ -49,31 +49,28 @@ Both levels share the same agent architecture and tool protocol (MCP). A user ru
 - `search_codebase` — semantic search across the project
 
 **Workflow:**
-```
-1. Understand request
-   → Search codebase for relevant files
-   → Read existing implementation and tests
-   → Identify the change surface
+```mermaid
+flowchart TD
+    A["1. Understand request\nSearch codebase · read existing impl · identify change surface"]
+    B["2. Plan\nProduce implementation plan → show to user for approval"]
+    C{"User approves?"}
+    D["3. Implement\nWrite code file by file · run build after each change"]
+    E{"Build passes?"}
+    F["4. Test\nWrite unit tests · run full test suite"]
+    G{"Tests pass?"}
+    H["5. Commit & PR\nStage files · semantic commit · create PR"]
+    Cancel["Cancelled"]
+    Retry["Iterate with error context"]
+    FixOrSurface["Fix failures (up to 3 iterations)\nor surface to user"]
 
-2. Plan
-   → Produce a brief implementation plan (shown to user for approval)
-   → User approves / refines / cancels
-
-3. Implement
-   → Write code changes file by file
-   → Run build after each significant change to catch compile errors early
-   → Iterate until build passes
-
-4. Test
-   → Write unit tests for new behavior
-   → Run full test suite
-   → Fix failures (up to N retry iterations)
-   → If tests cannot be fixed: surface to user with explanation
-
-5. Commit & PR
-   → Stage changed files
-   → Generate commit message (conventional commit format)
-   → Create PR with description, test results, and change summary
+    A --> B --> C
+    C -->|yes| D
+    C -->|no| Cancel
+    D --> E
+    E -->|no| Retry --> D
+    E -->|yes| F --> G
+    G -->|no| FixOrSurface --> G
+    G -->|yes| H
 ```
 
 **Output contract:**
@@ -109,28 +106,18 @@ Both levels share the same agent architecture and tool protocol (MCP). A user ru
 - `run_tests` — run the generated project's tests
 
 **Workflow:**
-```
-1. Research
-   → Read 2–3 existing templates to understand conventions
-   → Read the template CLAUDE.md for system rules
+```mermaid
+flowchart TD
+    A["1. Research\nRead existing templates · read templates/CLAUDE.md"]
+    B["2. Scaffold template directory\nDockerfile · Jenkinsfile · standard endpoints\ntemplate variables · conditional blocks"]
+    C["3. Self-validate\nCLI scaffold → docker compose build → docker compose up\nGET /health → expect 200 · run test suite"]
+    D{"Validation passes?"}
+    E["4. PR\nRegister in CLI · update CLAUDE.md · create PR"]
+    Fix["Fix issues and re-validate"]
 
-2. Scaffold template directory
-   → Create Dockerfile, docker-compose.dev.yaml, Jenkinsfile
-   → Implement standard endpoints (/health, /ready, /hello, /echo)
-   → Add {{PROJECT_NAME}} and {{REGISTRY_URL}} substitutions
-   → Add conditional blocks ({{#IF_POSTGRES}}, {{#IF_KAFKA}}) where applicable
-
-3. Self-validate
-   → Run the CLI to scaffold a project using the new template
-   → `docker compose build` — verify image builds
-   → `docker compose up` — verify services start
-   → Hit /health → expect 200
-   → Run template's own test suite
-
-4. PR
-   → Add template to the CLI registry (start.ts / template.ts)
-   → Update templates/CLAUDE.md with new template entry
-   → Create PR
+    A --> B --> C --> D
+    D -->|yes| E
+    D -->|no| Fix --> C
 ```
 
 **Output contract:**
@@ -161,29 +148,19 @@ Both levels share the same agent architecture and tool protocol (MCP). A user ru
 - `list_untested_files` — identify files with no corresponding test
 
 **Workflow:**
-```
-1. Assess coverage
-   → Run tests with coverage
-   → Parse coverage report: identify files/functions below threshold
-   → Rank gaps by risk (public API endpoints > internal utils)
+```mermaid
+flowchart TD
+    A["1. Assess coverage\nRun tests with coverage · parse report\nrank gaps by risk"]
+    B["2. Plan\nIdentify test type per gap\npresent gap list to user for approval"]
+    C{"User approves?"}
+    D["3. Write tests\nOne file at a time · happy path + error + edge cases"]
+    E["4. Validate\nRun tests after each file · fix failures before next"]
+    F["5. Report\nCoverage before vs after · new files created · uncoverable gaps noted"]
+    Cancel["Cancelled"]
 
-2. Plan test additions
-   → For each gap: what kind of test is needed? (unit, integration, contract)
-   → Present gap list to user: "I found 8 untested paths. Write tests? [y/N]"
-
-3. Write tests
-   → One test file at a time
-   → Follow existing test patterns (naming, fixture style, assertion library)
-   → Include: happy path, error cases, edge cases
-
-4. Validate
-   → Run tests after each file is written
-   → Fix failures before moving to the next file
-
-5. Report
-   → Coverage before vs. after
-   → List of new test files created
-   → Any gaps that could not be covered (reason noted)
+    A --> B --> C
+    C -->|yes| D --> E --> F
+    C -->|no| Cancel
 ```
 
 **Coverage targets** (starting baselines — adjust per project):

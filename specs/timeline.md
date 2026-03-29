@@ -381,22 +381,14 @@ blissful-infra start my-app --no-monitoring   # disable Prometheus + Grafana
 ```
 
 **What gets deployed:**
-```
-┌─────────────────────────────────────────────────┐
-│              Docker Compose                      │
-│                                                  │
-│  ┌──────────┐    scrape     ┌──────────────┐    │
-│  │  Spring   │◄─────────────│  Prometheus  │    │
-│  │  Boot     │  /actuator/  │  :9090       │    │
-│  │  :8080    │  prometheus  └──────┬───────┘    │
-│  └──────────┘                      │            │
-│                              datasource         │
-│                                    │            │
-│                              ┌─────▼────────┐   │
-│                              │   Grafana    │   │
-│                              │   :3001      │   │
-│                              └──────────────┘   │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    SB["Spring Boot :8080"]
+    Prom["Prometheus :9090"]
+    Grafana["Grafana :3001"]
+
+    Prom -->|"scrape /actuator/prometheus"| SB
+    Prom -->|"datasource"| Grafana
 ```
 
 **Prometheus setup:**
@@ -1124,26 +1116,12 @@ blissful-infra start my-app --plugins my-service
 
 **What gets deployed (automatically with `--plugins ai-pipeline`):**
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Docker Compose                       │
-│                                                          │
-│  ┌───────────┐  Kafka events  ┌──────────────────────┐  │
-│  │   Kafka   │───────────────►│   AI Pipeline        │  │
-│  │  :9092    │                │   (FastAPI + Spark)  │  │
-│  └───────────┘                │   :8090              │  │
-│                               └──────┬───────────────┘  │
-│                                      │                  │
-│                      ┌───────────────┼───────────────┐  │
-│                      ▼               ▼               ▼  │
-│               ┌──────────┐  ┌──────────────┐  ┌───────┐ │
-│               │ClickHouse│  │    MLflow    │  │ Mage  │ │
-│               │ :8123    │  │    :5001     │  │ :6789 │ │
-│               │ (store   │  │ (track       │  │(orch- │ │
-│               │  preds)  │  │  experiments)│  │estra- │ │
-│               └──────────┘  └──────────────┘  │ tion) │ │
-│                                               └───────┘ │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Kafka["Kafka :9092"] -->|"Kafka events"| Pipeline["AI Pipeline\nFastAPI :8090"]
+    Pipeline --> ClickHouse["ClickHouse :8123\n(store predictions)"]
+    Pipeline --> MLflow["MLflow :5001\n(track experiments)"]
+    Pipeline --> Mage["Mage :6789\n(orchestration)"]
 ```
 
 **ClickHouse setup:**
@@ -1676,39 +1654,21 @@ Every accepted suggestion feeds back into the knowledge base (Phase 5). Rejected
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                 blissful-infra CLI               │
-│  agent assign/review/revise/accept/reject        │
-└──────────────────┬──────────────────────────────┘
-                   │ HTTP (localhost:8095)
-┌──────────────────▼──────────────────────────────┐
-│              Agent Service (Python)              │
-│  FastAPI + LangGraph                             │
-│                                                  │
-│  ┌─────────────────────────────────────────┐    │
-│  │  Phase 1: READ-ONLY analysis            │    │
-│  │  list_files, read_file, search_in_files │    │
-│  │  git_status, git_diff                   │    │
-│  └────────────────┬────────────────────────┘    │
-│                   ▼                              │
-│  ┌─────────────────────────────────────────┐    │
-│  │  Phase 2: SUGGESTION (in-memory diffs)  │    │
-│  │  Proposed file changes stored in state  │    │
-│  │  Human reviews via CLI or dashboard     │    │
-│  └────────────────┬────────────────────────┘    │
-│                   ▼ (only after human "accept")  │
-│  ┌─────────────────────────────────────────┐    │
-│  │  Phase 3: APPLY                         │    │
-│  │  write_file, git_create_branch,         │    │
-│  │  git_add_and_commit, create_pr          │    │
-│  └─────────────────────────────────────────┘    │
-└──────────────────┬──────────────────────────────┘
-                   │ mounted volume (/workspace)
-┌──────────────────▼──────────────────────────────┐
-│                Your Project                      │
-│  source code, tests, configs, git history        │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    CLI["blissful-infra CLI\nagent assign/review/revise/accept/reject"]
+
+    subgraph AgentService["Agent Service (Python) FastAPI + LangGraph :8095"]
+        P1["Phase 1: READ-ONLY analysis\nlist_files · read_file · git_status · git_diff"]
+        P2["Phase 2: SUGGESTION\nIn-memory diffs · human reviews via CLI or dashboard"]
+        P3["Phase 3: APPLY\nwrite_file · git_create_branch · commit · create_pr"]
+        P1 --> P2 -->|"only after human 'accept'"| P3
+    end
+
+    Project["Your Project\nsource code · tests · configs · git history"]
+
+    CLI -->|"HTTP localhost:8095"| AgentService
+    AgentService -->|"mounted volume /workspace"| Project
 ```
 
 ### 7.1 LangGraph Agent Framework ✅
@@ -1735,30 +1695,14 @@ The core of the suggest-first model. Agent produces proposed changes without tou
 The agent runs as a live debugging companion while your app is running. Instead of waiting for you to notice errors, the agent watches container logs and health checks, diagnoses issues automatically, and prompts you to investigate.
 
 **How it works:**
-```
-┌─────────────────────────────────────┐
-│         Running Containers          │
-│  backend, frontend, kafka, db...    │
-└──────────────┬──────────────────────┘
-               │ logs + health checks
-┌──────────────▼──────────────────────┐
-│          Watchdog Agent             │
-│  Monitors: stdout/stderr, /health  │
-│  Detects: crashes, 5xx, exceptions │
-│  Analyzes: reads code (read-only)  │
-│  Produces: diagnosis + suggested   │
-│            fix (in-memory diff)    │
-└──────────────┬──────────────────────┘
-               │ notification
-┌──────────────▼──────────────────────┐
-│          Developer CLI              │
-│                                     │
-│  ⚠ [alice] NullPointerException    │
-│    in UserService.java:42           │
-│    Suggested fix ready.             │
-│                                     │
-│  [Investigate]  [Silence]           │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Containers["Running Containers\nbackend · frontend · kafka · db"]
+    Watchdog["Watchdog Agent\nMonitors: stdout/stderr /health\nDetects: crashes 5xx exceptions\nProduces: diagnosis + in-memory diff"]
+    Dev["Developer CLI\n⚠ NullPointerException in UserService.java:42\nSuggested fix ready\n[Investigate] [Silence]"]
+
+    Containers -->|"logs + health checks"| Watchdog
+    Watchdog -->|"notification"| Dev
 ```
 
 **User actions on alert:**

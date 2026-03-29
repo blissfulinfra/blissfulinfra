@@ -384,40 +384,20 @@ OPTIMIZATIONS:
 ```
 
 **Learning Feedback Loop**
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Deployment Cycle                           │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Deploy &      │────▶│   Collect       │────▶│   Analyze &     │
-│   Test          │     │   Data          │     │   Learn         │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                        │
-         ┌──────────────────────────────────────────────┘
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Knowledge Base                              │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐               │
-│  │  Incident   │ │  Pattern    │ │  Fix        │               │
-│  │  History    │ │  Embeddings │ │  Outcomes   │               │
-│  └─────────────┘ └─────────────┘ └─────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  Improvement Suggestions                        │
-│  - Patterns seen before → Suggest proven fixes                  │
-│  - Gaps in test coverage → Suggest new tests                    │
-│  - Resource trends → Suggest scaling changes                    │
-│  - Code anti-patterns → Suggest refactors                       │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│   Next Deploy   │ (cycle continues)
-└─────────────────┘
+```mermaid
+flowchart TD
+    Deploy["Deploy & Test"] --> Collect["Collect Data"] --> Analyze["Analyze & Learn"]
+    Analyze --> KB
+
+    subgraph KB["Knowledge Base"]
+        IH["Incident History"]
+        PE["Pattern Embeddings"]
+        FO["Fix Outcomes"]
+    end
+
+    KB --> Suggest["Improvement Suggestions\nProven fixes · new tests · scaling · refactors"]
+    Suggest --> NextDeploy["Next Deploy"]
+    NextDeploy --> Deploy
 ```
 
 #### Interactive Agent Session
@@ -514,18 +494,16 @@ blissful-infra chaos --env staging --duration 5m --load 100
 | Network partition | Critical | 3s | 60s | Partial outage | ❌ No fallback |
 
 #### Resilience Scorecard
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              Resilience Score: 78/100                           │
-├─────────────────────────────────────────────────────────────────┤
-│ ✅ Circuit Breakers          Configured & tested                │
-│ ✅ Retry Logic               Exponential backoff                │
-│ ✅ Health Checks             Liveness & readiness               │
-│ ✅ Graceful Shutdown         SIGTERM handled                    │
-│ ⚠️  Caching                  Partial coverage                   │
-│ ❌ Bulkheads                 Not implemented                    │
-│ ❌ Rate Limiting             Not configured                     │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+%%{init: {"quadrantChart": {"chartWidth": 400}}}%%
+pie title Resilience Score: 78/100
+    "✅ Circuit Breakers (configured & tested)" : 15
+    "✅ Retry Logic (exponential backoff)" : 15
+    "✅ Health Checks (liveness & readiness)" : 15
+    "✅ Graceful Shutdown (SIGTERM handled)" : 15
+    "⚠️ Caching (partial coverage)" : 10
+    "❌ Bulkheads (not implemented)" : 15
+    "❌ Rate Limiting (not configured)" : 15
 ```
 
 #### Configuration
@@ -644,46 +622,33 @@ Every template includes a Jenkinsfile with these stages:
 - Cloud-managed (EKS, GKE, AKS)
 
 ## Architecture
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         blissful-infra CLI                          │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  Dashboard (React + shadcn/ui)                  │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-       ┌──────────────────────────┼──────────────────────────┐
-       ▼                          ▼                          ▼
-┌─────────────┐  ┌────────────────────────────────┐  ┌─────────────┐
-│   Jenkins   │  │       AI Analysis Agent        │  │   Argo CD   │
-│  (Pipeline) │  │  ┌──────────────────────────┐  │  │   (GitOps)  │
-└─────────────┘  │  │   Ollama (Local LLM)     │  │  └─────────────┘
-       │         │  │   - llama3.1:70b         │  │         │
-       │         │  │   - nomic-embed-text     │  │         │
-       │         │  └──────────────────────────┘  │         │
-       │         │  ┌──────────────────────────┐  │         │
-       │         │  │   Knowledge Base         │  │         │
-       │         │  │   - Incident history     │  │         │
-       │         │  │   - Pattern embeddings   │  │         │
-       │         │  │   - Fix outcomes         │  │         │
-       │         │  └──────────────────────────┘  │         │
-       │         └────────────────────────────────┘         │
-       │                          │                         │
-       │         ┌────────────────┼────────────────┐        │
-       │         ▼                ▼                ▼        │
-       │  ┌───────────┐    ┌───────────┐    ┌───────────┐   │
-       │  │Prometheus │    │   Loki    │    │   Chaos   │   │
-       │  │ + Grafana │    │  (Logs)   │    │   Mesh    │   │
-       │  └───────────┘    └───────────┘    └───────────┘   │
-       │         │                │                │        │
-       └─────────┴────────────────┼────────────────┴────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Kubernetes Cluster                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐               │
-│  │    App      │ │    Kafka    │ │  Postgres   │  ...          │
-│  └─────────────┘ └─────────────┘ └─────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    CLI["blissful-infra CLI"]
+    Dashboard["Dashboard (React)"]
+
+    CLI --> Dashboard
+
+    Dashboard --> Jenkins["Jenkins\n(Pipeline)"]
+    Dashboard --> Agent
+    Dashboard --> ArgoCD["Argo CD\n(GitOps)"]
+
+    subgraph Agent["AI Analysis Agent"]
+        Ollama["Ollama (Local LLM)\nllama3.1:70b · nomic-embed-text"]
+        KB2["Knowledge Base\nIncident history · Pattern embeddings · Fix outcomes"]
+    end
+
+    Jenkins --> Prom2["Prometheus + Grafana"]
+    Agent --> Prom2
+    Agent --> Loki["Loki (Logs)"]
+    Agent --> ChaosMesh["Chaos Mesh"]
+    ArgoCD --> Prom2
+
+    Prom2 & Loki & ChaosMesh --> Cluster
+
+    subgraph Cluster["Docker Compose / Kubernetes Cluster"]
+        App["App"]
+        KafkaNode["Kafka"]
+        PGNode["Postgres"]
+    end
 ```
