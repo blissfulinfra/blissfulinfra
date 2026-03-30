@@ -1,6 +1,6 @@
 <div align="center">
 
-# blissful-infra
+# Blissful Infra
 
 **Enterprise infrastructure on your laptop.**
 
