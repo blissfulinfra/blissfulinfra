@@ -192,6 +192,13 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     container_name: `${name}-frontend`,
     ports: ["3000:80"],
     depends_on: ["backend"],
+    healthcheck: {
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"],
+      interval: "10s",
+      timeout: "5s",
+      retries: 3,
+      start_period: "30s",
+    },
   };
 
   // Nginx reverse proxy
