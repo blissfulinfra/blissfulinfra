@@ -1,4 +1,4 @@
-import { useEffect, useState, KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { cn } from '@/lib/utils'

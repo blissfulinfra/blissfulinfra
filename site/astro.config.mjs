@@ -82,6 +82,7 @@ export default defineConfig({
           label: 'Commands',
           items: [
             { label: 'start', link: '/commands/start' },
+            { label: 'deploy', link: '/commands/deploy' },
             { label: 'dev', link: '/commands/dev' },
             { label: 'dashboard', link: '/commands/dashboard' },
             { label: 'jenkins', link: '/commands/jenkins' },

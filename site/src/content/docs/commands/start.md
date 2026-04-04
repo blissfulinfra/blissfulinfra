@@ -22,6 +22,7 @@ blissful-infra start <name> [options]
 | `--database <database>` | `-d` | `postgres` | Database option |
 | `--plugins <plugins>` | `-p` | — | Comma-separated plugin list |
 | `--no-monitoring` | — | monitoring on | Disable Prometheus + Grafana |
+| `--deploy-target <target>` | — | `local-only` | Cloud deploy target: `cloudflare`, `vercel`, or `aws` |
 | `--link` | `-l` | — | Template dev mode: skip copying, link to template sources |
 
 ## Examples
@@ -44,6 +45,9 @@ blissful-infra start my-app --plugins ai-pipeline,agent-service
 
 # Minimal stack (no monitoring overhead)
 blissful-infra start my-app --no-monitoring --database none
+
+# Scaffold for Cloudflare deploy (generates wrangler.toml, sets deploy.target)
+blissful-infra start my-app --deploy-target cloudflare
 ```
 
 ## What `start` does step by step
