@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -537,6 +537,17 @@ function App() {
 
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const [followLogs, setFollowLogs] = useState(true)
+
+  const logsContainerRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      if (!atBottom) setFollowLogs(false)
+    }
+    el.addEventListener('scroll', onScroll)
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
 
   // New project form state
   const [newProject, setNewProject] = useState({
@@ -1099,6 +1110,14 @@ function App() {
     }
   }, [selectedProject?.name, lokiServiceFilter, lokiLevelFilter, lokiSearch])
 
+  // Health polling runs on all tabs — the status strip is always visible
+  useEffect(() => {
+    if (!selectedProject) return
+    fetchHealth()
+    const healthInterval = setInterval(fetchHealth, 5000)
+    return () => clearInterval(healthInterval)
+  }, [selectedProject?.name])
+
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
       // Clear history when switching projects, tabs, or time window
@@ -1108,7 +1127,6 @@ function App() {
         http: { requestsPerSecond: [], avgResponseTime: [], p50Latency: [], p95Latency: [], p99Latency: [], errorRate: [], lastTotalRequests: 0 },
       })
       setHealthHistory({ timestamps: [], services: {} })
-      setCurrentHealth([])
       setMetricsLoaded(false)
 
       // Load historical metrics first, then start polling for new data
@@ -1116,18 +1134,15 @@ function App() {
         await fetchHistoricalMetrics()
         setMetricsLoaded(true)
         fetchMetrics()
-        fetchHealth()
         fetchAlerts()
       }
       loadData()
 
       const metricsInterval = setInterval(fetchMetrics, timeWindow.intervalMs)
-      const alertsInterval = setInterval(fetchAlerts, 10000) // Check alerts every 10 seconds
-      const healthInterval = setInterval(fetchHealth, 5000) // Check health every 5 seconds
+      const alertsInterval = setInterval(fetchAlerts, 10000)
 
       return () => {
         clearInterval(metricsInterval)
-        clearInterval(healthInterval)
         clearInterval(alertsInterval)
       }
     }
@@ -1181,8 +1196,9 @@ function App() {
   }, [selectedProject?.name, activeTab])
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
+    if (followLogs) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs, followLogs])
+
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1484,7 +1500,16 @@ function App() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${statusDot(project.status)}`} />
+                      {(() => {
+                        const isSelected = selectedProject?.name === project.name
+                        const hasHealthData = isSelected && currentHealth.length > 0
+                        const allHealthy = hasHealthData && currentHealth.every(s => s.status === 'healthy')
+                        const anyUnhealthy = hasHealthData && currentHealth.some(s => s.status === 'unhealthy')
+                        const dot = hasHealthData
+                          ? (allHealthy ? 'bg-green-400' : anyUnhealthy ? 'bg-red-400' : 'bg-yellow-400')
+                          : (project.status === 'running' ? 'bg-green-400' : project.status === 'stopped' ? 'bg-red-400' : 'bg-gray-500')
+                        return <span className={`w-2 h-2 rounded-full ${dot}`} />
+                      })()}
                       <span className="font-medium">{project.name}</span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -1506,16 +1531,24 @@ function App() {
                   </div>
                   {project.services.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
-                      {project.services.map((service) => (
-                        <span
-                          key={service.name}
-                          className="flex items-center gap-1 text-xs text-gray-400"
-                          title={`${service.name}: ${service.status}${service.port ? ` (:${service.port})` : ''}`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot(service.status)}`} />
-                          {service.name}
-                        </span>
-                      ))}
+                      {project.services.map((service) => {
+                        const isSelected = selectedProject?.name === project.name
+                        const liveHealth = isSelected && currentHealth.length > 0 ? currentHealth.find(h => h.name === service.name) : undefined
+                        const dot = liveHealth
+                          ? (liveHealth.status === 'healthy' ? 'bg-green-400' : liveHealth.status === 'unhealthy' ? 'bg-red-400' : 'bg-gray-500')
+                          : (service.status === 'running' ? 'bg-green-400' : service.status === 'stopped' ? 'bg-red-400' : 'bg-gray-500')
+                        const label = liveHealth ? liveHealth.status : service.status
+                        return (
+                          <span
+                            key={service.name}
+                            className="flex items-center gap-1 text-xs text-gray-400"
+                            title={`${service.name}: ${label}${service.port ? ` (:${service.port})` : ''}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+                            {service.name}
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -1793,10 +1826,20 @@ function App() {
                     />
 
                     <span className="ml-auto text-xs text-gray-600">{logs.length} lines</span>
+                    <button
+                      onClick={() => {
+                        const next = !followLogs
+                        setFollowLogs(next)
+                        if (next) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                      className={`text-xs px-2 py-0.5 rounded font-medium ${followLogs ? 'bg-indigo-900 text-indigo-300' : 'bg-gray-800 text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Follow
+                    </button>
                   </div>
 
                   {/* Log stream */}
-                  <div className="flex-1 overflow-auto p-3 font-mono text-xs">
+                  <div ref={logsContainerRef} className="flex-1 overflow-auto p-3 font-mono text-xs">
                     {logs.length === 0 ? (
                       <div className="text-gray-600 p-4 text-center">
                         {lokiAvailable ? 'No logs match the current filters.' : 'No logs yet — start the project to see output.'}

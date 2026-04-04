@@ -1358,10 +1358,17 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
 
     try {
       if (check.url) {
-        // HTTP health check — for frontend in Docker mode, fall back to host Vite dev server
+        // HTTP health check with fallbacks for dev mode.
+        // Docker mode: try service hostname first, then host.docker.internal for Vite dev server.
+        // Host mode: try nginx container on 3000 first, then Vite dev server on 5173.
         const urls = [check.url];
-        if (DOCKER_MODE && check.name === "frontend") {
-          urls.push("http://host.docker.internal:3000");
+        if (check.name === "frontend") {
+          if (DOCKER_MODE) {
+            urls.push("http://host.docker.internal:3000");
+            urls.push("http://host.docker.internal:5173");
+          } else {
+            urls.push("http://localhost:5173");
+          }
         }
 
         let response: Response | null = null;
@@ -1372,7 +1379,11 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
             const timeout = setTimeout(() => controller.abort(), 3000);
             response = await fetch(url, { signal: controller.signal });
             clearTimeout(timeout);
-            if (response.ok) { details = url.includes("host.docker.internal") ? "Vite dev server" : undefined; break; }
+            if (response.ok) {
+              if (url.includes("5173")) details = "Vite dev server";
+              else if (url.includes("host.docker.internal")) details = "Vite dev server";
+              break;
+            }
           } catch (e) {
             lastError = e instanceof Error ? e : new Error(String(e));
           }
