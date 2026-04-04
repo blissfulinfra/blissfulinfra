@@ -9,6 +9,7 @@ export const DeployTargetSchema = z.enum([
   "cloudflare",
   "vercel",
   "aws",
+  "gcp",
 ]);
 
 // Per-platform adapter config — only the relevant block is required for the

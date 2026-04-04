@@ -43,6 +43,7 @@ interface StartOptions {
   link?: boolean;
   plugins?: string;
   monitoring?: boolean;
+  deployTarget?: string;
 }
 
 const DEFAULTS = {
@@ -604,6 +605,7 @@ export const startCommand = new Command("start")
   .option("-l, --link", "Link to templates instead of copying (for template development)")
   .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")
   .option("--no-monitoring", "Disable Prometheus + Grafana monitoring stack")
+  .option("--deploy-target <target>", "Cloud deploy target: cloudflare, vercel, aws (default: local-only)")
   .action(async (name: string, opts: StartOptions) => {
     console.log();
     console.log(chalk.bold("⚡ blissful-infra start"), chalk.dim("- Create and run fullstack app"));
@@ -743,6 +745,7 @@ export const startCommand = new Command("start")
     }
 
     // Create config
+    const deployTarget = opts.deployTarget ?? "local-only";
     const configLines = [
       "# Blissful Infra Configuration",
       `name: ${name}`,
@@ -750,7 +753,8 @@ export const startCommand = new Command("start")
       `backend: ${backend}`,
       `frontend: ${frontend}`,
       `database: ${database}`,
-      "deploy_target: local-only",
+      "deploy:",
+      `  target: ${deployTarget}`,
     ];
     if (monitoring === "default") {
       configLines.push("monitoring: default");
@@ -762,6 +766,20 @@ export const startCommand = new Command("start")
       path.join(projectDir, "blissful-infra.yaml"),
       configLines.join("\n") + "\n"
     );
+
+    // Generate wrangler.toml for Cloudflare-targeted projects
+    if (deployTarget === "cloudflare") {
+      const workerName = `${name}-api`;
+      const pagesProject = `${name}-frontend`;
+      await fs.writeFile(
+        path.join(projectDir, "frontend", "wrangler.toml"),
+        `name = "${pagesProject}"\ncompatibility_date = "2024-01-01"\npages_build_output_dir = "dist"\n`
+      );
+      await fs.writeFile(
+        path.join(projectDir, "backend", "wrangler.toml"),
+        `name = "${workerName}"\ncompatibility_date = "2024-01-01"\nmain = "src/index.ts"\n`
+      );
+    }
 
     // Create .gitignore
     await fs.writeFile(
