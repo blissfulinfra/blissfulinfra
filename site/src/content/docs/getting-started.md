@@ -147,6 +147,7 @@ This reads `blissful-infra.yaml`, regenerates `docker-compose.yaml`, and starts 
 ## Next steps
 
 - [Commands: start](/commands/start) — all flags and options for `blissful-infra start`
+- [Commands: deploy](/commands/deploy) — ship your local app to Cloudflare, Vercel, or AWS
 - [Commands: dev](/commands/dev) — hot reload and template development mode
 - [Commands: dashboard](/commands/dashboard) — the local monitoring dashboard
 - [Templates overview](/templates/overview) — what lives inside each template

@@ -80,13 +80,15 @@ deployAction(name, opts)
       'local-only' → error: set a deploy target in blissful-infra.yaml
 ```
 
-Each platform function lives in its own util file under `src/utils/`:
+Each platform function lives in its own file under `src/deploy/`:
 
 ```
-src/utils/
-  deploy-cloudflare.ts   ← build first
-  deploy-vercel.ts
-  deploy-aws.ts
+src/deploy/
+  index.ts        ← dispatcher (deployProject)
+  errors.ts       ← DeployTargetError, PrereqMissingError, DeployFailedError
+  cloudflare.ts   ← wrangler wrapper
+  vercel.ts       ← vercel CLI wrapper
+  aws.ts          ← CDK wrapper
 ```
 
 ---
@@ -204,15 +206,26 @@ and start wrangler dev instead of the Docker container.
 
 ## Implementation order
 
-1. **`deploy.ts` dispatcher** — replace ArgoCD/kubectl logic with target switch
-2. **`registry.ts` guard** — CF/Vercel targets skip Docker image operations
-3. **`config.ts` migration** — old `deployTarget` field → new `deploy.target`
-4. **`deploy-cloudflare.ts`** — wrangler wrapper: worker + D1 + Pages
-5. **Scaffold: `wrangler.toml` template** — generated for CF-targeted projects
-6. **Scaffold: SQLite migration template** — `0001_init.sql` for D1
-7. **`dev` command CF mode** — detect CF target, run `wrangler dev` instead of Docker
+### Phase A — shipped
 
-Vercel and AWS adapters follow the same pattern after Cloudflare ships.
+1. ✅ **`src/deploy/errors.ts`** — `DeployTargetError`, `PrereqMissingError`, `DeployFailedError`
+2. ✅ **`src/deploy/index.ts`** — target dispatcher (`deployProject` function)
+3. ✅ **`src/deploy/cloudflare.ts`** — wrangler wrapper: worker + D1 + Pages + KV
+4. ✅ **`src/deploy/vercel.ts`** — vercel CLI wrapper (build + deploy --prebuilt)
+5. ✅ **`src/deploy/aws.ts`** — CDK deploy wrapper
+6. ✅ **`src/commands/deploy.ts`** — rewritten to use dispatcher; ArgoCD/kubectl removed
+7. ✅ **`src/commands/start.ts`** — `--deploy-target` flag; generates `wrangler.toml` for CF projects
+8. ✅ **`packages/shared/src/schemas/config.ts`** — added `"gcp"` to `DeployTargetSchema`
+
+### Phase B — next
+
+1. **`registry.ts` guard** — CF/Vercel targets skip Docker image operations
+2. **`config.ts` migration** — old flat `deploy_target` field → new nested `deploy.target` at read time
+3. **Scaffold: SQLite migration template** — `backend/migrations/0001_init.sql` for D1
+4. **`dev` command CF mode** — detect CF target, run `wrangler dev` instead of Docker
+
+Vercel and AWS adapters follow the same pattern. The Vercel adapter is already stubbed — it needs
+`vercel env` provisioning for Postgres/Upstash once the basic deploy flow is validated.
 
 ---
 
