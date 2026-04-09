@@ -99,6 +99,7 @@ cd site && npm run dev    # Astro dev server
 - **Naming** — camelCase for variables and functions throughout. Match whatever convention the surrounding file uses for everything else.
 - **Unit tests** — preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
 - **Test plans** — for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
+- **Documentation** - make sure to keep documentation up to date with each feature added
 
 ---
 

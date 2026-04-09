@@ -74,6 +74,7 @@ async function checkDockerRunning(): Promise<boolean> {
 
 export async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: PluginInstance[] = [], monitoring = "default"): Promise<void> {
   const services: Record<string, unknown> = {};
+  const hasLocalStack = plugins.some(p => p.type === "localstack");
 
   // Kafka service
   services.kafka = {
@@ -171,6 +172,14 @@ export async function generateDockerCompose(projectDir: string, name: string, da
       ...(database === "redis" || database === "postgres-redis"
         ? { REDIS_URL: "redis://redis:6379" }
         : {}),
+      ...(hasLocalStack
+        ? {
+            AWS_ENDPOINT_URL: "http://localstack:4566",
+            AWS_ACCESS_KEY_ID: "test",
+            AWS_SECRET_ACCESS_KEY: "test",
+            AWS_DEFAULT_REGION: "us-east-1",
+          }
+        : {}),
     },
     depends_on: {
       kafka: { condition: "service_healthy" },
@@ -180,6 +189,9 @@ export async function generateDockerCompose(projectDir: string, name: string, da
         : {}),
       ...(database === "redis" || database === "postgres-redis"
         ? { redis: { condition: "service_healthy" } }
+        : {}),
+      ...(hasLocalStack
+        ? { localstack: { condition: "service_healthy" } }
         : {}),
     },
   };
@@ -366,6 +378,34 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     };
   });
 
+  // LocalStack — AWS cloud service emulator
+  const localStacks = plugins.filter(p => p.type === "localstack");
+  localStacks.forEach((plugin) => {
+    services[plugin.instance] = {
+      image: "localstack/localstack:3",
+      container_name: `${name}-localstack`,
+      ports: ["4566:4566"],
+      environment: {
+        SERVICES: "s3,sqs,dynamodb,sns,secretsmanager,lambda",
+        DEFAULT_REGION: "us-east-1",
+        DOCKER_HOST: "unix:///var/run/docker.sock",
+        LOCALSTACK_HOST: "localstack",
+      },
+      volumes: [
+        `./${plugin.instance}/init:/etc/localstack/init/ready.d`,
+        "/var/run/docker.sock:/var/run/docker.sock",
+        `${name}-localstack-data:/var/lib/localstack`,
+      ],
+      healthcheck: {
+        test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"],
+        interval: "5s",
+        timeout: "3s",
+        retries: 15,
+        start_period: "20s",
+      },
+    };
+  });
+
   // Scraper plugins (Scrapy-based web scrapers → Kafka)
   const scrapers = plugins.filter(p => p.type === "scraper");
   scrapers.forEach((plugin) => {
@@ -516,6 +556,9 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     volumes[`${name}-clickhouse-data`] = null;
     volumes[`${name}-mlflow-data`] = null;
     volumes[`${name}-mage-data`] = null;
+  }
+  if (localStacks.length > 0) {
+    volumes[`${name}-localstack-data`] = null;
   }
 
   const compose: Record<string, unknown> = { services };
@@ -912,6 +955,9 @@ docker-compose.override.yaml
       const port = 8001 + index;
       console.log(chalk.dim("  Keycloak:    ") + chalk.cyan(`http://localhost:${port}/admin`) + chalk.dim("  (admin/admin)"));
     });
+    if (plugins.some(p => p.type === "localstack")) {
+      console.log(chalk.dim("  LocalStack:  ") + chalk.cyan("http://localhost:4566") + chalk.dim("  AWS_ENDPOINT_URL=http://localstack:4566"));
+    }
     console.log(chalk.dim("  Jaeger:      ") + chalk.cyan("http://localhost:16686"));
     console.log(chalk.dim("  Loki:        ") + chalk.cyan("http://localhost:3100"));
     if (monitoring === "prometheus") {

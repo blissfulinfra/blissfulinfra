@@ -56,6 +56,20 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8001/realms/{{PROJECT_NAME}}}
 {{/IF_KEYCLOAK}}
 
+{{#IF_LOCALSTACK}}
+aws:
+  endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
+  region: ${AWS_DEFAULT_REGION:us-east-1}
+  access-key: ${AWS_ACCESS_KEY_ID:test}
+  secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+  s3:
+    bucket: {{PROJECT_NAME}}-assets
+  sqs:
+    queue-url: ${AWS_ENDPOINT_URL:http://localhost:4566}/000000000000/{{PROJECT_NAME}}-events
+  dynamodb:
+    table: {{PROJECT_NAME}}-table
+
+{{/IF_LOCALSTACK}}
 management:
   endpoints:
     web:

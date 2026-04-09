@@ -163,6 +163,12 @@ function replaceVariables(content: string, variables: TemplateVariables): string
     hasKeycloak ? "$1" : ""
   );
 
+  const hasLocalStack = variables.plugins?.includes("localstack") ?? false;
+  result = result.replace(
+    /\{\{#IF_LOCALSTACK\}\}([\s\S]*?)\{\{\/IF_LOCALSTACK\}\}/g,
+    hasLocalStack ? "$1" : ""
+  );
+
   // Replace simple variables
   result = result
     .replace(/\{\{PROJECT_NAME\}\}/g, variables.projectName)
@@ -193,7 +199,7 @@ export function getAvailableTemplates(): string[] {
 
 /** Built-in plugin types that live under templates/plugins/. */
 export function getAvailablePlugins(): string[] {
-  return ["ai-pipeline", "agent-service", "gatling"];
+  return ["ai-pipeline", "agent-service", "gatling", "localstack"];
 }
 
 export function getTemplateDir(templateName: string): string {
