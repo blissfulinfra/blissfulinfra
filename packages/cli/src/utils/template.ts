@@ -193,7 +193,7 @@ export function getAvailableTemplates(): string[] {
 
 /** Built-in plugin types that live under templates/plugins/. */
 export function getAvailablePlugins(): string[] {
-  return ["ai-pipeline", "agent-service"];
+  return ["ai-pipeline", "agent-service", "gatling"];
 }
 
 export function getTemplateDir(templateName: string): string {

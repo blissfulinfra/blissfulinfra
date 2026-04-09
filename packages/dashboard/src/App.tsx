@@ -481,7 +481,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings' | 'perf'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
     timestamps: [],
@@ -538,6 +538,15 @@ function App() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [followLogs, setFollowLogs] = useState(true)
+
+  // Gatling perf state
+  const [gatlingStatus, setGatlingStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle')
+  const [gatlingLog, setGatlingLog] = useState<string[]>([])
+  const [gatlingResults, setGatlingResults] = useState<{
+    requests: number; requestsOk: number; requestsFailed: number
+    p50Ms: number; p75Ms: number; p95Ms: number; p99Ms: number
+    meanMs: number; rps: number; errorRate: number
+  } | null>(null)
 
   const logsContainerRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return
@@ -1204,6 +1213,66 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Poll Gatling status + log while a run is in progress
+  useEffect(() => {
+    if (!selectedProject || activeTab !== 'perf' || gatlingStatus !== 'running') return
+    const poll = async () => {
+      try {
+        const [statusRes, logRes] = await Promise.all([
+          fetch(`/api/projects/${selectedProject.name}/perf/gatling/status`),
+          fetch(`/api/projects/${selectedProject.name}/perf/gatling/log`),
+        ])
+        if (statusRes.ok) {
+          const s = await statusRes.json()
+          setGatlingStatus(s.status)
+          if (s.status === 'completed' || s.status === 'error') {
+            if (s.status === 'completed') {
+              const rRes = await fetch(`/api/projects/${selectedProject.name}/perf/gatling/results`)
+              if (rRes.ok) setGatlingResults(await rRes.json())
+            }
+          }
+        }
+        if (logRes.ok) {
+          const l = await logRes.json()
+          setGatlingLog(l.lines)
+        }
+      } catch { /* ignore */ }
+    }
+    poll()
+    const interval = setInterval(poll, 2000)
+    return () => clearInterval(interval)
+  }, [selectedProject?.name, activeTab, gatlingStatus])
+
+  // Fetch latest results when switching to perf tab (if previous run completed)
+  useEffect(() => {
+    if (!selectedProject || activeTab !== 'perf') return
+    fetch(`/api/projects/${selectedProject.name}/perf/gatling/status`)
+      .then(r => r.ok ? r.json() : null)
+      .then(async s => {
+        if (!s) return
+        setGatlingStatus(s.status)
+        if (s.status === 'completed') {
+          const rRes = await fetch(`/api/projects/${selectedProject.name}/perf/gatling/results`)
+          if (rRes.ok) setGatlingResults(await rRes.json())
+        }
+        const lRes = await fetch(`/api/projects/${selectedProject.name}/perf/gatling/log`)
+        if (lRes.ok) setGatlingLog((await lRes.json()).lines)
+      })
+      .catch(() => {})
+  }, [selectedProject?.name, activeTab])
+
+  const handleRunGatling = async () => {
+    if (!selectedProject) return
+    setGatlingStatus('running')
+    setGatlingLog([])
+    setGatlingResults(null)
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/perf/gatling/run`, { method: 'POST' })
+    } catch {
+      setGatlingStatus('error')
+    }
+  }
+
   const handleStart = async () => {
     if (!selectedProject) return
     setLoading(true)
@@ -1758,6 +1827,17 @@ function App() {
                 >
                   <ArrowUpCircle className="w-4 h-4" />
                   Deployments
+                </button>
+                <button
+                  onClick={() => setActiveTab('perf')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'perf'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <Activity className="w-4 h-4" />
+                  Perf
                 </button>
                 <button
                   onClick={() => setActiveTab('settings')}
@@ -2473,6 +2553,113 @@ function App() {
                       })}
                     </div>
                   )}
+                </div>
+              ) : activeTab === 'perf' ? (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Toolbar */}
+                  <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-4">
+                    <button
+                      onClick={handleRunGatling}
+                      disabled={gatlingStatus === 'running'}
+                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      {gatlingStatus === 'running' ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Running...</>
+                      ) : (
+                        <><Play className="w-4 h-4" /> Run Load Test</>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-2 text-sm">
+                      {gatlingStatus === 'idle' && <span className="text-gray-500">No run yet</span>}
+                      {gatlingStatus === 'running' && <span className="text-yellow-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse inline-block" /> Running...</span>}
+                      {gatlingStatus === 'completed' && <span className="text-green-400 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Completed</span>}
+                      {gatlingStatus === 'error' && <span className="text-red-400 flex items-center gap-1"><XCircle className="w-4 h-4" /> Failed</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-auto p-4 space-y-4">
+                    {/* Results cards */}
+                    {gatlingResults && (
+                      <>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="text-xs text-gray-500 mb-1">Total Requests</div>
+                            <div className="text-2xl font-bold">{gatlingResults.requests.toLocaleString()}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              <span className="text-green-400">{gatlingResults.requestsOk.toLocaleString()} ok</span>
+                              {gatlingResults.requestsFailed > 0 && <span className="text-red-400 ml-2">{gatlingResults.requestsFailed} failed</span>}
+                            </div>
+                          </div>
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="text-xs text-gray-500 mb-1">Requests / sec</div>
+                            <div className="text-2xl font-bold">{gatlingResults.rps.toFixed(1)}</div>
+                          </div>
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <div className="text-xs text-gray-500 mb-1">Error Rate</div>
+                            <div className={`text-2xl font-bold ${gatlingResults.errorRate > 1 ? 'text-red-400' : 'text-green-400'}`}>
+                              {gatlingResults.errorRate.toFixed(2)}%
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Percentile bars */}
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <div className="text-sm font-medium text-gray-300 mb-3">Response Time Percentiles</div>
+                          <div className="space-y-3">
+                            {[
+                              { label: 'p50', ms: gatlingResults.p50Ms },
+                              { label: 'p75', ms: gatlingResults.p75Ms },
+                              { label: 'p95', ms: gatlingResults.p95Ms },
+                              { label: 'p99', ms: gatlingResults.p99Ms },
+                            ].map(({ label, ms }) => {
+                              const max = gatlingResults.p99Ms || 1
+                              const pct = Math.min(100, (ms / max) * 100)
+                              const color = ms < 200 ? 'bg-green-500' : ms < 500 ? 'bg-yellow-500' : 'bg-red-500'
+                              return (
+                                <div key={label} className="flex items-center gap-3 text-sm">
+                                  <span className="w-8 text-gray-400 font-mono text-xs">{label}</span>
+                                  <div className="flex-1 bg-gray-700 rounded-full h-2">
+                                    <div className={`${color} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className="w-16 text-right text-gray-300 font-mono text-xs">{ms}ms</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500">
+                            Mean: {gatlingResults.meanMs}ms
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Live log */}
+                    {(gatlingStatus === 'running' || gatlingLog.length > 0) && (
+                      <div className="bg-gray-800 rounded-lg p-3">
+                        <div className="text-xs text-gray-500 mb-2 font-medium">
+                          {gatlingStatus === 'running' ? 'Live output' : 'Last run output'}
+                        </div>
+                        <div className="font-mono text-xs space-y-px max-h-64 overflow-auto">
+                          {gatlingLog.length === 0 && gatlingStatus === 'running' && (
+                            <div className="text-gray-600">Starting Gatling...</div>
+                          )}
+                          {gatlingLog.map((line, i) => (
+                            <div key={i} className={`leading-5 ${line.includes('ERROR') || line.includes('FAILED') ? 'text-red-400' : line.includes('OK') || line.includes('success') ? 'text-green-400' : 'text-gray-400'}`}>
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {gatlingStatus === 'idle' && !gatlingResults && (
+                      <div className="text-center text-gray-600 py-12">
+                        <Activity className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                        <p>Click <span className="text-gray-400">Run Load Test</span> to start a Gatling simulation</p>
+                        <p className="text-sm mt-1">Requires the <span className="text-indigo-400">gatling</span> plugin to be enabled for this project</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : activeTab === 'settings' ? (
                 <div className="flex-1 overflow-auto p-6 space-y-6">
