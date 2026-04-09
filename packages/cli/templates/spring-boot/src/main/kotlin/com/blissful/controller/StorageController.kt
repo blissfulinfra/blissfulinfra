@@ -2,6 +2,8 @@
 package com.blissful.controller
 
 import com.blissful.service.StorageService
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -31,6 +33,21 @@ class StorageController(private val storageService: StorageService) {
     @GetMapping("/files")
     fun listFiles(): ResponseEntity<List<String>> =
         ResponseEntity.ok(storageService.listFiles())
+
+    /**
+     * Stream a file from S3 back to the browser with its original Content-Type so the browser
+     * renders it inline (images, PDFs, text) rather than downloading it. This avoids any CORS
+     * issues with hitting LocalStack directly.
+     */
+    @GetMapping("/files/{key}/content")
+    fun getFileContent(@PathVariable key: String): ResponseEntity<ByteArray> {
+        val file = storageService.getFileContent(key)
+        val headers = HttpHeaders().apply {
+            contentType = MediaType.parseMediaType(file.contentType)
+            set(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"${file.key.substringAfterLast('/')}\"")
+        }
+        return ResponseEntity.ok().headers(headers).body(file.bytes)
+    }
 
     /**
      * Generate a presigned GET URL for a file. The URL is valid for [ttlMinutes] minutes

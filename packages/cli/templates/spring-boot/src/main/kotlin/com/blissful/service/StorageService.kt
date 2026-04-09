@@ -9,7 +9,9 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
@@ -34,6 +36,18 @@ class StorageService(
             RequestBody.fromBytes(content),
         )
         return "s3://$bucket/$key"
+    }
+
+    data class FileContent(val bytes: ByteArray, val contentType: String, val key: String)
+
+    fun getFileContent(key: String): FileContent {
+        val head = s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build())
+        val contentType = head.contentType() ?: "application/octet-stream"
+        val bytes = s3.getObject(
+            GetObjectRequest.builder().bucket(bucket).key(key).build(),
+            ResponseTransformer.toBytes(),
+        ).asByteArray()
+        return FileContent(bytes, contentType, key)
     }
 
     fun getPresignedUrl(key: String, expiresIn: Duration = Duration.ofMinutes(15)): String {
