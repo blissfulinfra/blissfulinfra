@@ -63,6 +63,14 @@ export const PLUGIN_REGISTRY: Record<string, PluginDef> = {
     color: "#4a90d9",
     ui: { path: "/admin", label: "Admin Console" },
   },
+  "gatling": {
+    displayName: "Gatling",
+    description: "JVM load testing with Kotlin DSL — run from the dashboard, view p50/p95/p99 results in real time",
+    category: "Observability",
+    defaultPort: 0,
+    healthPath: "/",
+    color: "#f97316",
+  },
 };
 
 // ─── Data-platform services co-deployed alongside plugins ─────────────────────

@@ -85,6 +85,17 @@ Keep responses concise and focused. Use markdown formatting for code blocks and 
 
 const DOCKER_MODE = process.env.DOCKER_MODE === "true";
 
+// ─── Gatling job state ────────────────────────────────────────────────────────
+interface GatlingJob {
+  status: "running" | "completed" | "error";
+  startedAt: number;
+  completedAt?: number;
+  logLines: string[];
+  exitCode?: number;
+}
+const gatlingJobs = new Map<string, GatlingJob>();
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SERVICE_URLS: Record<string, string> = DOCKER_MODE
   ? { backend: "http://backend:8080", frontend: "http://frontend:80" }
   : { backend: "http://localhost:8080", frontend: "http://localhost:3000" };
@@ -761,6 +772,136 @@ export function createApiServer(workingDir: string, port = 3002) {
             success: false,
             error: execaError.stderr || execaError.message || "Pipeline failed"
           }));
+        }
+        return;
+      }
+
+      // POST /api/projects/:name/perf/gatling/run - Start a Gatling load test
+      const gatlingRunMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/run$/);
+      if (req.method === "POST" && gatlingRunMatch) {
+        const projectName = gatlingRunMatch[1];
+        const existing = gatlingJobs.get(projectName);
+        if (existing?.status === "running") {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Load test already running" }));
+          return;
+        }
+
+        const projectDir = path.join(workingDir, projectName);
+        const gatlingDir = path.join(projectDir, "gatling");
+        const job: GatlingJob = { status: "running", startedAt: Date.now(), logLines: [] };
+        gatlingJobs.set(projectName, job);
+
+        const gradleCmd = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
+        const child = execa(gradleCmd, ["gatlingRun", "--no-daemon"], {
+          cwd: gatlingDir,
+          stdio: "pipe",
+          reject: false,
+        });
+
+        const appendLine = (line: string) => {
+          job.logLines.push(line);
+          if (job.logLines.length > 500) job.logLines.shift();
+        };
+
+        child.stdout?.on("data", (chunk: Buffer) =>
+          chunk.toString().split("\n").filter(Boolean).forEach(appendLine)
+        );
+        child.stderr?.on("data", (chunk: Buffer) =>
+          chunk.toString().split("\n").filter(Boolean).forEach(appendLine)
+        );
+
+        child.then((result) => {
+          job.status = result.exitCode === 0 ? "completed" : "error";
+          job.exitCode = result.exitCode ?? undefined;
+          job.completedAt = Date.now();
+        }).catch(() => {
+          job.status = "error";
+          job.completedAt = Date.now();
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ started: true }));
+        return;
+      }
+
+      // GET /api/projects/:name/perf/gatling/status
+      const gatlingStatusMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/status$/);
+      if (req.method === "GET" && gatlingStatusMatch) {
+        const projectName = gatlingStatusMatch[1];
+        const job = gatlingJobs.get(projectName);
+        if (!job) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "idle" }));
+        } else {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            status: job.status,
+            startedAt: job.startedAt,
+            completedAt: job.completedAt,
+            exitCode: job.exitCode,
+          }));
+        }
+        return;
+      }
+
+      // GET /api/projects/:name/perf/gatling/log
+      const gatlingLogMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/log$/);
+      if (req.method === "GET" && gatlingLogMatch) {
+        const projectName = gatlingLogMatch[1];
+        const job = gatlingJobs.get(projectName);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          lines: job ? job.logLines.slice(-100) : [],
+          running: job?.status === "running",
+        }));
+        return;
+      }
+
+      // GET /api/projects/:name/perf/gatling/results
+      const gatlingResultsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/results$/);
+      if (req.method === "GET" && gatlingResultsMatch) {
+        const projectName = gatlingResultsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const reportsDir = path.join(projectDir, "gatling", "build", "reports", "gatling");
+        try {
+          const runs = await fs.readdir(reportsDir);
+          if (runs.length === 0) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "No Gatling results found" }));
+            return;
+          }
+          // Find most recent run by mtime
+          const withStats = await Promise.all(
+            runs.map(async (r) => ({
+              name: r,
+              mtime: (await fs.stat(path.join(reportsDir, r))).mtimeMs,
+            }))
+          );
+          withStats.sort((a, b) => b.mtime - a.mtime);
+          const statsFile = path.join(reportsDir, withStats[0].name, "js", "stats.json");
+          const raw = JSON.parse(await fs.readFile(statsFile, "utf8"));
+          const s = raw.stats ?? raw;
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            requests: s.numberOfRequests?.total ?? 0,
+            requestsOk: s.numberOfRequests?.ok ?? 0,
+            requestsFailed: s.numberOfRequests?.ko ?? 0,
+            minMs: s.minResponseTime?.total ?? 0,
+            maxMs: s.maxResponseTime?.total ?? 0,
+            meanMs: s.meanResponseTime?.total ?? 0,
+            p50Ms: s.percentiles1?.total ?? 0,
+            p75Ms: s.percentiles2?.total ?? 0,
+            p95Ms: s.percentiles3?.total ?? 0,
+            p99Ms: s.percentiles4?.total ?? 0,
+            rps: s.meanNumberOfRequestsPerSecond?.total ?? 0,
+            errorRate: s.numberOfRequests?.total
+              ? (s.numberOfRequests.ko / s.numberOfRequests.total) * 100
+              : 0,
+          }));
+        } catch {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "No Gatling results found" }));
         }
         return;
       }

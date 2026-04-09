@@ -86,6 +86,37 @@ export const PluginConfigSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// API codegen config
+// ---------------------------------------------------------------------------
+
+export const ApiGenerateClientSchema = z.object({
+  language: z.enum(["typescript", "python", "kotlin"]).default("typescript"),
+  output: z.string(),
+});
+
+export const ApiGenerateServerSchema = z.object({
+  framework: z.enum(["spring-boot", "fastapi", "express"]).default("spring-boot"),
+  output: z.string(),
+  package: z.string().optional(),
+});
+
+export const ApiGenerateTypesSchema = z.object({
+  output: z.string(),
+  runtime: z.enum(["zod", "none"]).default("none"),
+});
+
+export const ApiGenerateSchema = z.object({
+  client: ApiGenerateClientSchema.optional(),
+  server: ApiGenerateServerSchema.optional(),
+  types: ApiGenerateTypesSchema.optional(),
+});
+
+export const ApiConfigSchema = z.object({
+  spec: z.string(),
+  generate: ApiGenerateSchema.optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Root project config (blissful-infra.yaml)
 // ---------------------------------------------------------------------------
 
@@ -101,6 +132,7 @@ export const ProjectConfigSchema = z.object({
   monitoring: z.enum(["default", "prometheus"]).optional(),
   plugins: z.array(PluginInstanceSchema).optional(),
   pluginConfigs: z.record(z.string(), PluginConfigSchema).optional(),
+  api: ApiConfigSchema.optional(),
 });
 
 export type DeployTarget = z.infer<typeof DeployTargetSchema>;
@@ -113,4 +145,9 @@ export type Modules = z.infer<typeof ModulesSchema>;
 export type PipelineConfig = z.infer<typeof PipelineConfigSchema>;
 export type PluginInstance = z.infer<typeof PluginInstanceSchema>;
 export type PluginConfig = z.infer<typeof PluginConfigSchema>;
+export type ApiGenerateClient = z.infer<typeof ApiGenerateClientSchema>;
+export type ApiGenerateServer = z.infer<typeof ApiGenerateServerSchema>;
+export type ApiGenerateTypes = z.infer<typeof ApiGenerateTypesSchema>;
+export type ApiGenerate = z.infer<typeof ApiGenerateSchema>;
+export type ApiConfig = z.infer<typeof ApiConfigSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

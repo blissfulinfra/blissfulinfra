@@ -8,8 +8,9 @@ import { execa } from "execa";
 import { copyTemplate, copyPlugin, getAvailableTemplates, getAvailablePlugins } from "../utils/template.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
-import { parsePluginSpecs, serializePluginSpecs, type PluginInstance } from "../utils/config.js";
+import { parsePluginSpecs, serializePluginSpecs, loadConfig, type PluginInstance } from "../utils/config.js";
 import { isJenkinsRunning, startJenkins, registerProjectWithJenkins } from "./jenkins.js";
+import { runCodegen } from "../codegen/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -815,6 +816,30 @@ docker-compose.override.yaml
     const composeSpinner = ora("Generating docker-compose.yaml...").start();
     await generateDockerCompose(projectDir, name, database, plugins, monitoring);
     composeSpinner.succeed("Generated docker-compose.yaml");
+
+    // Step 2b: API codegen — if api.spec is configured, copy starter spec and run generators
+    const freshConfig = await loadConfig(projectDir);
+    if (freshConfig?.api?.spec) {
+      const specDest = path.resolve(projectDir, freshConfig.api.spec);
+      try {
+        await fs.access(specDest);
+      } catch {
+        // Spec doesn't exist yet — copy the starter template
+        const templateSpec = path.join(__dirname, "..", "..", "templates", "openapi", "openapi.yaml");
+        const specContent = (await fs.readFile(templateSpec, "utf8")).replace(/\{\{PROJECT_NAME\}\}/g, name);
+        await fs.mkdir(path.dirname(specDest), { recursive: true });
+        await fs.writeFile(specDest, specContent, "utf8");
+      }
+      if (freshConfig.api.generate) {
+        const genSpinner = ora("Running API codegen...").start();
+        try {
+          await runCodegen(freshConfig, projectDir);
+          genSpinner.succeed("API codegen complete");
+        } catch {
+          genSpinner.warn("API codegen skipped (run `blissful-infra generate` manually)");
+        }
+      }
+    }
 
     // Step 3: Build dashboard image and start containers
     await ensureDashboardImage();

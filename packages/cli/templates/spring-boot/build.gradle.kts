@@ -65,6 +65,7 @@ dependencies {
 {{#IF_POSTGRES}}
     testImplementation("com.h2database:h2")
 {{/IF_POSTGRES}}
+
 }
 
 tasks.withType<KotlinCompile> {
