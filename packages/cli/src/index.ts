@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createCommand } from "./commands/create.js";
 import { startCommand } from "./commands/start.js";
+import { initCommand } from "./commands/init.js";
 import { upCommand, upAction } from "./commands/up.js";
 import { downCommand, downAction } from "./commands/down.js";
 import { logsCommand, logsAction } from "./commands/logs.js";
@@ -26,6 +27,7 @@ import { canaryCommand } from "./commands/canary.js";
 import { analyzeCommand, analyzeAction, suggestCommand, suggestAction } from "./commands/analyze.js";
 import { exampleCommand } from "./commands/example.js";
 import { mcpCommand } from "./commands/mcp.js";
+import { generateCommand } from "./commands/generate.js";
 
 const program = new Command();
 
@@ -35,6 +37,7 @@ program
   .version("0.1.0");
 
 // Global commands (don't require a project)
+program.addCommand(initCommand);
 program.addCommand(startCommand);
 program.addCommand(createCommand);
 
@@ -66,6 +69,9 @@ program.addCommand(suggestCommand);
 // Examples
 program.addCommand(exampleCommand);
 program.addCommand(mcpCommand);
+
+// Schema-first code generation
+program.addCommand(generateCommand);
 
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {
