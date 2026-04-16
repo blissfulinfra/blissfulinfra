@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChatWindow } from '@/components/ChatWindow'
 import { LiveFeed } from '@/components/LiveFeed'
+// {{#IF_LOCALSTACK}}
+import { FileManager } from '@/components/FileManager'
+{{/IF_LOCALSTACK}}
 
 interface HealthResponse {
   status: string
@@ -51,6 +54,10 @@ export default function HomePage() {
         <ChatWindow />
         <LiveFeed />
       </div>
+
+{/* {{#IF_LOCALSTACK}} */}
+      <FileManager />
+{/* {{/IF_LOCALSTACK}} */}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

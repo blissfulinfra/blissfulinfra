@@ -1,0 +1,13 @@
+node_modules
+packages/*/node_modules
+packages/*/dist
+packages/dashboard/node_modules
+packages/cli/node_modules
+packages/shared/node_modules
+site/
+dev-app/
+examples/
+docs/
+specs/
+.git
+*.md

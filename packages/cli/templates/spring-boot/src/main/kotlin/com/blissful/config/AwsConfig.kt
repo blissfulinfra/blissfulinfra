@@ -17,6 +17,7 @@ import java.net.URI
 @Configuration
 class AwsConfig(
     @Value("\${aws.endpoint-url}") private val endpointUrl: String,
+    @Value("\${aws.public-endpoint-url:\${aws.endpoint-url}}") private val publicEndpointUrl: String,
     @Value("\${aws.region}") private val region: String,
     @Value("\${aws.access-key}") private val accessKey: String,
     @Value("\${aws.secret-key}") private val secretKey: String,
@@ -25,6 +26,7 @@ class AwsConfig(
         AwsBasicCredentials.create(accessKey, secretKey)
     )
     private val endpoint = URI.create(endpointUrl)
+    private val publicEndpoint = URI.create(publicEndpointUrl)
     private val awsRegion = Region.of(region)
 
     @Bean
@@ -51,7 +53,7 @@ class AwsConfig(
 
     @Bean
     fun s3Presigner(): S3Presigner = S3Presigner.builder()
-        .endpointOverride(endpoint)
+        .endpointOverride(publicEndpoint)
         .region(awsRegion)
         .credentialsProvider(credentials)
         .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())

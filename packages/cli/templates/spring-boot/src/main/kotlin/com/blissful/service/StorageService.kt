@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest
 import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest
 import java.time.Duration
@@ -48,6 +49,20 @@ class StorageService(
             ResponseTransformer.toBytes(),
         ).asByteArray()
         return FileContent(bytes, contentType, key)
+    }
+
+    data class PresignedUpload(val uploadUrl: String, val key: String)
+
+    fun getPresignedPutUrl(filename: String, contentType: String, expiresIn: Duration = Duration.ofMinutes(15)): PresignedUpload {
+        val key = "${java.util.UUID.randomUUID()}-$filename"
+        val presignRequest = PutObjectPresignRequest.builder()
+            .signatureDuration(expiresIn)
+            .putObjectRequest(
+                PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build()
+            )
+            .build()
+        val url = presigner.presignPutObject(presignRequest).url().toString()
+        return PresignedUpload(url, key)
     }
 
     fun getPresignedUrl(key: String, expiresIn: Duration = Duration.ofMinutes(15)): String {

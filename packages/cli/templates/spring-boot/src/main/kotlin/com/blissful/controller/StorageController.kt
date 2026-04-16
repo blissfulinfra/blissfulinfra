@@ -21,6 +21,17 @@ import java.util.UUID
 @RequestMapping("/api/storage")
 class StorageController(private val storageService: StorageService) {
 
+    /** Get a presigned PUT URL for direct browser-to-S3 upload. Returns { uploadUrl, key }. */
+    @PostMapping("/files/presign")
+    fun presignUpload(
+        @RequestParam filename: String,
+        @RequestParam(defaultValue = "application/octet-stream") contentType: String,
+        @RequestParam(defaultValue = "15") ttlMinutes: Long,
+    ): ResponseEntity<Map<String, String>> {
+        val result = storageService.getPresignedPutUrl(filename, contentType, java.time.Duration.ofMinutes(ttlMinutes))
+        return ResponseEntity.ok(mapOf("uploadUrl" to result.uploadUrl, "key" to result.key))
+    }
+
     /** Upload a file to S3 (LocalStack). Returns the S3 URI and the object key. */
     @PostMapping("/files")
     fun uploadFile(@RequestParam file: MultipartFile): ResponseEntity<Map<String, String>> {

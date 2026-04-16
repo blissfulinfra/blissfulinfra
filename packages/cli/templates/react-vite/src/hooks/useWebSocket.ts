@@ -15,6 +15,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const destroyedRef = useRef(false)
 
   // Store callbacks in refs so they never invalidate `connect`
   const onMessageRef = useRef(options.onMessage)
@@ -30,6 +31,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   const maxReconnectAttempts = options.maxReconnectAttempts ?? 5
 
   const connect = useCallback(() => {
+    if (destroyedRef.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -39,6 +41,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
       const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
+        if (destroyedRef.current) { ws.close(); return }
         setConnected(true)
         reconnectAttemptsRef.current = 0
         onOpenRef.current?.()
@@ -48,7 +51,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
         setConnected(false)
         onCloseRef.current?.()
 
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+        if (!destroyedRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++
           reconnectTimeoutRef.current = setTimeout(connect, reconnectInterval)
         }
@@ -71,12 +74,24 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   }, [url, reconnectInterval, maxReconnectAttempts])
 
   const disconnect = useCallback(() => {
+    destroyedRef.current = true
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
     }
-    reconnectAttemptsRef.current = maxReconnectAttempts
-    wsRef.current?.close()
-  }, [maxReconnectAttempts])
+    const ws = wsRef.current
+    wsRef.current = null
+    if (!ws) return
+    if (ws.readyState === WebSocket.CONNECTING) {
+      // Can't close a CONNECTING socket — null the handlers so it opens
+      // silently and closes without triggering reconnect or state updates.
+      ws.onopen = () => ws.close()
+      ws.onclose = null
+      ws.onerror = null
+      ws.onmessage = null
+    } else if (ws.readyState === WebSocket.OPEN) {
+      ws.close()
+    }
+  }, [])
 
   const send = useCallback((data: string | object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -89,6 +104,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   }, [])
 
   useEffect(() => {
+    destroyedRef.current = false
     connect()
     return () => {
       disconnect()

@@ -206,7 +206,7 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     ports: ["3000:80"],
     depends_on: ["backend"],
     healthcheck: {
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"],
+      test: ["CMD-SHELL", "curl -sf http://localhost/ > /dev/null || exit 1"],
       interval: "10s",
       timeout: "5s",
       retries: 3,
@@ -616,6 +616,8 @@ async function generateNginxConf(projectDir: string): Promise<void> {
   const serverBlock = `server {
     listen 80;
     server_name localhost;
+
+    client_max_body_size 100m;
 
     location /api/ {
         proxy_pass http://backend:8080/;

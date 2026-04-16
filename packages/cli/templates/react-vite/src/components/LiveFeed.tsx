@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, KeyboardEvent } from 'react'
+import { useState, KeyboardEvent } from 'react'
 import { useSseStream } from '@/hooks/useSseStream'
 import { cn } from '@/lib/utils'
 
@@ -33,17 +33,11 @@ export function LiveFeed() {
   const [greeting, setGreeting] = useState<{ message: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
   const { connected, events, clearEvents } = useSseStream<GreetingEventData>(
     '/api/events/stream',
     { eventTypes: ['greeting.created'] },
   )
-
-  // Auto-scroll to latest event
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events])
 
   const greet = async () => {
     const name = nameInput.trim()
@@ -134,7 +128,6 @@ export function LiveFeed() {
             </div>
           ))
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* API trigger bar */}

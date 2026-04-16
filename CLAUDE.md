@@ -1,5 +1,8 @@
 # blissful-infra — Monorepo Root
 
+## TODOs
+- think about moving more of the observability stack to the global level like jenkins ( grafana, logs, etc)
+
 ## What this repo is
 
 blissful-infra is a CLI tool that spins up a production-grade local sandbox in one command: backend, frontend, databases, message bus, tracing, metrics, CI/CD pipeline, and a web dashboard — all running in Docker on the developer's laptop. No cloud required.

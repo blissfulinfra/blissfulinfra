@@ -1,34 +1,54 @@
-# Stage 1: Build dashboard frontend
-FROM node:20-alpine AS frontend-build
-WORKDIR /build/dashboard
-COPY packages/dashboard/package.json packages/dashboard/package-lock.json* ./
-RUN npm i --ignore-scripts
-COPY packages/dashboard/ ./
-RUN npm run build
+# Build the blissful-infra dashboard container.
+# Context must be the repo root so the monorepo workspace is available.
+#
+# docker build -f Dockerfile.dashboard -t blissful-infra .
 
-# Stage 2: Build CLI (API server)
-FROM node:20-alpine AS cli-build
-WORKDIR /build/cli
-COPY packages/cli/package.json packages/cli/package-lock.json* ./
-RUN npm i --ignore-scripts
-COPY packages/cli/ ./
-RUN npm run build
+# ── Stage 1: install all workspace dependencies ───────────────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /repo
 
-# Stage 3: Runtime
+# Copy manifests first so layer cache survives source-only changes
+COPY package.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/dashboard/package.json ./packages/dashboard/
+
+# Single root install resolves the @blissful-infra/shared workspace symlink
+RUN npm install --ignore-scripts
+
+# ── Stage 2: build shared → cli → dashboard ───────────────────────────────────
+FROM deps AS build
+WORKDIR /repo
+
+COPY packages/shared/ ./packages/shared/
+COPY packages/cli/ ./packages/cli/
+COPY packages/dashboard/ ./packages/dashboard/
+
+RUN npm run build -w packages/shared
+RUN npm run build -w packages/cli
+RUN npm run build -w packages/dashboard
+
+# ── Stage 3: lean runtime image ───────────────────────────────────────────────
 FROM node:20-alpine
-
 RUN apk add --no-cache docker-cli docker-cli-compose
 
 WORKDIR /app
 
-# Copy built CLI
-COPY --from=cli-build /build/cli/dist ./dist
-COPY --from=cli-build /build/cli/node_modules ./node_modules
-COPY --from=cli-build /build/cli/package.json ./package.json
-COPY --from=cli-build /build/cli/templates ./templates
+# CLI dist, templates, and package manifest
+COPY --from=build /repo/packages/cli/dist ./dist
+COPY --from=build /repo/packages/cli/templates ./templates
+COPY --from=build /repo/packages/cli/package.json ./package.json
 
-# Copy built dashboard frontend
-COPY --from=frontend-build /build/dashboard/dist ./dashboard-dist
+# Copy node_modules from the root workspace install
+COPY --from=build /repo/node_modules ./node_modules
+
+# Workspace symlinks don't survive multi-stage COPY — explicitly place the
+# compiled shared package where Node expects to find it at runtime.
+COPY --from=build /repo/packages/shared/package.json ./node_modules/@blissful-infra/shared/package.json
+COPY --from=build /repo/packages/shared/dist ./node_modules/@blissful-infra/shared/dist
+
+# Dashboard static assets
+COPY --from=build /repo/packages/dashboard/dist ./dashboard-dist
 
 ENV DASHBOARD_DIST_DIR=/app/dashboard-dist
 ENV DASHBOARD_PORT=3002
