@@ -1,5 +1,8 @@
 # blissful-infra — Monorepo Root
 
+## TODOs
+- think about moving more of the observability stack to the global level like jenkins ( grafana, logs, etc)
+
 ## What this repo is
 
 blissful-infra is a CLI tool that spins up a production-grade local sandbox in one command: backend, frontend, databases, message bus, tracing, metrics, CI/CD pipeline, and a web dashboard — all running in Docker on the developer's laptop. No cloud required.
@@ -99,6 +102,7 @@ cd site && npm run dev    # Astro dev server
 - **Naming** — camelCase for variables and functions throughout. Match whatever convention the surrounding file uses for everything else.
 - **Unit tests** — preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
 - **Test plans** — for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
+- **Documentation** - make sure to keep documentation up to date with each feature added
 
 ---
 

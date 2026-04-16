@@ -49,6 +49,14 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
+{{#IF_LOCALSTACK}}
+    // AWS SDK v2 (pointed at LocalStack via AWS_ENDPOINT_URL)
+    implementation(platform("software.amazon.awssdk:bom:2.25.0"))
+    implementation("software.amazon.awssdk:s3")
+    implementation("software.amazon.awssdk:sqs")
+    implementation("software.amazon.awssdk:dynamodb")
+{{/IF_LOCALSTACK}}
+
     // Kafka
     implementation("org.springframework.kafka:spring-kafka")
 

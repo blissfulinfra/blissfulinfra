@@ -71,6 +71,15 @@ export const PLUGIN_REGISTRY: Record<string, PluginDef> = {
     healthPath: "/",
     color: "#f97316",
   },
+  "localstack": {
+    displayName: "LocalStack",
+    description: "AWS cloud service emulator — S3, SQS, DynamoDB, SNS, Lambda and more, running locally in Docker",
+    category: "Infrastructure",
+    defaultPort: 4566,
+    healthPath: "/_localstack/health",
+    color: "#e11d48",
+    ui: { path: "/_localstack/health", label: "Health" },
+  },
 };
 
 // ─── Data-platform services co-deployed alongside plugins ─────────────────────

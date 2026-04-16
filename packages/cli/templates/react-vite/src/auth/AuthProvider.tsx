@@ -1,4 +1,4 @@
-{{#IF_KEYCLOAK}}
+// {{#IF_KEYCLOAK}}
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import keycloak from './keycloak';
 
