@@ -15,11 +15,12 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ✅ Complete |
 | **Phase 5.5** | Foundation | Schema contracts, modularity, docs site, testing strategy | 🔧 In Progress |
-| **Phase 6** | Cloud Hosting | $5 hosted tier — Cloudflare deploy, billing, dashboard | ⏳ Next |
+| **Phase 6** | Client Model | Per-client isolated environments — client create/service add commands, port blocks, external networks | ⏳ Next |
 | **Phase 6.5** | Test Coverage | Vitest suite: schemas, utils, API contract, template smoke | ⏳ Next |
-| **Phase 7** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
-| **Phase 8** | Observability++ | Metric regression tracking, domain attribution, pluggable APM backends (Wavefront, Datadog) | ⏳ Planned |
-| **Phase 9** | Security | Penetration testing framework — OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
+| **Phase 7** | Cloud Hosting | $5 hosted tier — Cloudflare deploy, billing, dashboard | ⏳ Planned |
+| **Phase 8** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
+| **Phase 9** | Observability++ | Kafka → Flink → ClickHouse metrics pipeline, EWMA anomaly detection, S3 archival | ⏳ Planned |
+| **Phase 10** | Security | Penetration testing framework — OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
 
 ---
 
