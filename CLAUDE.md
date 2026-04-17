@@ -1,7 +1,7 @@
 # blissful-infra — Monorepo Root
 
 ## TODOs
-- think about moving more of the observability stack to the global level like jenkins ( grafana, logs, etc)
+- Observability is project-scoped (Grafana, Prometheus, Jaeger, Loki as plugins) — Jenkins stays global because it needs cross-project awareness. Each project declares its APM backend via plugins; the plugin adapts. This sets up Phase 8 pluggable APM backends cleanly.
 
 ## What this repo is
 
@@ -71,6 +71,7 @@ cd site && npm run dev    # Astro dev server
 
 | You want to work on… | Read |
 |---|---|
+| Client environment model / `blissful-infra client create` / per-client isolation | [specs/client-model.md](specs/client-model.md) |
 | Cloud hosting / `blissful-infra deploy` / $5 tier | [specs/cloud-hosting.md](specs/cloud-hosting.md) |
 | Cloud deploy Cloudflare architecture | [specs/cloud-deploy.md](specs/cloud-deploy.md) |
 | Agentic workflows (Feature, Template, Test, Monitor agents) | [specs/agentic-workflows.md](specs/agentic-workflows.md) |
