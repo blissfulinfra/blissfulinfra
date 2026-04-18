@@ -24,7 +24,7 @@ src/
 └── schemas/
     ├── api.ts        # HTTP request/response shapes (ProjectStatus, Service, HealthResponse, etc.)
     ├── alerts.ts     # AlertThreshold, TriggeredAlert, AlertsConfig
-    ├── config.ts     # blissful-infra.yaml project config schema
+    ├── config.ts     # blissful-infra.yaml config schemas (ProjectConfig, ClientConfig, ServiceConfig, PortBlock, ClientRegistry)
     ├── deployments.ts # DeploymentRecord, CreateDeploymentRequest, UpdateDeploymentRequest
     ├── logs.ts       # StoredLogEntry, LogRetentionConfig
     ├── metrics.ts    # ContainerMetrics, HttpMetrics, StoredMetrics

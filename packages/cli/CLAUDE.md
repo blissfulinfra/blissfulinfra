@@ -35,7 +35,7 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 ### Core (Phase 1)
 | Command | File | What it does |
 |---|---|---|
-| `start <name>` | `start.ts` | Scaffolds project dir + boots full stack |
+| `start <name>` | `start.ts` | Scaffolds project dir + boots full stack (flat model) |
 | `up` | `up.ts` | Start a stopped project (`docker compose up`) |
 | `down` | `down.ts` | Stop a running project (`docker compose down`) |
 | `logs` | `logs.ts` | Stream logs from all services |
@@ -45,6 +45,20 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 | `example <name>` | `example.ts` | Scaffold an example app from `dist/examples/` |
 | `mcp` | `mcp.ts` | Start the MCP server for Claude Desktop / Claude Code |
 | `create` | `create.ts` | Lower-level project creation helper |
+
+### Client Model (Phase 6)
+| Command | File | What it does |
+|---|---|---|
+| `client create <name>` | `client.ts` | Create a client environment with isolated infra |
+| `client list` | `client.ts` | List all client environments |
+| `client up <name>` | `client.ts` | Start client infra + all services |
+| `client down <name>` | `client.ts` | Stop a client environment |
+| `client status <name>` | `client.ts` | Show infra health + service status |
+| `client remove <name>` | `client.ts` | Remove a client environment entirely |
+| `service add <client> <svc>` | `service.ts` | Add a service to an existing client |
+| `service up <client> <svc>` | `service.ts` | Start a single service |
+| `service down <client> <svc>` | `service.ts` | Stop a single service |
+| `service logs <client> <svc>` | `service.ts` | Stream logs for a service |
 
 ### CI/CD (Phase 2)
 | Command | File | What it does |
@@ -95,6 +109,8 @@ Each util is a focused module. Key ones:
 | `registry.ts` | Project registry (tracks all known projects) |
 | `plugin-system.ts` | Plugin loading and overlay system |
 | `plugin-registry.ts` | Registry of available plugin types |
+| `client-registry.ts` | Client environment registry + port block allocation |
+| `infra-compose.ts` | Generates `docker-compose.infra.yaml` + Prometheus/Loki/Grafana configs |
 
 ---
 
