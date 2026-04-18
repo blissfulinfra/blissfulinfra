@@ -1,7 +1,7 @@
 # blissful-infra — Monorepo Root
 
 ## TODOs
-- Observability is project-scoped (Grafana, Prometheus, Jaeger, Loki as plugins) — Jenkins stays global because it needs cross-project awareness. Each project declares its APM backend via plugins; the plugin adapts. This sets up Phase 8 pluggable APM backends cleanly.
+- Client model (Phase 6A) is implemented — `blissful-infra client create/list/up/down/status/remove` and `blissful-infra service add/up/down/logs`. Both Jenkins and observability are per-client (fully isolated). Phase 6B (dynamic Prometheus scrape updates, Jenkins job scoping) is next.
 
 ## What this repo is
 
@@ -104,7 +104,7 @@ cd site && npm run dev    # Astro dev server
 - **Unit tests** — preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
 - **Test plans** — for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
 - **Documentation** - make sure to keep documentation up to date with each feature added
-
+- **Code Quality** - Codex will review your output once you are done
 ---
 
 ## Shared conventions
@@ -123,7 +123,9 @@ cd site && npm run dev    # Astro dev server
 
 These patterns appear across multiple packages and should stay consistent:
 
-**Docker Compose** is the runtime unit. Each project the CLI creates gets a `docker-compose.yaml`. Services talk over the default Compose network using service names as hostnames.
+**Docker Compose** is the runtime unit. Two models coexist:
+- **Flat model** (legacy): `blissful-infra start <name>` creates a single `docker-compose.yaml` with all services and infra in one file.
+- **Client model** (Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network as an external network. Clients are fully isolated — no shared resources between them. Config and data live under `~/.blissful-infra/clients/`.
 
 **API server** (`packages/cli/src/server/api.ts`) runs on **port 3002** and is the single integration point between the CLI, the dashboard, and Jenkins pipelines. The dashboard talks to it over `http://localhost:3002`. Jenkins pipelines reach it via `http://host.docker.internal:3002`.
 
