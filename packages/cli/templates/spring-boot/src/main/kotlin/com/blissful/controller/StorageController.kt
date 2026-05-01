@@ -18,7 +18,7 @@ import java.time.Duration
 import java.util.UUID
 
 @RestController
-@RequestMapping("/api/storage")
+@RequestMapping("/storage")
 class StorageController(private val storageService: StorageService) {
 
     /** Get a presigned PUT URL for direct browser-to-S3 upload. Returns { uploadUrl, key }. */

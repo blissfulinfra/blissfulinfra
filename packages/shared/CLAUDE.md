@@ -24,7 +24,7 @@ src/
 └── schemas/
     ├── api.ts        # HTTP request/response shapes (ProjectStatus, Service, HealthResponse, etc.)
     ├── alerts.ts     # AlertThreshold, TriggeredAlert, AlertsConfig
-    ├── config.ts     # blissful-infra.yaml project config schema
+    ├── config.ts     # blissful-infra.yaml config schemas (ProjectConfig, ClientConfig, ServiceConfig, PortBlock, ClientRegistry)
     ├── deployments.ts # DeploymentRecord, CreateDeploymentRequest, UpdateDeploymentRequest
     ├── logs.ts       # StoredLogEntry, LogRetentionConfig
     ├── metrics.ts    # ContainerMetrics, HttpMetrics, StoredMetrics
@@ -70,6 +70,18 @@ npm run build:shared
 ```
 
 **Must build before the CLI or dashboard.** The root `npm run build` handles this ordering automatically (shared → cli → dashboard).
+
+## Tests
+
+Schema validation tests live in `src/schemas/__tests__/*.test.ts` — Layer 1 of
+the three-layer testing strategy (see root [CLAUDE.md](../../CLAUDE.md#testing-convention)).
+Every Zod schema gets accept/reject tests for at least the happy path and
+2-3 representative invalid shapes.
+
+```bash
+npm test           # vitest run
+npm run test:watch # vitest watch
+```
 
 ---
 

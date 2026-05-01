@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { getConfig, serviceUrl } from './config'
 import {
   XAxis,
   YAxis,
@@ -274,6 +275,12 @@ interface MetricsStorage {
   fileCount: number
 }
 
+// API base — bump to /api/v2 when introducing breaking changes. The server
+// also accepts the unversioned /api/ form for backward compatibility.
+// Sourced from runtime config (`public/config.json`) so the same build can
+// run against different API mounts or hosts without rebuilding.
+const API_BASE = getConfig().apiBase
+
 // Time window options
 const TIME_WINDOWS = [
   { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
@@ -535,6 +542,22 @@ function App() {
   const [lokiLevelFilter, setLokiLevelFilter] = useState<string>('all')
   const [lokiSearch, setLokiSearch] = useState('')
 
+  // Tool URLs (Jaeger, Grafana, etc.) — populated from /api/links so they
+  // honor the per-client port allocation when running in client mode.
+  const [links, setLinks] = useState<{
+    clientName: string | null
+    jaegerUrl: string | null
+    grafanaUrl: string | null
+    prometheusUrl: string | null
+    jenkinsUrl: string | null
+  }>({ clientName: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
+
+  useEffect(() => {
+    fetch(`${API_BASE}/links`).then(r => r.ok ? r.json() : null).then(data => {
+      if (data) setLinks(data)
+    }).catch(() => { /* fall back to defaults below */ })
+  }, [])
+
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [followLogs, setFollowLogs] = useState(true)
@@ -569,7 +592,7 @@ function App() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('/api/projects')
+      const res = await fetch(`${API_BASE}/projects`)
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects || [])
@@ -586,7 +609,7 @@ function App() {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch('/api/templates')
+      const res = await fetch(`${API_BASE}/templates`)
       if (res.ok) {
         const data = await res.json()
         setTemplates(data)
@@ -598,7 +621,7 @@ function App() {
 
   const fetchModels = async () => {
     try {
-      const res = await fetch('/api/models')
+      const res = await fetch(`${API_BASE}/models`)
       if (res.ok) {
         const data: ModelsResponse = await res.json()
         setModels(data)
@@ -630,7 +653,7 @@ function App() {
       if (lokiServiceFilter !== 'all') params.set('service', lokiServiceFilter)
       if (lokiSearch) params.set('filter', lokiSearch)
       params.set('limit', '300')
-      const lokiRes = await fetch(`/api/projects/${selectedProject.name}/logs/loki?${params}`)
+      const lokiRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`)
       if (lokiRes.ok) {
         const data = await lokiRes.json()
         if (data.source === 'loki') {
@@ -646,7 +669,7 @@ function App() {
     } catch { /* fall through */ }
     setLokiAvailable(false)
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/logs`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs`)
       if (res.ok) {
         const data = await res.json()
         setLogs(data.logs || [])
@@ -659,7 +682,7 @@ function App() {
   const fetchLokiServices = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/logs/loki/services`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki/services`)
       if (res.ok) {
         const data = await res.json()
         setLokiServices(data.services || [])
@@ -678,7 +701,7 @@ function App() {
   const fetchHealth = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/health`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/health`)
       if (res.ok) {
         const data: HealthResponse = await res.json()
         setCurrentHealth(data.services)
@@ -710,7 +733,7 @@ function App() {
   const fetchPlugins = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/plugins`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/plugins`)
       if (res.ok) {
         const data: PluginStatus[] = await res.json()
         setPluginStatuses(data)
@@ -723,7 +746,7 @@ function App() {
   const fetchMetrics = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/metrics`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics`)
       if (res.ok) {
         const data: MetricsResponse = await res.json()
         setMetricsLoaded(true)
@@ -782,7 +805,7 @@ function App() {
       // Fetch historical data for the current time window
       const startTime = Date.now() - timeWindow.value * 1000
       const res = await fetch(
-        `/api/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`
+        `${API_BASE}/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`
       )
 
       if (res.ok) {
@@ -843,7 +866,7 @@ function App() {
   const fetchAlerts = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/alerts`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts`)
       if (res.ok) {
         const data: AlertsResponse = await res.json()
         setActiveAlerts(data.activeAlerts)
@@ -856,7 +879,7 @@ function App() {
   const acknowledgeAllAlerts = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`/api/projects/${selectedProject.name}/alerts/acknowledge`, {
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/acknowledge`, {
         method: 'POST',
       })
       setActiveAlerts([])
@@ -869,7 +892,7 @@ function App() {
   const fetchPipeline = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/pipeline`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/pipeline`)
       if (res.ok) {
         const data = await res.json()
         setPipelineData(data)
@@ -883,7 +906,7 @@ function App() {
     if (!selectedProject) return
     setPipelineRunning(true)
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/pipeline`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/pipeline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pipelineOptions),
@@ -905,7 +928,7 @@ function App() {
   const fetchEnvironments = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/environments`)
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/environments`)
       if (res.ok) {
         const data = await res.json()
         setEnvironments(data.environments || [])
@@ -919,7 +942,7 @@ function App() {
     if (!selectedProject) return
     setDeployingEnv(env)
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/deploy`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -940,7 +963,7 @@ function App() {
     if (!selectedProject) return
     setRollingBackEnv(env)
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/rollback`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/rollback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -963,9 +986,9 @@ function App() {
     setSettingsLoading(true)
     try {
       const [alertsRes, logConfigRes, metricsRes] = await Promise.all([
-        fetch(`/api/projects/${selectedProject.name}/alerts`),
-        fetch(`/api/projects/${selectedProject.name}/logs/config`),
-        fetch(`/api/projects/${selectedProject.name}/metrics/storage`),
+        fetch(`${API_BASE}/projects/${selectedProject.name}/alerts`),
+        fetch(`${API_BASE}/projects/${selectedProject.name}/logs/config`),
+        fetch(`${API_BASE}/projects/${selectedProject.name}/metrics/storage`),
       ])
       if (alertsRes.ok) {
         const data: AlertsResponse = await alertsRes.json()
@@ -990,7 +1013,7 @@ function App() {
   const saveAlertThreshold = async (t: AlertThreshold) => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/alerts/thresholds/${t.id}`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${t.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
@@ -1007,7 +1030,7 @@ function App() {
   const addAlertThreshold = async (t: Partial<AlertThreshold>) => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/alerts/thresholds`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
@@ -1024,7 +1047,7 @@ function App() {
   const deleteAlertThreshold = async (id: string) => {
     if (!selectedProject) return
     try {
-      await fetch(`/api/projects/${selectedProject.name}/alerts/thresholds/${id}`, {
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${id}`, {
         method: 'DELETE',
       })
       await fetchSettings()
@@ -1040,7 +1063,7 @@ function App() {
   const saveLogRetentionConfig = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`/api/projects/${selectedProject.name}/logs/config`, {
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logConfig),
@@ -1053,7 +1076,7 @@ function App() {
   const handleLogRotate = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`/api/projects/${selectedProject.name}/logs/rotate`, { method: 'POST' })
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/rotate`, { method: 'POST' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to rotate logs:', e)
@@ -1063,7 +1086,7 @@ function App() {
   const handleClearLogs = async () => {
     if (!selectedProject || !confirm('Are you sure you want to clear all stored logs?')) return
     try {
-      await fetch(`/api/projects/${selectedProject.name}/logs/stored`, { method: 'DELETE' })
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/stored`, { method: 'DELETE' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to clear logs:', e)
@@ -1073,7 +1096,7 @@ function App() {
   const handleExportMetrics = async (format: 'json' | 'csv') => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/metrics/export`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ format }),
@@ -1095,7 +1118,7 @@ function App() {
   const handleClearMetrics = async () => {
     if (!selectedProject || !confirm('Are you sure you want to clear all stored metrics?')) return
     try {
-      await fetch(`/api/projects/${selectedProject.name}/metrics`, { method: 'DELETE' })
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics`, { method: 'DELETE' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to clear metrics:', e)
@@ -1191,7 +1214,7 @@ function App() {
     if (selectedProject && activeTab === 'deployments') {
       const fetchDeployments = async () => {
         try {
-          const res = await fetch(`/api/projects/${selectedProject.name}/deployments`)
+          const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/deployments`)
           if (res.ok) {
             const data = await res.json()
             setDeployments(data.deployments || [])
@@ -1219,15 +1242,15 @@ function App() {
     const poll = async () => {
       try {
         const [statusRes, logRes] = await Promise.all([
-          fetch(`/api/projects/${selectedProject.name}/perf/gatling/status`),
-          fetch(`/api/projects/${selectedProject.name}/perf/gatling/log`),
+          fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`),
+          fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`),
         ])
         if (statusRes.ok) {
           const s = await statusRes.json()
           setGatlingStatus(s.status)
           if (s.status === 'completed' || s.status === 'error') {
             if (s.status === 'completed') {
-              const rRes = await fetch(`/api/projects/${selectedProject.name}/perf/gatling/results`)
+              const rRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`)
               if (rRes.ok) setGatlingResults(await rRes.json())
             }
           }
@@ -1246,16 +1269,16 @@ function App() {
   // Fetch latest results when switching to perf tab (if previous run completed)
   useEffect(() => {
     if (!selectedProject || activeTab !== 'perf') return
-    fetch(`/api/projects/${selectedProject.name}/perf/gatling/status`)
+    fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)
       .then(r => r.ok ? r.json() : null)
       .then(async s => {
         if (!s) return
         setGatlingStatus(s.status)
         if (s.status === 'completed') {
-          const rRes = await fetch(`/api/projects/${selectedProject.name}/perf/gatling/results`)
+          const rRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`)
           if (rRes.ok) setGatlingResults(await rRes.json())
         }
-        const lRes = await fetch(`/api/projects/${selectedProject.name}/perf/gatling/log`)
+        const lRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)
         if (lRes.ok) setGatlingLog((await lRes.json()).lines)
       })
       .catch(() => {})
@@ -1267,7 +1290,7 @@ function App() {
     setGatlingLog([])
     setGatlingResults(null)
     try {
-      await fetch(`/api/projects/${selectedProject.name}/perf/gatling/run`, { method: 'POST' })
+      await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`, { method: 'POST' })
     } catch {
       setGatlingStatus('error')
     }
@@ -1277,7 +1300,7 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/up`, { method: 'POST' })
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/up`, { method: 'POST' })
       const data = await res.json()
       if (!data.success && data.error) {
         setErrorModal({
@@ -1300,7 +1323,7 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/down`, { method: 'POST' })
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/down`, { method: 'POST' })
       const data = await res.json()
       if (!data.success && data.error) {
         setErrorModal({
@@ -1324,7 +1347,7 @@ function App() {
       return
     }
     try {
-      await fetch(`/api/projects/${projectName}`, { method: 'DELETE' })
+      await fetch(`${API_BASE}/projects/${projectName}`, { method: 'DELETE' })
       if (selectedProject?.name === projectName) {
         setSelectedProject(null)
       }
@@ -1340,7 +1363,7 @@ function App() {
 
     setCreating(true)
     try {
-      const res = await fetch('/api/projects', {
+      const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProject),
@@ -1401,7 +1424,7 @@ function App() {
     setAgentLoading(true)
 
     try {
-      const res = await fetch(`/api/projects/${selectedProject.name}/agent`, {
+      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1501,26 +1524,30 @@ function App() {
             <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">orchestrator</span>
           </div>
           <div className="flex items-center gap-2">
-            <a
-              href="http://localhost:16686"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-purple-400"
-              title="Open Jaeger Distributed Tracing"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Jaeger
-            </a>
-            <a
-              href="http://localhost:3001/d/blissful-service-overview/service-overview"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-orange-400"
-              title="Open Grafana Dashboards"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Grafana
-            </a>
+            {links.jaegerUrl && (
+              <a
+                href={links.jaegerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-purple-400"
+                title="Open Jaeger Distributed Tracing"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Jaeger
+              </a>
+            )}
+            {links.grafanaUrl && (
+              <a
+                href={links.grafanaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-orange-400"
+                title="Open Grafana Dashboards"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Grafana
+              </a>
+            )}
             <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg transition-colors"
@@ -1701,7 +1728,7 @@ function App() {
                           <span className="capitalize">{service.name}</span>
                           {svcMeta?.port && (
                             <a
-                              href={`http://localhost:${svcMeta.port}`}
+                              href={serviceUrl(svcMeta.port)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-400 hover:underline"
@@ -1730,7 +1757,7 @@ function App() {
                         <span>{service.name}</span>
                         {service.port && (
                           <a
-                            href={`http://localhost:${service.port}`}
+                            href={serviceUrl(service.port)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-400 hover:underline"

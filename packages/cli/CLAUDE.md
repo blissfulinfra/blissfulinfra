@@ -20,11 +20,28 @@ src/
 │   ├── api.ts            # Express REST API server (port 3002)
 │   ├── mcp.ts            # Model Context Protocol server
 │   └── entrypoint.ts     # Starts API + MCP together
-└── utils/                # Shared utility modules (19 files)
+├── utils/                # Shared utility modules (19 files)
+│   └── __tests__/        # Co-located unit + L2 tests (vitest)
+└── __tests__/integration/ # L3 integration tests (real Docker, slow)
 
 templates/                # Scaffold templates (NOT under src/ — shipped as-is in npm package)
 examples/                 # Example projects (copied to dist/examples at build time)
 ```
+
+## Tests
+
+Three-layer strategy (see root [CLAUDE.md](../../CLAUDE.md#testing-convention)):
+- **L1** — pure functions (port math, validators) under `src/utils/__tests__/*.test.ts`
+- **L2** — compose generation (validates real YAML with `docker compose config --quiet`) under same dir
+- **L3** — full client/service lifecycle (real Docker) under `src/__tests__/integration/`
+
+```bash
+npm test                      # L1 + L2 (fast, ~250ms total)
+npm run test:watch            # vitest watch mode
+npm run test:integration      # L3 (slow, real Docker, builds CLI first)
+```
+
+**Required for testability:** [client-registry.ts](src/utils/client-registry.ts) reads `BLISSFUL_HOME` env var on every call (defaults to `~/.blissful-infra`). Tests set this to a temp dir via `mkdtemp` so the real registry is never touched.
 
 ---
 
@@ -35,7 +52,7 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 ### Core (Phase 1)
 | Command | File | What it does |
 |---|---|---|
-| `start <name>` | `start.ts` | Scaffolds project dir + boots full stack |
+| `start <name>` | `start.ts` | Scaffolds project dir + boots full stack (flat model) |
 | `up` | `up.ts` | Start a stopped project (`docker compose up`) |
 | `down` | `down.ts` | Stop a running project (`docker compose down`) |
 | `logs` | `logs.ts` | Stream logs from all services |
@@ -45,6 +62,20 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 | `example <name>` | `example.ts` | Scaffold an example app from `dist/examples/` |
 | `mcp` | `mcp.ts` | Start the MCP server for Claude Desktop / Claude Code |
 | `create` | `create.ts` | Lower-level project creation helper |
+
+### Client Model (Phase 6)
+| Command | File | What it does |
+|---|---|---|
+| `client create <name>` | `client.ts` | Create a client environment with isolated infra |
+| `client list` | `client.ts` | List all client environments |
+| `client up <name>` | `client.ts` | Start client infra + all services |
+| `client down <name>` | `client.ts` | Stop a client environment |
+| `client status <name>` | `client.ts` | Show infra health + service status |
+| `client remove <name>` | `client.ts` | Remove a client environment entirely |
+| `service add <client> <svc>` | `service.ts` | Add a service to an existing client |
+| `service up <client> <svc>` | `service.ts` | Start a single service |
+| `service down <client> <svc>` | `service.ts` | Stop a single service |
+| `service logs <client> <svc>` | `service.ts` | Stream logs for a service |
 
 ### CI/CD (Phase 2)
 | Command | File | What it does |
@@ -95,6 +126,8 @@ Each util is a focused module. Key ones:
 | `registry.ts` | Project registry (tracks all known projects) |
 | `plugin-system.ts` | Plugin loading and overlay system |
 | `plugin-registry.ts` | Registry of available plugin types |
+| `client-registry.ts` | Client environment registry + port block allocation |
+| `infra-compose.ts` | Generates `docker-compose.infra.yaml` + Prometheus/Loki/Grafana configs |
 
 ---
 
@@ -103,16 +136,32 @@ Each util is a focused module. Key ones:
 Express server running on **port 3002**. Key endpoints:
 
 ```
-GET  /api/projects                              List all known projects
-GET  /api/projects/:name                        Project details + status
-POST /api/projects/:name/up                     Restart containers (deploy)
-GET  /api/projects/:name/logs                   Fetch recent logs
-GET  /api/projects/:name/metrics                Prometheus metrics (p95 latency etc.)
-GET  /api/projects/:name/deployments            List deployments (JSONL storage)
-POST /api/projects/:name/deployments            Register new deployment
-PATCH /api/projects/:name/deployments/:id       Update deployment status
-GET  /api/projects/:name/traces                 Jaeger trace links
+GET  /api/v1/projects                              List all known projects
+GET  /api/v1/projects/:name                        Project details + status
+POST /api/v1/projects/:name/up                     Restart containers (deploy)
+GET  /api/v1/projects/:name/logs                   Fetch recent logs
+GET  /api/v1/projects/:name/metrics                Prometheus metrics (p95 latency etc.)
+GET  /api/v1/projects/:name/deployments            List deployments (JSONL storage)
+POST /api/v1/projects/:name/deployments            Register new deployment
+PATCH /api/v1/projects/:name/deployments/:id       Update deployment status
+GET  /api/v1/projects/:name/traces                 Jaeger trace links
+GET  /api/v1/links                                 Tool URLs (Jaeger/Grafana/etc) for the current client
 ```
+
+### API versioning
+
+`/api/v1/...` is the only accepted public path. The server returns 404 with a
+clear migration hint for any `/api/...` request that is not `/api/v1/`. All
+internal callers — the dashboard, MCP server, and the Jenkinsfile template —
+use the versioned form.
+
+To introduce v2 (breaking change), add new route handlers using `/api/v2/...`
+matchers alongside the v1 ones. Keep v1 alive until consumers migrate, then
+delete it. The dashboard centralizes the version in a single `API_BASE`
+constant in [App.tsx](../dashboard/src/App.tsx).
+
+Note: `${jenkins}/api/json` and `${grafana}/api/health` are *external* APIs
+(Jenkins, Grafana) — they are unrelated to this versioning and stay as-is.
 
 The dashboard (`packages/dashboard`) fetches from this server at `http://localhost:3002`.
 Jenkins pipelines reach it at `http://host.docker.internal:3002` (from inside Docker).

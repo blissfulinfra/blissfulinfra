@@ -117,7 +117,7 @@ export const ApiConfigSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Root project config (blissful-infra.yaml)
+// Root project config (blissful-infra.yaml) — legacy flat model
 // ---------------------------------------------------------------------------
 
 export const ProjectConfigSchema = z.object({
@@ -135,6 +135,73 @@ export const ProjectConfigSchema = z.object({
   api: ApiConfigSchema.optional(),
 });
 
+// ---------------------------------------------------------------------------
+// Client environment model — per-client isolation with shared infrastructure
+// ---------------------------------------------------------------------------
+
+export const ObservabilityConfigSchema = z.object({
+  prometheus: z.boolean().default(true),
+  grafana: z.boolean().default(true),
+  jaeger: z.boolean().default(true),
+  loki: z.boolean().default(true),
+  clickhouse: z.boolean().default(false),
+});
+
+export const ClientInfrastructureSchema = z.object({
+  kafka: z.boolean().default(true),
+  postgres: z.boolean().default(true),
+  jenkins: z.boolean().default(true),
+  observability: ObservabilityConfigSchema.optional(),
+});
+
+export const ClientServiceRefSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+});
+
+export const ClientConfigSchema = z.object({
+  type: z.literal("client"),
+  name: z.string(),
+  infrastructure: ClientInfrastructureSchema.optional(),
+  plugins: z.array(PluginInstanceSchema).optional(),
+  deploy: DeployConfigSchema.optional(),
+  services: z.array(ClientServiceRefSchema).optional(),
+});
+
+export const ServiceConfigSchema = z.object({
+  type: z.literal("service"),
+  name: z.string(),
+  client: z.string(),
+  backend: z.string().optional(),
+  frontend: z.string().optional(),
+  plugins: z.array(PluginInstanceSchema).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Port block allocation — deterministic port assignment per client
+// ---------------------------------------------------------------------------
+
+export const PortBlockSchema = z.object({
+  clientName: z.string(),
+  blockIndex: z.number(),
+  jenkins: z.number(),
+  grafana: z.number(),
+  prometheus: z.number(),
+  jaeger: z.number(),
+  kafka: z.number(),
+  postgres: z.number(),
+  dashboard: z.number(),
+});
+
+export const ClientRegistrySchema = z.object({
+  clients: z.record(z.string(), PortBlockSchema),
+  nextBlockIndex: z.number().default(0),
+});
+
+// ---------------------------------------------------------------------------
+// Inferred types
+// ---------------------------------------------------------------------------
+
 export type DeployTarget = z.infer<typeof DeployTargetSchema>;
 export type DeployConfig = z.infer<typeof DeployConfigSchema>;
 export type CloudflareDeployConfig = z.infer<typeof CloudflareDeployConfigSchema>;
@@ -151,3 +218,10 @@ export type ApiGenerateTypes = z.infer<typeof ApiGenerateTypesSchema>;
 export type ApiGenerate = z.infer<typeof ApiGenerateSchema>;
 export type ApiConfig = z.infer<typeof ApiConfigSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+export type ObservabilityConfig = z.infer<typeof ObservabilityConfigSchema>;
+export type ClientInfrastructure = z.infer<typeof ClientInfrastructureSchema>;
+export type ClientServiceRef = z.infer<typeof ClientServiceRefSchema>;
+export type ClientConfig = z.infer<typeof ClientConfigSchema>;
+export type ServiceConfig = z.infer<typeof ServiceConfigSchema>;
+export type PortBlock = z.infer<typeof PortBlockSchema>;
+export type ClientRegistry = z.infer<typeof ClientRegistrySchema>;

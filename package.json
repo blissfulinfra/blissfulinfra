@@ -33,7 +33,10 @@
     "build:cli": "npm run build -w packages/shared && npm run build -w packages/cli",
     "build:dashboard": "npm run build -w packages/shared && npm run build -w packages/dashboard",
     "dev": "./dev.sh",
-    "test": "echo 'No tests configured yet'"
+    "test": "npm run test -w packages/shared && npm run test -w packages/cli",
+    "test:watch": "npm run test:watch -w packages/cli",
+    "test:integration": "npm run build:cli && npm run test:integration -w packages/cli",
+    "test:all": "npm run test && npm run test:integration"
   },
   "engines": {
     "node": ">=20.0.0"

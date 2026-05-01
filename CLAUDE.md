@@ -1,7 +1,10 @@
 # blissful-infra — Monorepo Root
 
 ## TODOs
-- Observability is project-scoped (Grafana, Prometheus, Jaeger, Loki as plugins) — Jenkins stays global because it needs cross-project awareness. Each project declares its APM backend via plugins; the plugin adapts. This sets up Phase 8 pluggable APM backends cleanly.
+- Client model (Phase 6A) is implemented — `blissful-infra client create/list/up/down/status/remove` and `blissful-infra service add/up/down/logs`. Both Jenkins and observability are per-client (fully isolated). Phase 6B (dynamic Prometheus scrape updates, Jenkins job scoping) is next.
+- User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab) — designed in [specs/analytics.md](specs/analytics.md). Slice A (plumbing) is the next build chunk.
+- **dev-app is now a client-model service** — lives at `~/.blissful-infra/clients/dev/app/` (client `dev`, service `app`). The old `dev-app/` directory at the repo root has been removed. `dev.sh` rebuilt to use `blissful-infra client up dev`. Eat-your-own-dogfood is now the client model. The legacy `blissful-infra start` flat-model path still works for users who want it, but is no longer used internally.
+- **Template hot-reload (`blissful-infra dev --templates <project>`) needs porting** to client-model paths — currently expects a project dir under cwd, would need to accept a client-model service path like `~/.blissful-infra/clients/dev/app`. Niche template-developer feature; defer until needed.
 
 ## What this repo is
 
@@ -20,7 +23,6 @@ blissful-infra/
 │   └── dashboard/    # React web dashboard (served by the CLI's API server)
 ├── examples/         # Example apps scaffolded by the CLI (copied into CLI dist at build)
 ├── site/             # Astro + Starlight docs site → blissful-infra.com (Cloudflare Pages)
-├── dev-app/          # Reference full-stack app used during local development
 ├── docs/             # Learning guides and internal documentation
 ├── specs/            # Product vision, agent architecture, timeline specs
 ├── package.json      # Root workspace — workspaces: ["packages/*"]
@@ -67,11 +69,21 @@ cd site && npm run dev    # Astro dev server
 
 ---
 
+## Architectural decisions
+
+ADRs capturing the **why** behind significant choices live in
+[docs/adr/](docs/adr/). Read [docs/adr/README.md](docs/adr/README.md) for the
+convention. Write a new ADR whenever a decision is hard to reverse,
+cross-cutting, surprising, or comes up repeatedly. Skip them for routine
+implementation details.
+
 ## Key specs — read before working on these areas
 
 | You want to work on… | Read |
 |---|---|
 | Client environment model / `blissful-infra client create` / per-client isolation | [specs/client-model.md](specs/client-model.md) |
+| User session analytics (ClickHouse + Kafka pipeline + SDK) | [specs/analytics.md](specs/analytics.md) |
+| Browser-friendly URLs / Caddy edge proxy / local TLS | [docs/adr/0001-caddy-edge-proxy.md](docs/adr/0001-caddy-edge-proxy.md) |
 | Cloud hosting / `blissful-infra deploy` / $5 tier | [specs/cloud-hosting.md](specs/cloud-hosting.md) |
 | Cloud deploy Cloudflare architecture | [specs/cloud-deploy.md](specs/cloud-deploy.md) |
 | Agentic workflows (Feature, Template, Test, Monitor agents) | [specs/agentic-workflows.md](specs/agentic-workflows.md) |
@@ -104,14 +116,14 @@ cd site && npm run dev    # Astro dev server
 - **Unit tests** — preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
 - **Test plans** — for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
 - **Documentation** - make sure to keep documentation up to date with each feature added
-
+- **Code Quality** - Codex will review your output once you are done
 ---
 
 ## Shared conventions
 
 - **Language:** TypeScript throughout (`"type": "module"` ESM everywhere). No CommonJS.
 - **Node version:** `>=20.0.0` (root engines field). Cloudflare Pages uses Node 22.
-- **No test suite yet** — `npm test` echoes a placeholder. Do not add mocks; integration tests should hit real services.
+- **Testing:** Vitest, three layers — see [Testing convention](#testing-convention) below.
 - **No backwards-compat shims** — delete unused code rather than commenting it out.
 - **Formatting:** No formatter configured. Match surrounding style.
 - **Secrets:** Never commit `.env` files or API keys. The CLI reads `ANTHROPIC_API_KEY` from the user's environment.
@@ -123,13 +135,49 @@ cd site && npm run dev    # Astro dev server
 
 These patterns appear across multiple packages and should stay consistent:
 
-**Docker Compose** is the runtime unit. Each project the CLI creates gets a `docker-compose.yaml`. Services talk over the default Compose network using service names as hostnames.
+**Docker Compose** is the runtime unit. Two models coexist:
+- **Flat model** (legacy): `blissful-infra start <name>` creates a single `docker-compose.yaml` with all services and infra in one file.
+- **Client model** (Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network as an external network. Clients are fully isolated — no shared resources between them. Config and data live under `~/.blissful-infra/clients/`.
 
 **API server** (`packages/cli/src/server/api.ts`) runs on **port 3002** and is the single integration point between the CLI, the dashboard, and Jenkins pipelines. The dashboard talks to it over `http://localhost:3002`. Jenkins pipelines reach it via `http://host.docker.internal:3002`.
 
 **MCP server** (`packages/cli/src/server/mcp.ts`) exposes CLI capabilities as tools for Claude via the Model Context Protocol. Run with `blissful-infra mcp`.
 
 **Template variable substitution** uses `{{VAR_NAME}}` (replaced at scaffold time) and `{{#IF_FEATURE}} … {{/IF_FEATURE}}` for conditional blocks. See [packages/cli/src/templates/CLAUDE.md](packages/cli/src/templates/CLAUDE.md).
+
+---
+
+## Testing convention
+
+Three-layer strategy. Run **L1+L2 before every commit** (under 1s, no Docker
+needed). Run L3 before pushing or when changing code that touches Docker.
+
+| Layer | What | Where | Speed | Run with |
+|---|---|---|---|---|
+| **L1** | Schema validation + pure logic | `src/**/__tests__/*.test.ts` | ~ms | `npm test` |
+| **L2** | Compose YAML correctness (real `docker compose config`) | `src/utils/__tests__/*.test.ts` | ~hundreds of ms | `npm test` |
+| **L3** | End-to-end (real Docker, real client/service lifecycle) | `src/__tests__/integration/**/*.test.ts` | ~minutes | `npm run test:integration` |
+
+**Root scripts:**
+```bash
+npm test              # L1 + L2 — fast, run on every save / before commit
+npm run test:watch    # vitest watch mode in packages/cli
+npm run test:integration   # L3 — real Docker, slow, before push
+npm run test:all      # everything
+```
+
+**Conventions:**
+- Tests colocate with the code: `src/utils/foo.ts` → `src/utils/__tests__/foo.test.ts`
+- Integration tests live under `src/__tests__/integration/` — excluded from default `npm test` and from the production build via tsconfig
+- Each integration test gets a unique `BLISSFUL_HOME` (via `mkdtemp`) so it doesn't pollute the user's real registry. The CLI honors this env var when set
+- Each integration test uses a unique client name (timestamp + random suffix) so parallel CI runs don't collide
+- No mocks — tests hit real services (Vitest runs in node, `execa` invokes real `docker`)
+- Cleanup is `afterAll` and best-effort — even on failure, do `client remove`
+
+**When to add what:**
+- Changed a schema or pure function → add an L1 test
+- Changed a compose generator → add an L2 assertion (parse the YAML, assert structure)
+- Changed `client create` / `service add` flow → existing L3 covers; add a new L3 only for new flows
 
 ---
 

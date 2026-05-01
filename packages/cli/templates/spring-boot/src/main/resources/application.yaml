@@ -64,6 +64,7 @@ spring:
 {{#IF_LOCALSTACK}}
 aws:
   endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
+  public-endpoint-url: ${AWS_PUBLIC_ENDPOINT_URL:${AWS_ENDPOINT_URL:http://localhost:4566}}
   region: ${AWS_DEFAULT_REGION:us-east-1}
   access-key: ${AWS_ACCESS_KEY_ID:test}
   secret-key: ${AWS_SECRET_ACCESS_KEY:test}

@@ -166,7 +166,7 @@ blissful-infra deploy
 
 The same stack you built locally deploys to Cloudflare's edge infrastructure. Your local Postgres maps to Cloudflare D1, Redis to KV, Kafka to Queues. No config changes. The `blissful-infra.yaml` that defined your local environment defines your production one.
 
-[Get started →](/getting-started) or [view pricing →](/pricing) if you're ready to deploy.
+[Get started →](/getting-started)
 
 ## Prerequisites
 

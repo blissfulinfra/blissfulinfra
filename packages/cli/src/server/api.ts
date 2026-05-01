@@ -127,9 +127,38 @@ export function createApiServer(workingDir: string, port = 3002) {
 
     const url = new URL(req.url || "/", `http://localhost:${port}`);
 
+    // API versioning — only `/api/v1/...` is accepted. Reject any other
+    // `/api/...` request with 404 + a clear message so callers know to
+    // migrate. (Static asset paths under `/api/...` are not a concern: the
+    // dashboard's static fallthrough excludes anything starting with
+    // `/api/v1/`.) New versions branch off here as `/api/v2/...`.
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/v1/") && url.pathname !== "/api/v1") {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: "Unsupported API version",
+        hint: "Use /api/v1/... — the unversioned /api/ form has been removed.",
+      }));
+      return;
+    }
+
     try {
+      // GET /api/links - Tool URLs (Jaeger/Grafana/etc) for the current
+      // client. Empty when running in flat-model mode without env injection.
+      if (req.method === "GET" && url.pathname === "/api/v1/links") {
+        const links: Record<string, string | null> = {
+          clientName: process.env.CLIENT_NAME || null,
+          jaegerUrl: process.env.JAEGER_URL || null,
+          grafanaUrl: process.env.GRAFANA_URL || null,
+          prometheusUrl: process.env.PROMETHEUS_URL || null,
+          jenkinsUrl: process.env.JENKINS_URL || null,
+        };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(links));
+        return;
+      }
+
       // GET /api/projects - List all projects in working directory
-      if (req.method === "GET" && url.pathname === "/api/projects") {
+      if (req.method === "GET" && url.pathname === "/api/v1/projects") {
         const projects = await listProjects(workingDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ projects }));
@@ -137,7 +166,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name - Get specific project status
-      const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      const projectMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
       if (req.method === "GET" && projectMatch) {
         const projectName = projectMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -148,7 +177,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects - Create new project
-      if (req.method === "POST" && url.pathname === "/api/projects") {
+      if (req.method === "POST" && url.pathname === "/api/v1/projects") {
         const body = await readBody(req);
         const { name, type, backend, frontend, database } = JSON.parse(body);
 
@@ -172,7 +201,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/up - Start project
-      const upMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/up$/);
+      const upMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/up$/);
       if (req.method === "POST" && upMatch) {
         const projectName = upMatch[1];
 
@@ -197,7 +226,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/down - Stop project
-      const downMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/down$/);
+      const downMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/down$/);
       if (req.method === "POST" && downMatch) {
         const projectName = downMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -211,7 +240,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/logs - Get project logs
-      const logsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs$/);
+      const logsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs$/);
       if (req.method === "GET" && logsMatch) {
         const projectName = logsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -226,7 +255,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/logs/loki - Proxy to Loki query_range, returns LogEntry[]
-      const lokiLogsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/loki$/);
+      const lokiLogsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/loki$/);
       if (req.method === "GET" && lokiLogsMatch) {
         const projectName = lokiLogsMatch[1];
         const lokiHost = DOCKER_MODE ? "loki" : "localhost";
@@ -269,7 +298,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/logs/loki/services - Available service labels from Loki
-      const lokiServicesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/loki\/services$/);
+      const lokiServicesMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/loki\/services$/);
       if (req.method === "GET" && lokiServicesMatch) {
         const projectName = lokiServicesMatch[1];
         const lokiHost = DOCKER_MODE ? "loki" : "localhost";
@@ -292,7 +321,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/logs/search - Search stored logs
-      const logsSearchMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/search$/);
+      const logsSearchMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/search$/);
       if (req.method === "GET" && logsSearchMatch) {
         const projectName = logsSearchMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -321,7 +350,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/logs/config - Get log retention config
-      const logConfigMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/config$/);
+      const logConfigMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/config$/);
       if (req.method === "GET" && logConfigMatch) {
         const projectName = logConfigMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -335,7 +364,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // PUT /api/projects/:name/logs/config - Update log retention config
-      const logConfigUpdateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/config$/);
+      const logConfigUpdateMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/config$/);
       if (req.method === "PUT" && logConfigUpdateMatch) {
         const projectName = logConfigUpdateMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -349,7 +378,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/logs/rotate - Force log rotation
-      const logRotateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/rotate$/);
+      const logRotateMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/rotate$/);
       if (req.method === "POST" && logRotateMatch) {
         const projectName = logRotateMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -361,7 +390,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // DELETE /api/projects/:name/logs/stored - Clear stored logs
-      const logClearMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/stored$/);
+      const logClearMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/stored$/);
       if (req.method === "DELETE" && logClearMatch) {
         const projectName = logClearMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -373,7 +402,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/agent - Query agent for project
-      const agentMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/agent$/);
+      const agentMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/agent$/);
       if (req.method === "POST" && agentMatch) {
         const projectName = agentMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -393,7 +422,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // DELETE /api/projects/:name - Delete project
-      const deleteMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      const deleteMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
       if (req.method === "DELETE" && deleteMatch) {
         const projectName = deleteMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -417,7 +446,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/templates - List available templates
-      if (req.method === "GET" && url.pathname === "/api/templates") {
+      if (req.method === "GET" && url.pathname === "/api/v1/templates") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
           types: ["fullstack", "backend", "frontend"],
@@ -429,7 +458,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/metrics - Get container metrics
-      const metricsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics$/);
+      const metricsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics$/);
       if (req.method === "GET" && metricsMatch) {
         const projectName = metricsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -440,7 +469,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/health - Get service health status
-      const healthMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/health$/);
+      const healthMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/health$/);
       if (req.method === "GET" && healthMatch) {
         const projectName = healthMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -451,7 +480,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/plugins - Get plugin statuses with metadata
-      const pluginsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/plugins$/);
+      const pluginsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/plugins$/);
       if (req.method === "GET" && pluginsMatch) {
         const projectName = pluginsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -462,7 +491,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/metrics/history - Get historical metrics
-      const historyMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/history$/);
+      const historyMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/history$/);
       if (req.method === "GET" && historyMatch) {
         const projectName = historyMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -485,7 +514,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/metrics/summary - Get aggregated metrics summary
-      const summaryMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/summary$/);
+      const summaryMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/summary$/);
       if (req.method === "GET" && summaryMatch) {
         const projectName = summaryMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -504,7 +533,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/metrics/storage - Get storage info
-      const storageMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/storage$/);
+      const storageMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/storage$/);
       if (req.method === "GET" && storageMatch) {
         const projectName = storageMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -516,7 +545,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/metrics/export - Export metrics to file
-      const exportMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/export$/);
+      const exportMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/export$/);
       if (req.method === "POST" && exportMatch) {
         const projectName = exportMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -545,7 +574,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // DELETE /api/projects/:name/metrics - Clear metrics history
-      const clearMetricsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics$/);
+      const clearMetricsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics$/);
       if (req.method === "DELETE" && clearMetricsMatch) {
         const projectName = clearMetricsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -557,7 +586,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/alerts - Get active alerts and config
-      const alertsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts$/);
+      const alertsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts$/);
       if (req.method === "GET" && alertsMatch) {
         const projectName = alertsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -573,7 +602,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // PUT /api/projects/:name/alerts/config - Update alerts config
-      const alertsConfigMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/config$/);
+      const alertsConfigMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/config$/);
       if (req.method === "PUT" && alertsConfigMatch) {
         const projectName = alertsConfigMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -587,7 +616,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/alerts/thresholds - Add new threshold
-      const addThresholdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/thresholds$/);
+      const addThresholdMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/thresholds$/);
       if (req.method === "POST" && addThresholdMatch) {
         const projectName = addThresholdMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -601,7 +630,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // PUT /api/projects/:name/alerts/thresholds/:id - Update threshold
-      const updateThresholdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/thresholds\/([^/]+)$/);
+      const updateThresholdMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/thresholds\/([^/]+)$/);
       if (req.method === "PUT" && updateThresholdMatch) {
         const projectName = updateThresholdMatch[1];
         const thresholdId = updateThresholdMatch[2];
@@ -616,7 +645,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // DELETE /api/projects/:name/alerts/thresholds/:id - Delete threshold
-      const deleteThresholdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/thresholds\/([^/]+)$/);
+      const deleteThresholdMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/thresholds\/([^/]+)$/);
       if (req.method === "DELETE" && deleteThresholdMatch) {
         const projectName = deleteThresholdMatch[1];
         const thresholdId = deleteThresholdMatch[2];
@@ -629,7 +658,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/alerts/acknowledge - Acknowledge all active alerts
-      const ackAlertsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/acknowledge$/);
+      const ackAlertsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/acknowledge$/);
       if (req.method === "POST" && ackAlertsMatch) {
         const projectName = ackAlertsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -641,7 +670,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/models - List available AI models
-      if (req.method === "GET" && url.pathname === "/api/models") {
+      if (req.method === "GET" && url.pathname === "/api/v1/models") {
         const provider = await getProvider();
         const models = await listAllModels();
         const modelInfo = await getModelInfo();
@@ -663,7 +692,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       // Phase 2: Pipeline and Deployment Endpoints
 
       // GET /api/projects/:name/environments - List all environments
-      const envsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/environments$/);
+      const envsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/environments$/);
       if (req.method === "GET" && envsMatch) {
         const projectName = envsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -674,7 +703,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/deploy - Trigger deployment
-      const deployMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/deploy$/);
+      const deployMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/deploy$/);
       if (req.method === "POST" && deployMatch) {
         const projectName = deployMatch[1];
         const body = await readBody(req);
@@ -704,7 +733,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/rollback - Trigger rollback
-      const rollbackMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/rollback$/);
+      const rollbackMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/rollback$/);
       if (req.method === "POST" && rollbackMatch) {
         const projectName = rollbackMatch[1];
         const body = await readBody(req);
@@ -734,7 +763,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/pipeline - Get pipeline status
-      const pipelineMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pipeline$/);
+      const pipelineMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/pipeline$/);
       if (req.method === "GET" && pipelineMatch) {
         const projectName = pipelineMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -745,7 +774,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/pipeline - Run pipeline locally
-      const pipelineRunMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pipeline$/);
+      const pipelineRunMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/pipeline$/);
       if (req.method === "POST" && pipelineRunMatch) {
         const projectName = pipelineRunMatch[1];
         const body = await readBody(req);
@@ -777,7 +806,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/perf/gatling/run - Start a Gatling load test
-      const gatlingRunMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/run$/);
+      const gatlingRunMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/perf\/gatling\/run$/);
       if (req.method === "POST" && gatlingRunMatch) {
         const projectName = gatlingRunMatch[1];
         const existing = gatlingJobs.get(projectName);
@@ -826,7 +855,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/perf/gatling/status
-      const gatlingStatusMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/status$/);
+      const gatlingStatusMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/perf\/gatling\/status$/);
       if (req.method === "GET" && gatlingStatusMatch) {
         const projectName = gatlingStatusMatch[1];
         const job = gatlingJobs.get(projectName);
@@ -846,7 +875,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/perf/gatling/log
-      const gatlingLogMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/log$/);
+      const gatlingLogMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/perf\/gatling\/log$/);
       if (req.method === "GET" && gatlingLogMatch) {
         const projectName = gatlingLogMatch[1];
         const job = gatlingJobs.get(projectName);
@@ -859,7 +888,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/perf/gatling/results
-      const gatlingResultsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/perf\/gatling\/results$/);
+      const gatlingResultsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/perf\/gatling\/results$/);
       if (req.method === "GET" && gatlingResultsMatch) {
         const projectName = gatlingResultsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -907,7 +936,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // GET /api/projects/:name/deployments - List deployment records
-      const deploymentsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/deployments$/);
+      const deploymentsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/deployments$/);
       if (req.method === "GET" && deploymentsMatch) {
         const projectName = deploymentsMatch[1];
         const projectDir = path.join(workingDir, projectName);
@@ -956,7 +985,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // PATCH /api/projects/:name/deployments/:id - Update deployment record
-      const deploymentByIdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/deployments\/([^/]+)$/);
+      const deploymentByIdMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/deployments\/([^/]+)$/);
       if (req.method === "PATCH" && deploymentByIdMatch) {
         const projectName = deploymentByIdMatch[1];
         const deploymentId = deploymentByIdMatch[2];
@@ -1006,7 +1035,7 @@ export function createApiServer(workingDir: string, port = 3002) {
 
       // Static file serving for dashboard (Docker/production mode)
       const dashboardDistDir = process.env.DASHBOARD_DIST_DIR;
-      if (dashboardDistDir && !url.pathname.startsWith("/api/")) {
+      if (dashboardDistDir && !url.pathname.startsWith("/api/v1/")) {
         const safePath = path.normalize(url.pathname).replace(/^(\.\.[/\\])+/, "");
         const filePath = path.join(dashboardDistDir, safePath === "/" ? "index.html" : safePath);
 
@@ -1123,8 +1152,17 @@ function buildJaegerTraceUrl(startMs: number, endMs: number): string {
 }
 
 async function listProjects(workingDir: string): Promise<ProjectStatus[]> {
-  const projects: ProjectStatus[] = [];
+  // Client mode: the dashboard is running inside a client's infra stack and
+  // the working dir is the client's root. Each subdir with a service-type
+  // blissful-infra.yaml is a service. Container status is queried via
+  // `docker ps` filtered by the unified `<client>-<service>-` name prefix
+  // (the per-service compose can't be `ps`'d on its own — it's an include).
+  const clientName = process.env.CLIENT_NAME;
+  if (clientName) {
+    return listClientServices(workingDir, clientName);
+  }
 
+  const projects: ProjectStatus[] = [];
   try {
     const entries = await fs.readdir(workingDir, { withFileTypes: true });
 
@@ -1144,6 +1182,67 @@ async function listProjects(workingDir: string): Promise<ProjectStatus[]> {
     }
   } catch {
     // Working directory doesn't exist or can't be read
+  }
+
+  return projects;
+}
+
+async function listClientServices(workingDir: string, clientName: string): Promise<ProjectStatus[]> {
+  // The dashboard mounts the host client dir at /projects/<clientName>.
+  const clientDir = path.join(workingDir, clientName);
+
+  let serviceNames: string[] = [];
+  try {
+    const yaml = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
+    const matches = yaml.match(/^\s+-\s+name:\s*(.+)$/gm) || [];
+    serviceNames = matches.map(m => m.replace(/^\s+-\s+name:\s*/, "").trim());
+  } catch {
+    // No client config — fall through to empty list
+  }
+
+  if (serviceNames.length === 0) return [];
+
+  // One docker ps call gets statuses for all containers in this client's project
+  let containers: { name: string; state: string; health: string; ports: string }[] = [];
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "-a", "--no-trunc",
+      "--filter", `name=${clientName}-`,
+      "--format", "{{.Names}}|{{.State}}|{{.Status}}|{{.Ports}}",
+    ], { reject: false });
+    containers = stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [name, state, status, ports] = line.split("|");
+      const health = /\((healthy|unhealthy|starting)\)/.exec(status || "")?.[1] || "";
+      return { name, state, health, ports };
+    });
+  } catch {
+    // docker not available
+  }
+
+  const projects: ProjectStatus[] = [];
+  for (const svcName of serviceNames) {
+    const prefix = `${clientName}-${svcName}-`;
+    const matched = containers.filter(c => c.name.startsWith(prefix));
+    const services: Service[] = matched.map(c => {
+      const role = c.name.slice(prefix.length); // "backend" | "frontend" | "localstack"
+      const isRunning = c.state === "running";
+      const isUnhealthy = isRunning && c.health === "unhealthy";
+      const portMatch = c.ports.match(/(\d+)->\d+/);
+      return {
+        name: role,
+        status: isUnhealthy ? "unhealthy" : isRunning ? "running" : "stopped",
+        port: portMatch ? Number(portMatch[1]) : undefined,
+      };
+    });
+
+    const anyRunning = services.some(s => s.status === "running");
+    projects.push({
+      name: svcName,
+      path: path.join(clientDir, svcName),
+      status: anyRunning ? "running" : "stopped",
+      type: "service",
+      services,
+    });
   }
 
   return projects;

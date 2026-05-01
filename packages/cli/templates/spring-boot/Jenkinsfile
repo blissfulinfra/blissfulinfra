@@ -29,7 +29,7 @@ pipeline {
                     // Register deployment with dashboard API
                     def gitSha = env.GIT_COMMIT ?: 'unknown'
                     def response = sh(
-                        script: """curl -s -X POST ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/deployments \
+                        script: """curl -s -X POST ${BLISSFUL_API_URL}/api/v1/projects/${PROJECT_NAME}/deployments \
                             -H 'Content-Type: application/json' \
                             -d '{"gitSha":"${gitSha}","status":"running"}' || echo '{}'""",
                         returnStdout: true
@@ -141,7 +141,7 @@ pipeline {
             steps {
                 script {
                     echo "Restarting ${PROJECT_NAME} containers with new image..."
-                    sh """curl -s -X POST ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/up \
+                    sh """curl -s -X POST ${BLISSFUL_API_URL}/api/v1/projects/${PROJECT_NAME}/up \
                         -H 'Content-Type: application/json' || true"""
                     // Wait for backend to become healthy
                     sh """
@@ -277,7 +277,7 @@ pipeline {
             script {
                 echo "Pipeline completed successfully for ${PROJECT_NAME}"
                 if (env.DEPLOYMENT_ID) {
-                    sh """curl -s -X PATCH ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/deployments/${env.DEPLOYMENT_ID} \
+                    sh """curl -s -X PATCH ${BLISSFUL_API_URL}/api/v1/projects/${PROJECT_NAME}/deployments/${env.DEPLOYMENT_ID} \
                         -H 'Content-Type: application/json' \
                         -d '{"status":"success"}' || true"""
                 }
@@ -288,7 +288,7 @@ pipeline {
             script {
                 echo "Pipeline failed for ${PROJECT_NAME}"
                 if (env.DEPLOYMENT_ID) {
-                    sh """curl -s -X PATCH ${BLISSFUL_API_URL}/api/projects/${PROJECT_NAME}/deployments/${env.DEPLOYMENT_ID} \
+                    sh """curl -s -X PATCH ${BLISSFUL_API_URL}/api/v1/projects/${PROJECT_NAME}/deployments/${env.DEPLOYMENT_ID} \
                         -H 'Content-Type: application/json' \
                         -d '{"status":"failed"}' || true"""
                 }

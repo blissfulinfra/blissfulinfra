@@ -66,7 +66,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "List all blissful-infra projects and their running status",
     {},
     async () => {
-      const data = await apiGet(apiBase, "/api/projects") as { projects: unknown[] };
+      const data = await apiGet(apiBase, "/api/v1/projects") as { projects: unknown[] };
       return { content: [{ type: "text", text: text(data.projects) }] };
     }
   );
@@ -76,7 +76,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Get detailed status of a specific project including running services",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiGet(apiBase, `/api/projects/${project}`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -97,7 +97,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
         .describe("Database setup"),
     },
     async ({ name, backend, frontend, database }) => {
-      const data = await apiPost(apiBase, "/api/projects", {
+      const data = await apiPost(apiBase, "/api/v1/projects", {
         name,
         type: "fullstack",
         backend,
@@ -113,7 +113,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Start (docker compose up) a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiPost(apiBase, `/api/projects/${project}/up`);
+      const data = await apiPost(apiBase, `/api/v1/projects/${project}/up`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -123,7 +123,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Stop (docker compose down) a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiPost(apiBase, `/api/projects/${project}/down`);
+      const data = await apiPost(apiBase, `/api/v1/projects/${project}/down`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -133,7 +133,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Stop and permanently delete a project and all its data",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiDelete(apiBase, `/api/projects/${project}`);
+      const data = await apiDelete(apiBase, `/api/v1/projects/${project}`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -143,7 +143,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "List available backend, frontend, and database options",
     {},
     async () => {
-      const data = await apiGet(apiBase, "/api/templates");
+      const data = await apiGet(apiBase, "/api/v1/templates");
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -155,7 +155,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Get health status of all services in a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiGet(apiBase, `/api/projects/${project}/health`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/health`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -165,7 +165,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Get current CPU, memory, and HTTP metrics for a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiGet(apiBase, `/api/projects/${project}/metrics`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/metrics`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -183,7 +183,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       if (start) params.set("start", String(start));
       if (end) params.set("end", String(end));
       const qs = params.toString() ? `?${params}` : "";
-      const data = await apiGet(apiBase, `/api/projects/${project}/metrics/summary${qs}`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/metrics/summary${qs}`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -193,7 +193,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Get status of all plugins (ai-pipeline, scraper, etc.) for a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiGet(apiBase, `/api/projects/${project}/plugins`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/plugins`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -213,7 +213,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       const params = new URLSearchParams({ limit: String(limit) });
       if (service) params.set("service", service);
       if (filter) params.set("filter", filter);
-      const data = await apiGet(apiBase, `/api/projects/${project}/logs?${params}`) as { logs: unknown };
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/logs?${params}`) as { logs: unknown };
       return { content: [{ type: "text", text: text(data.logs) }] };
     }
   );
@@ -233,7 +233,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       if (query) params.set("q", query);
       if (service) params.set("service", service);
       if (level) params.set("level", level);
-      const data = await apiGet(apiBase, `/api/projects/${project}/logs/search?${params}`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/logs/search?${params}`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -248,7 +248,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       query: z.string().describe("Your question or debugging request"),
     },
     async ({ project, query }) => {
-      const data = await apiPost(apiBase, `/api/projects/${project}/agent`, { query }) as { response: string };
+      const data = await apiPost(apiBase, `/api/v1/projects/${project}/agent`, { query }) as { response: string };
       return { content: [{ type: "text", text: data.response }] };
     }
   );
@@ -260,7 +260,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Get Jenkins CI pipeline status for a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiGet(apiBase, `/api/projects/${project}/pipeline`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/pipeline`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -275,7 +275,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       push: z.boolean().default(false).describe("Push image to registry after build"),
     },
     async ({ project, skipTests, skipScan, push }) => {
-      const data = await apiPost(apiBase, `/api/projects/${project}/pipeline`, {
+      const data = await apiPost(apiBase, `/api/v1/projects/${project}/pipeline`, {
         skipTests,
         skipScan,
         push,
@@ -291,7 +291,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "List deployment environments configured for a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
-      const data = await apiGet(apiBase, `/api/projects/${project}/environments`);
+      const data = await apiGet(apiBase, `/api/v1/projects/${project}/environments`);
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -305,7 +305,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       image: z.string().optional().describe("Specific image tag to deploy (defaults to latest)"),
     },
     async ({ project, env, image }) => {
-      const data = await apiPost(apiBase, `/api/projects/${project}/deploy`, { env, image });
+      const data = await apiPost(apiBase, `/api/v1/projects/${project}/deploy`, { env, image });
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
@@ -319,7 +319,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       revision: z.string().optional().describe("Revision to roll back to (defaults to previous)"),
     },
     async ({ project, env, revision }) => {
-      const data = await apiPost(apiBase, `/api/projects/${project}/rollback`, { env, revision });
+      const data = await apiPost(apiBase, `/api/v1/projects/${project}/rollback`, { env, revision });
       return { content: [{ type: "text", text: text(data) }] };
     }
   );
