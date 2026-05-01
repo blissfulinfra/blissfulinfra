@@ -170,7 +170,58 @@ Jenkins pipelines reach it at `http://host.docker.internal:3002` (from inside Do
 
 ## MCP server (`src/server/mcp.ts`)
 
-Implements the Model Context Protocol, exposing CLI capabilities as tools that Claude Desktop / Claude Code can call. Start with `blissful-infra mcp`. Tools include: `list_projects`, `get_logs`, `get_metrics`, `get_health`, `trigger_build`, `deploy`, `query_logs`.
+Implements the Model Context Protocol over **stdio** transport — designed
+to be spawned as a subprocess by Claude Desktop / Claude Code / Cursor, not
+exposed over a network port. Internally it's a thin shim: each MCP tool
+proxies to a `/api/v1/...` endpoint on the dashboard's API server. ~19
+tools exposed: `list_projects`, `get_logs`, `get_metrics`, `get_health`,
+`trigger_build`, `deploy`, `query_logs`, plus pipeline / environments /
+plugins.
+
+### Wiring it up
+
+Two ways to point the MCP server at the right API:
+
+```bash
+# Auto-discover from the registry — recommended
+blissful-infra mcp --client dev
+
+# Explicit URL — overrides --client when both are passed
+blissful-infra mcp --api http://localhost:3013
+
+# Default (legacy flat-model dashboard) — only works if something is on :3002
+blissful-infra mcp
+```
+
+`--client <name>` reads `~/.blissful-infra/registry.json` (honoring
+`BLISSFUL_HOME` env), looks up the client's allocated dashboard port, and
+constructs the URL automatically. This is the fix for the "every client
+runs its dashboard on a different port" gotcha.
+
+### Claude Desktop config
+
+In `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "blissful-infra-dev": {
+      "command": "blissful-infra",
+      "args": ["mcp", "--client", "dev"]
+    }
+  }
+}
+```
+
+Add one entry per client you want Claude to manage. Each entry runs in its
+own subprocess.
+
+### Verification harness
+
+`scripts/mcp-verify.mjs` and `scripts/mcp-verify-client.mjs` spawn the MCP
+server, perform the handshake, list tools, and call `list_projects` /
+`get_health`. Use these for smoke-testing after any change to api.ts or
+mcp.ts.
 
 ---
 
