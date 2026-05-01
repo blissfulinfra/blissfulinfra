@@ -2,15 +2,76 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { ClientConfig, PortBlock } from "@blissful-infra/shared";
 
+export interface ParsedClientConfig {
+  infrastructure: NonNullable<ClientConfig["infrastructure"]>;
+  serviceRefs: { name: string; path: string }[];
+}
+
+/**
+ * Minimal parser for the client's blissful-infra.yaml — extracts the
+ * infrastructure block and the services list. Used by `service add/down`
+ * to regenerate the infra compose with the correct include list.
+ */
+export function parseClientConfigYaml(content: string): ParsedClientConfig {
+  const infra: NonNullable<ClientConfig["infrastructure"]> = {
+    kafka: /kafka:\s*true/.test(content),
+    postgres: /postgres:\s*true/.test(content),
+    jenkins: /jenkins:\s*true/.test(content),
+    observability: {
+      prometheus: /prometheus:\s*true/.test(content),
+      grafana: /grafana:\s*true/.test(content),
+      jaeger: /jaeger:\s*true/.test(content),
+      loki: /loki:\s*true/.test(content),
+      clickhouse: /clickhouse:\s*true/.test(content),
+    },
+  };
+
+  const refs: { name: string; path: string }[] = [];
+  const lines = content.split("\n");
+  let inServices = false;
+  let current: Partial<{ name: string; path: string }> = {};
+  for (const line of lines) {
+    if (/^services:/.test(line)) { inServices = true; continue; }
+    if (!inServices) continue;
+    if (line.length > 0 && !/^\s/.test(line)) break;
+    const nameMatch = line.match(/^\s+-\s+name:\s*(.+)$/);
+    if (nameMatch) {
+      if (current.name && current.path) refs.push(current as { name: string; path: string });
+      current = { name: nameMatch[1].trim() };
+      continue;
+    }
+    const pathMatch = line.match(/^\s+path:\s*(.+)$/);
+    if (pathMatch) current.path = pathMatch[1].trim();
+  }
+  if (current.name && current.path) refs.push(current as { name: string; path: string });
+
+  return { infrastructure: infra, serviceRefs: refs };
+}
+
+/**
+ * Regenerate `docker-compose.infra.yaml` from the client's current state on
+ * disk. Call this whenever the services list changes (add/remove).
+ */
+export async function regenerateInfraCompose(opts: { clientName: string; clientDir: string; ports: PortBlock }): Promise<void> {
+  const { clientName, clientDir, ports } = opts;
+  const configPath = path.join(clientDir, "blissful-infra.yaml");
+  const content = await fs.readFile(configPath, "utf-8");
+  const parsed = parseClientConfigYaml(content);
+  const serviceIncludes = parsed.serviceRefs.map(s => `${s.path}/docker-compose.yaml`);
+  await generateInfraCompose({ clientName, clientDir, ports, infrastructure: parsed.infrastructure, serviceIncludes });
+}
+
 interface InfraComposeOptions {
   clientName: string;
   clientDir: string;
   ports: PortBlock;
   infrastructure: NonNullable<ClientConfig["infrastructure"]>;
+  /** Service paths (relative to clientDir) to include into the unified Compose project. */
+  serviceIncludes?: string[];
 }
 
 export async function generateInfraCompose(opts: InfraComposeOptions): Promise<void> {
-  const { clientName, clientDir, ports, infrastructure } = opts;
+  const { clientName, clientDir, ports, infrastructure, serviceIncludes = [] } = opts;
   const obs = infrastructure.observability ?? {
     prometheus: true,
     grafana: true,
@@ -79,7 +140,7 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   // Jenkins
   if (infrastructure.jenkins) {
     services.jenkins = {
-      image: "blissful-infra-jenkins:latest",
+      image: "blissful-jenkins:latest",
       container_name: `${clientName}-jenkins`,
       ports: [`${ports.jenkins}:8080`],
       networks: ["infra"],
@@ -207,12 +268,13 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     volumes["grafana-data"] = null;
   }
 
-  // ClickHouse (Phase 8+)
+  // ClickHouse (Phase 8+) — host port derived from block to avoid cross-client collisions
   if (obs.clickhouse) {
+    const clickhousePort = 8123 + ports.blockIndex;
     services.clickhouse = {
       image: "clickhouse/clickhouse-server:24.3",
       container_name: `${clientName}-clickhouse`,
-      ports: ["8123:8123"],
+      ports: [`${clickhousePort}:8123`],
       networks: ["infra"],
       environment: {
         CLICKHOUSE_DB: "metrics_db",
@@ -232,26 +294,43 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   }
 
   // Dashboard
+  const linkEnv: Record<string, string> = {
+    PROJECTS_DIR: "/projects",
+    DASHBOARD_DIST_DIR: "/app/dashboard-dist",
+    DASHBOARD_PORT: "3002",
+    DOCKER_MODE: "true",
+    CLIENT_NAME: clientName,
+  };
+  // Tool URLs use the client's allocated host ports so the dashboard's
+  // header links and trace links point to the right place per-client.
+  if (obs.jaeger) linkEnv.JAEGER_URL = `http://localhost:${ports.jaeger}`;
+  if (obs.grafana) linkEnv.GRAFANA_URL = `http://localhost:${ports.grafana}`;
+  if (obs.prometheus) linkEnv.PROMETHEUS_URL = `http://localhost:${ports.prometheus}`;
+  if (infrastructure.jenkins) linkEnv.JENKINS_URL = `http://localhost:${ports.jenkins}`;
+
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
     container_name: `${clientName}-dashboard`,
     ports: [`${ports.dashboard}:3002`],
     networks: ["infra"],
-    environment: {
-      PROJECTS_DIR: "/projects",
-      DASHBOARD_DIST_DIR: "/app/dashboard-dist",
-      DASHBOARD_PORT: "3002",
-      DOCKER_MODE: "true",
-      CLIENT_NAME: clientName,
-    },
+    environment: linkEnv,
     volumes: [
       "/var/run/docker.sock:/var/run/docker.sock",
       `.:/projects/${clientName}`,
     ],
   };
 
-  // Assemble full compose document
+  // Assemble full compose document.
+  //
+  // We emit `name:` to give the project a stable name (otherwise Compose uses the
+  // working directory). `include:` pulls each service's docker-compose.yaml into
+  // the SAME Compose project so everything (infra + services) lives under one
+  // namespace and supports cross-service `depends_on`.
   const compose: Record<string, unknown> = {
+    name: clientName,
+    ...(serviceIncludes.length > 0
+      ? { include: serviceIncludes.map(p => ({ path: p })) }
+      : {}),
     networks: {
       infra: {
         name: `${clientName}_infra`,

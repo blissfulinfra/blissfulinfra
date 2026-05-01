@@ -4,13 +4,19 @@ import os from "node:os";
 import {
   ClientRegistrySchema,
   PortBlockSchema,
+  type ClientInfrastructure,
   type ClientRegistry,
   type PortBlock,
 } from "@blissful-infra/shared";
+import { checkPorts } from "./ports.js";
 
-const BLISSFUL_HOME = path.join(os.homedir(), ".blissful-infra");
-const CLIENTS_DIR = path.join(BLISSFUL_HOME, "clients");
-const REGISTRY_PATH = path.join(BLISSFUL_HOME, "registry.json");
+// Resolved at call time so tests can override via the BLISSFUL_HOME env var
+// without the module needing to be reloaded.
+function blissfulHome(): string {
+  return process.env.BLISSFUL_HOME ?? path.join(os.homedir(), ".blissful-infra");
+}
+function clientsDir(): string { return path.join(blissfulHome(), "clients"); }
+function registryPath(): string { return path.join(blissfulHome(), "registry.json"); }
 
 // Port block base values — each client offsets by blockIndex
 const PORT_BASES = {
@@ -24,16 +30,16 @@ const PORT_BASES = {
 } as const;
 
 export function getClientsDir(): string {
-  return CLIENTS_DIR;
+  return clientsDir();
 }
 
 export function getClientDir(clientName: string): string {
-  return path.join(CLIENTS_DIR, clientName);
+  return path.join(clientsDir(), clientName);
 }
 
 export async function loadRegistry(): Promise<ClientRegistry> {
   try {
-    const raw = await fs.readFile(REGISTRY_PATH, "utf-8");
+    const raw = await fs.readFile(registryPath(), "utf-8");
     return ClientRegistrySchema.parse(JSON.parse(raw));
   } catch {
     return { clients: {}, nextBlockIndex: 0 };
@@ -41,8 +47,8 @@ export async function loadRegistry(): Promise<ClientRegistry> {
 }
 
 export async function saveRegistry(registry: ClientRegistry): Promise<void> {
-  await fs.mkdir(BLISSFUL_HOME, { recursive: true });
-  await fs.writeFile(REGISTRY_PATH, JSON.stringify(registry, null, 2), "utf-8");
+  await fs.mkdir(blissfulHome(), { recursive: true });
+  await fs.writeFile(registryPath(), JSON.stringify(registry, null, 2), "utf-8");
 }
 
 export function allocatePortBlock(clientName: string, blockIndex: number): PortBlock {
@@ -87,4 +93,63 @@ export async function getClientPortBlock(clientName: string): Promise<PortBlock 
 export async function listClients(): Promise<PortBlock[]> {
   const registry = await loadRegistry();
   return Object.values(registry.clients);
+}
+
+export function getClientRequiredPorts(
+  ports: PortBlock,
+  infrastructure: ClientInfrastructure,
+): { port: number; service: string }[] {
+  const required: { port: number; service: string }[] = [];
+  const obs = infrastructure.observability ?? {
+    prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false,
+  };
+
+  if (infrastructure.kafka) required.push({ port: ports.kafka, service: "Kafka" });
+  if (infrastructure.postgres) required.push({ port: ports.postgres, service: "Postgres" });
+  if (infrastructure.jenkins) required.push({ port: ports.jenkins, service: "Jenkins" });
+  if (obs.prometheus) required.push({ port: ports.prometheus, service: "Prometheus" });
+  if (obs.grafana) required.push({ port: ports.grafana, service: "Grafana" });
+  if (obs.jaeger) required.push({ port: ports.jaeger, service: "Jaeger" });
+  required.push({ port: ports.dashboard, service: "Dashboard" });
+
+  return required;
+}
+
+/**
+ * Allocate a port block for a client, advancing the block index until all
+ * required host ports are free. Throws if no free block is found within
+ * `maxBlocks` attempts.
+ */
+export async function allocateFreePortBlock(
+  clientName: string,
+  infrastructure: ClientInfrastructure,
+  maxBlocks = 32,
+): Promise<PortBlock> {
+  const registry = await loadRegistry();
+
+  if (registry.clients[clientName]) {
+    return registry.clients[clientName];
+  }
+
+  let attempts = 0;
+  let blockIndex = registry.nextBlockIndex;
+
+  while (attempts < maxBlocks) {
+    const candidate = allocatePortBlock(clientName, blockIndex);
+    const required = getClientRequiredPorts(candidate, infrastructure);
+    const results = await checkPorts(required);
+    const conflicts = results.filter(r => r.inUse);
+
+    if (conflicts.length === 0) {
+      registry.clients[clientName] = candidate;
+      registry.nextBlockIndex = Math.max(registry.nextBlockIndex, blockIndex + 1);
+      await saveRegistry(registry);
+      return candidate;
+    }
+
+    blockIndex += 1;
+    attempts += 1;
+  }
+
+  throw new Error(`No free port block found after ${maxBlocks} attempts`);
 }

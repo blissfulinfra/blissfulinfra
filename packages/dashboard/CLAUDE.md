@@ -40,17 +40,25 @@ The CLI's API server must be running (`blissful-infra dashboard` or `blissful-in
 
 All data comes from the CLI API server at `http://localhost:3002`. The dashboard uses standard `fetch()` — no HTTP client library.
 
+**API version:** all calls go through the `API_BASE` constant near the top of
+`App.tsx` (currently `/api/v1`). Never inline `/api/...` literally — use
+`` `${API_BASE}/...` `` (template literal). The server only accepts
+`/api/v1/...`; unversioned `/api/...` requests return 404 with a migration
+hint. To bump to v2, change `API_BASE` to `/api/v2` and add v2 handlers
+server-side.
+
 Key endpoints consumed:
 
 | Endpoint | Used for |
 |---|---|
-| `GET /api/projects` | Project list on load |
-| `GET /api/projects/:name` | Project details + service status |
-| `GET /api/projects/:name/logs` | Log viewer (polled) |
-| `GET /api/projects/:name/metrics` | Metrics charts (polled) |
-| `GET /api/projects/:name/deployments` | Deployments tab — history with latency delta |
-| `POST /api/projects/:name/up` | "Restart" button action |
-| `GET /api/projects/:name/traces` | Jaeger trace links in Deployments tab |
+| `GET /api/v1/projects` | Project list on load |
+| `GET /api/v1/projects/:name` | Project details + service status |
+| `GET /api/v1/projects/:name/logs` | Log viewer (polled) |
+| `GET /api/v1/projects/:name/metrics` | Metrics charts (polled) |
+| `GET /api/v1/projects/:name/deployments` | Deployments tab — history with latency delta |
+| `POST /api/v1/projects/:name/up` | "Restart" button action |
+| `GET /api/v1/projects/:name/traces` | Jaeger trace links in Deployments tab |
+| `GET /api/v1/links` | Tool URLs (Jaeger/Grafana/etc) for the current client |
 
 ---
 

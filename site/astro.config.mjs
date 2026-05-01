@@ -77,7 +77,6 @@ export default defineConfig({
       ],
       sidebar: [
         { label: 'Getting Started', link: '/getting-started' },
-        { label: 'Pricing', link: '/pricing' },
         {
           label: 'Commands',
           items: [

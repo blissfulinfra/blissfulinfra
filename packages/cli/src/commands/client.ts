@@ -1,15 +1,15 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
+import inquirer from "inquirer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import type { ClientConfig } from "@blissful-infra/shared";
 import {
-  registerClient,
+  allocateFreePortBlock,
   unregisterClient,
   getClientDir,
-  getClientsDir,
   listClients,
   getClientPortBlock,
 } from "../utils/client-registry.js";
@@ -19,12 +19,15 @@ import {
   generateLokiConfig,
   generateGrafanaConfig,
 } from "../utils/infra-compose.js";
+import { ensureJenkinsImage, ensureDashboardImage } from "../utils/infra-images.js";
 import { toExecError } from "../utils/errors.js";
 
 interface ClientCreateOptions {
-  noJenkins?: boolean;
-  noKafka?: boolean;
-  noObservability?: boolean;
+  // Commander populates these (defaulting to true) for `--no-X` flags
+  jenkins?: boolean;
+  kafka?: boolean;
+  observability?: boolean;
+  yes?: boolean;
 }
 
 async function clientCreateAction(clientName: string, opts: ClientCreateOptions): Promise<void> {
@@ -48,20 +51,69 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
     // Good — doesn't exist
   }
 
-  // Register and allocate ports
-  const spinner = ora("Allocating port block...").start();
-  const ports = await registerClient(clientName);
-  spinner.succeed(`Port block ${ports.blockIndex} allocated`);
+  // Build infrastructure config — prompt unless --yes or non-TTY.
+  // Commander defaults `jenkins/kafka/observability` to true; `--no-X` sets them to false.
+  // Defaults from flags pre-populate the prompt so --no-X choices are reflected.
+  let infrastructure: NonNullable<ClientConfig["infrastructure"]>;
+  const useDefaults = opts.yes || !process.stdout.isTTY;
 
-  // Build infrastructure config from flags
-  const infrastructure: NonNullable<ClientConfig["infrastructure"]> = {
-    kafka: !opts.noKafka,
-    postgres: true,
-    jenkins: !opts.noJenkins,
-    observability: opts.noObservability
-      ? { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false }
-      : { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false },
-  };
+  const flagJenkins = opts.jenkins !== false;
+  const flagKafka = opts.kafka !== false;
+  const flagObs = opts.observability !== false;
+
+  if (!useDefaults) {
+    const answers = await inquirer.prompt([
+      {
+        type: "checkbox",
+        name: "components",
+        message: "Infrastructure components (space to toggle, enter to confirm)",
+        choices: [
+          { name: "Kafka", value: "kafka", checked: flagKafka },
+          { name: "Postgres", value: "postgres", checked: true },
+          { name: "Jenkins (CI/CD)", value: "jenkins", checked: flagJenkins },
+          { name: "Prometheus + Grafana (metrics)", value: "metrics", checked: flagObs },
+          { name: "Jaeger (tracing)", value: "jaeger", checked: flagObs },
+          { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
+          { name: "ClickHouse (Phase 8+ TSDB)", value: "clickhouse", checked: false },
+        ],
+      },
+    ] as never) as { components: string[] };
+
+    infrastructure = {
+      kafka: answers.components.includes("kafka"),
+      postgres: answers.components.includes("postgres"),
+      jenkins: answers.components.includes("jenkins"),
+      observability: {
+        prometheus: answers.components.includes("metrics"),
+        grafana: answers.components.includes("metrics"),
+        jaeger: answers.components.includes("jaeger"),
+        loki: answers.components.includes("loki"),
+        clickhouse: answers.components.includes("clickhouse"),
+      },
+    };
+  } else {
+    infrastructure = {
+      kafka: flagKafka,
+      postgres: true,
+      jenkins: flagJenkins,
+      observability: flagObs
+        ? { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false }
+        : { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+    };
+  }
+
+  // Allocate a port block whose host ports are actually free
+  const spinner = ora("Allocating port block...").start();
+  let ports;
+  try {
+    ports = await allocateFreePortBlock(clientName, infrastructure);
+  } catch (error) {
+    spinner.fail("Could not find a free port block");
+    console.error(chalk.red((error as Error).message));
+    console.error(chalk.dim("Free up some host ports or stop other blissful-infra projects, then retry."));
+    process.exit(1);
+  }
+  spinner.succeed(`Port block ${ports.blockIndex} allocated (host ports verified free)`);
 
   // Create directory structure
   const dirSpinner = ora("Creating client directory...").start();
@@ -113,6 +165,12 @@ services: []
 
   configSpinner.succeed("Infrastructure configs generated");
 
+  // Ensure dependent images are built before bringing infra up
+  await ensureDashboardImage();
+  if (infrastructure.jenkins) {
+    await ensureJenkinsImage();
+  }
+
   // Start infrastructure
   console.log(chalk.dim("Starting infrastructure containers..."));
   console.log();
@@ -160,8 +218,36 @@ services: []
   }
   console.log(chalk.dim("  Dashboard:   ") + chalk.cyan(`http://localhost:${ports.dashboard}`));
   console.log();
+
+  // Offer to scaffold the first service inline
+  if (!opts.yes && process.stdout.isTTY) {
+    const { addNow } = (await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "addNow",
+        message: "Add a service (backend + optional frontend) to this client now?",
+        default: true,
+      },
+    ] as never)) as { addNow: boolean };
+
+    if (addNow) {
+      const { serviceName } = (await inquirer.prompt([
+        {
+          type: "input",
+          name: "serviceName",
+          message: "Service name (lowercase alphanumeric with hyphens)",
+          validate: (v: string) => /^[a-z0-9-]+$/.test(v) || "Must be lowercase alphanumeric with hyphens",
+        },
+      ] as never)) as { serviceName: string };
+
+      const { serviceAddAction } = await import("./service.js");
+      await serviceAddAction(clientName, serviceName, {});
+      return;
+    }
+  }
+
   console.log(chalk.dim("Add a service:"));
-  console.log(chalk.cyan(`  blissful-infra service add ${clientName} <service-name> --backend spring-boot`));
+  console.log(chalk.cyan(`  blissful-infra service add ${clientName} <service-name>`));
   console.log();
 }
 
@@ -207,26 +293,20 @@ async function clientUpAction(clientName: string): Promise<void> {
     process.exit(1);
   }
 
-  console.log(chalk.dim(`Starting ${clientName} infrastructure...`));
+  console.log(chalk.dim(`Starting ${clientName}...`));
 
-  // Start infra
+  // Re-ensure images exist (they may have been pruned)
+  const configContentForImages = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
+  await ensureDashboardImage();
+  if (/jenkins:\s*true/i.test(configContentForImages)) {
+    await ensureJenkinsImage();
+  }
+
+  // One compose call brings up infra + all included services
   await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "up", "-d"], {
     cwd: clientDir,
     stdio: "inherit",
   });
-
-  // Start all services
-  const configContent = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
-  const serviceRefs = parseServiceRefs(configContent);
-
-  for (const svc of serviceRefs) {
-    const svcDir = path.join(clientDir, svc.path);
-    try {
-      await execa("docker", ["compose", "up", "-d"], { cwd: svcDir, stdio: "inherit" });
-    } catch {
-      console.log(chalk.yellow(`  Warning: failed to start service ${svc.name}`));
-    }
-  }
 
   console.log();
   console.log(chalk.green(`${clientName} is up`));
@@ -243,20 +323,7 @@ async function clientDownAction(clientName: string): Promise<void> {
 
   console.log(chalk.dim(`Stopping ${clientName}...`));
 
-  // Stop all services first
-  const configContent = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
-  const serviceRefs = parseServiceRefs(configContent);
-
-  for (const svc of serviceRefs) {
-    const svcDir = path.join(clientDir, svc.path);
-    try {
-      await execa("docker", ["compose", "down"], { cwd: svcDir, stdio: "pipe" });
-    } catch {
-      // Might not be running
-    }
-  }
-
-  // Stop infra
+  // One compose call brings down infra + all included services
   await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "down"], {
     cwd: clientDir,
     stdio: "inherit",
@@ -278,33 +345,14 @@ async function clientStatusAction(clientName: string): Promise<void> {
   console.log(chalk.bold(clientName), chalk.dim(`(port block ${ports.blockIndex})`));
   console.log();
 
-  // Infra status
-  console.log(chalk.bold("Infrastructure:"));
+  // Single `docker compose ps` shows infra + all included services together
   try {
     await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "ps"], {
       cwd: clientDir,
       stdio: "inherit",
     });
   } catch {
-    console.log(chalk.dim("  Infrastructure not running"));
-  }
-
-  // Service status
-  const configContent = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
-  const serviceRefs = parseServiceRefs(configContent);
-
-  if (serviceRefs.length > 0) {
-    console.log();
-    console.log(chalk.bold("Services:"));
-    for (const svc of serviceRefs) {
-      const svcDir = path.join(clientDir, svc.path);
-      console.log(chalk.dim(`  ${svc.name}:`));
-      try {
-        await execa("docker", ["compose", "ps"], { cwd: svcDir, stdio: "inherit" });
-      } catch {
-        console.log(chalk.dim("    Not running"));
-      }
-    }
+    console.log(chalk.dim("  Project not running"));
   }
   console.log();
 }
@@ -320,19 +368,8 @@ async function clientRemoveAction(clientName: string): Promise<void> {
 
   const spinner = ora(`Removing ${clientName}...`).start();
 
-  // Stop and remove all containers
+  // One compose call tears down everything (infra + included services + volumes)
   try {
-    // Stop services first
-    const configContent = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
-    const serviceRefs = parseServiceRefs(configContent);
-    for (const svc of serviceRefs) {
-      const svcDir = path.join(clientDir, svc.path);
-      try {
-        await execa("docker", ["compose", "down", "-v"], { cwd: svcDir, stdio: "pipe" });
-      } catch { /* noop */ }
-    }
-
-    // Stop infra
     await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "down", "-v"], {
       cwd: clientDir,
       stdio: "pipe",
@@ -355,6 +392,49 @@ async function clientRemoveAction(clientName: string): Promise<void> {
   await unregisterClient(clientName);
 
   spinner.succeed(`Removed ${clientName}`);
+}
+
+async function clientCleanAction(opts: { force?: boolean }): Promise<void> {
+  const clients = await listClients();
+
+  if (clients.length === 0) {
+    console.log(chalk.dim("No clients to remove."));
+    return;
+  }
+
+  console.log();
+  console.log(chalk.bold("The following clients will be removed:"));
+  for (const c of clients) {
+    console.log(chalk.dim(`  - ${c.clientName}`));
+  }
+  console.log();
+
+  if (!opts.force && process.stdout.isTTY) {
+    const { confirm } = (await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "confirm",
+        message: `Remove all ${clients.length} client(s)? This deletes containers, networks, volumes, and directories.`,
+        default: false,
+      },
+    ] as never)) as { confirm: boolean };
+
+    if (!confirm) {
+      console.log(chalk.dim("Cancelled."));
+      return;
+    }
+  }
+
+  for (const c of clients) {
+    try {
+      await clientRemoveAction(c.clientName);
+    } catch (error) {
+      console.error(chalk.yellow(`  Failed to remove ${c.clientName}: ${(error as Error).message}`));
+    }
+  }
+
+  console.log();
+  console.log(chalk.green(`Cleaned ${clients.length} client(s)`));
 }
 
 // Minimal parser for service refs from client YAML
@@ -410,6 +490,7 @@ clientCommand
   .option("--no-jenkins", "Skip Jenkins")
   .option("--no-kafka", "Skip Kafka")
   .option("--no-observability", "Skip Prometheus/Grafana/Jaeger/Loki")
+  .option("-y, --yes", "Skip interactive prompt and use defaults / flag values")
   .action(clientCreateAction);
 
 clientCommand
@@ -440,3 +521,9 @@ clientCommand
   .description("Remove a client environment entirely")
   .argument("<name>", "Client name")
   .action(clientRemoveAction);
+
+clientCommand
+  .command("clean")
+  .description("Remove ALL client environments (containers, networks, volumes, dirs)")
+  .option("-f, --force", "Skip confirmation prompt")
+  .action(clientCleanAction);
