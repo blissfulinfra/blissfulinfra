@@ -78,9 +78,17 @@ export default defineConfig({
       sidebar: [
         { label: 'Getting Started', link: '/getting-started' },
         {
+          label: 'Guides',
+          items: [
+            { label: 'The client model', link: '/guides/client-model' },
+          ],
+        },
+        {
           label: 'Commands',
           items: [
             { label: 'start', link: '/commands/start' },
+            { label: 'client', link: '/commands/client' },
+            { label: 'service', link: '/commands/service' },
             { label: 'deploy', link: '/commands/deploy' },
             { label: 'dev', link: '/commands/dev' },
             { label: 'dashboard', link: '/commands/dashboard' },
