@@ -77,6 +77,21 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 | `service down <client> <svc>` | `service.ts` | Stop a single service |
 | `service logs <client> <svc>` | `service.ts` | Stream logs for a service |
 
+### Lambda (serverless backend on LocalStack)
+| Command | File | What it does |
+|---|---|---|
+| `lambda deploy <client> <svc>` | `lambda.ts` | Re-package handler + register with the service's LocalStack |
+| `lambda invoke <client> <svc>` | `lambda.ts` | Invoke the function with a JSON payload |
+| `lambda logs <client> <svc>` | `lambda.ts` | Tail Lambda logs (CloudWatch emulated by LocalStack) |
+
+Lambda services are created via `service add <c> <s> --backend lambda-python`.
+Compose generation branches on `isServerlessBackend(backend)` —
+`generateLambdaServiceCompose` produces the `localstack + deployer` sidecar
+shape instead of a long-running backend container.
+
+Cloud deploy adapter for real AWS Lambda is intentionally deferred — see
+[docs/adr/0007-aws-lambda-local-via-localstack.md](../../docs/adr/0007-aws-lambda-local-via-localstack.md).
+
 ### CI/CD (Phase 2)
 | Command | File | What it does |
 |---|---|---|

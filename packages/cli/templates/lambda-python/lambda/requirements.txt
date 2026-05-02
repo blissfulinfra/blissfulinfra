@@ -1,0 +1,5 @@
+# Python dependencies for the Lambda function.
+# These are bundled into the deployment zip alongside handler.py.
+# Keep this list small — Lambda zip size + cold start time grow with deps.
+#
+# boto3 is included in the AWS Lambda Python runtime, so don't list it here.

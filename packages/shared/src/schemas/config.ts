@@ -199,6 +199,28 @@ export const ClientRegistrySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Lambda manifest — drives both local (LocalStack) deploy and future cloud deploy
+// ---------------------------------------------------------------------------
+
+export const LambdaRuntimeSchema = z.enum([
+  "python3.11",
+  "python3.12",
+  "nodejs20.x",
+  "nodejs22.x",
+  "java21",
+  "go1.x",
+]);
+
+export const LambdaManifestSchema = z.object({
+  name: z.string().regex(/^[a-z0-9-]+$/, "lowercase alphanumeric with hyphens"),
+  runtime: LambdaRuntimeSchema,
+  handler: z.string(),
+  timeout_seconds: z.number().int().positive().max(900).default(30),
+  memory_mb: z.number().int().min(128).max(10240).default(256),
+  environment: z.record(z.string(), z.string()).optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Inferred types
 // ---------------------------------------------------------------------------
 
@@ -225,3 +247,5 @@ export type ClientConfig = z.infer<typeof ClientConfigSchema>;
 export type ServiceConfig = z.infer<typeof ServiceConfigSchema>;
 export type PortBlock = z.infer<typeof PortBlockSchema>;
 export type ClientRegistry = z.infer<typeof ClientRegistrySchema>;
+export type LambdaRuntime = z.infer<typeof LambdaRuntimeSchema>;
+export type LambdaManifest = z.infer<typeof LambdaManifestSchema>;
