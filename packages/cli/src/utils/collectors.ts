@@ -23,13 +23,25 @@ export interface CollectedContext {
 }
 
 /**
- * Collect Docker Compose logs from a project
+ * Collect Docker Compose logs from a project.
+ *
+ * In client mode (CLIENT_NAME env set), the service's containers belong to
+ * the unified client compose project — `docker compose logs` from the
+ * per-service dir would return nothing because the project name doesn't
+ * match. We fall through to plain `docker logs` against each matching
+ * container instead. Mirror of the same client-mode branch in
+ * checkServiceHealth.
  */
 export async function collectDockerLogs(
   projectDir: string,
   options: { tail?: number; service?: string } = {}
 ): Promise<LogEntry[]> {
   const { tail = 100, service } = options;
+  const clientName = process.env.CLIENT_NAME;
+
+  if (clientName) {
+    return collectClientServiceLogs(projectDir, clientName, tail, service);
+  }
 
   try {
     const args = ["compose", "logs", `--tail=${tail}`, "--no-color"];
@@ -46,6 +58,58 @@ export async function collectDockerLogs(
   } catch {
     return [];
   }
+}
+
+async function collectClientServiceLogs(
+  projectDir: string,
+  clientName: string,
+  tail: number,
+  roleFilter?: string,
+): Promise<LogEntry[]> {
+  const serviceName = path.basename(projectDir);
+  const prefix = `${clientName}-${serviceName}-`;
+
+  let containers: string[] = [];
+  try {
+    const ps = await execa("docker", [
+      "ps", "-a", "--no-trunc",
+      "--filter", `name=${prefix}`,
+      "--format", "{{.Names}}",
+    ], { reject: false });
+    containers = ps.stdout.trim().split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+
+  const targets = roleFilter
+    ? containers.filter(c => c === `${prefix}${roleFilter}`)
+    : containers;
+
+  const entries: LogEntry[] = [];
+  for (const container of targets) {
+    const role = container.slice(prefix.length);
+    try {
+      const r = await execa("docker", [
+        "logs", "--tail", String(tail), "--timestamps", container,
+      ], { reject: false });
+      // Docker logs interleaves stdout/stderr; merge both for the consumer.
+      const combined = `${r.stdout}\n${r.stderr}`;
+      for (const line of combined.split("\n")) {
+        if (!line.trim()) continue;
+        const match = line.match(/^(\S+)\s+(.*)$/);
+        if (match) {
+          entries.push({ timestamp: match[1], service: role, message: match[2] });
+        } else {
+          entries.push({ timestamp: new Date().toISOString(), service: role, message: line });
+        }
+      }
+    } catch {
+      // Skip containers we can't read — the rest still produce useful output
+    }
+  }
+
+  entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  return entries.slice(-tail);
 }
 
 /**

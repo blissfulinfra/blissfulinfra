@@ -131,6 +131,22 @@ describe("generateInfraCompose — structural assertions", () => {
     expect(services.dashboard.ports?.[0]).toBe("3003:3002");
   });
 
+  // Regression: kafka's KRaft controller self-references `kafka:9093`. Under
+  // load it can lose the race against Docker's embedded DNS and exit with
+  // UnknownHostException. extra_hosts pins the name to loopback so the self-
+  // connect always works.
+  it("kafka pins its own hostname to loopback via extra_hosts", async () => {
+    await generateInfraCompose({
+      clientName: "tc",
+      clientDir: dir,
+      ports: allocatePortBlock("tc", 0),
+      infrastructure: fullInfra,
+    });
+    const { parsed } = await readGeneratedCompose();
+    const kafka = (parsed.services as Record<string, { extra_hosts?: string[] }>).kafka;
+    expect(kafka.extra_hosts).toEqual(["kafka:127.0.0.1"]);
+  });
+
   it("does NOT emit include[] when no services are listed", async () => {
     await generateInfraCompose({
       clientName: "tc",
