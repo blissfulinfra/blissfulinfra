@@ -1538,211 +1538,85 @@ async function getContainerMetrics(projectDir: string, saveToStorage = true): Pr
   return { containers, httpMetrics, timestamp: Date.now() };
 }
 
+/**
+ * Compute service health from Docker's own healthcheck status, NOT HTTP probing.
+ *
+ * Why: HTTP probing requires the API server to be on the same network as the
+ * services. In the client model, the dashboard is on the client `infra`
+ * network, but service backends/frontends are on per-service `internal`
+ * networks where they're aliased as `backend`/`frontend`. The dashboard
+ * can't resolve those names from `infra`. So all HTTP probes fail.
+ *
+ * Docker's healthcheck status (the (healthy)/(unhealthy)/(starting) tag in
+ * `docker ps`) is maintained by Docker itself based on each container's
+ * configured HEALTHCHECK. We read it via `docker ps --format` — works
+ * regardless of network topology, in both flat and client modes.
+ *
+ * Containers without a HEALTHCHECK report no health string; we map those to
+ * `status: 'healthy'` if the container is running (Docker-running ≈
+ * functional for things like nginx/postgres without explicit healthcheck) and
+ * `unhealthy` if exited.
+ */
 async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
+  const projectName = path.basename(projectDir);
+  const clientName = process.env.CLIENT_NAME;
+  const containerPrefix = clientName ? `${clientName}-${projectName}-` : `${projectName}-`;
+
   const services: ServiceHealth[] = [];
-  const config = await loadConfig(projectDir);
+  let containers: Array<{ name: string; state: string; status: string }> = [];
 
-  // Define health check endpoints based on project config
-  const healthChecks: Array<{ name: string; url: string; port: number }> = [];
+  try {
+    const r = await execa("docker", [
+      "ps", "-a", "--no-trunc",
+      "--filter", `name=${containerPrefix}`,
+      "--format", "{{.Names}}|{{.State}}|{{.Status}}",
+    ], { reject: false });
 
-  // Backend health check (Spring Boot Actuator)
-  const backendUrl = SERVICE_URLS.backend;
-  if (config?.backend === "spring-boot") {
-    healthChecks.push({ name: "backend", url: `${backendUrl}/actuator/health`, port: 8080 });
-  } else if (config?.backend === "fastapi") {
-    const url = DOCKER_MODE ? "http://app:8000" : "http://localhost:8000";
-    healthChecks.push({ name: "backend", url: `${url}/health`, port: 8000 });
-  } else if (config?.backend === "express") {
-    const url = DOCKER_MODE ? "http://app:3001" : "http://localhost:3001";
-    healthChecks.push({ name: "backend", url: `${url}/health`, port: 3001 });
-  } else if (config?.backend === "go-chi") {
-    healthChecks.push({ name: "backend", url: `${backendUrl}/health`, port: 8080 });
+    containers = r.stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [name, state, status] = line.split("|");
+      return { name, state, status };
+    });
+  } catch {
+    return { services: [], timestamp: Date.now() };
   }
 
-  // Frontend health check
-  if (config?.frontend) {
-    healthChecks.push({ name: "frontend", url: SERVICE_URLS.frontend, port: 3000 });
-  }
-
-  // Database health checks
-  if (config?.database === "postgres" || config?.database === "postgres-redis") {
-    // PostgreSQL - check via docker exec
-    healthChecks.push({ name: "postgres", url: "", port: 5432 });
-  }
-  if (config?.database === "redis" || config?.database === "postgres-redis") {
-    healthChecks.push({ name: "redis", url: "", port: 6379 });
-  }
-
-  // Kafka health check
-  if (!config?.frontend || config?.backend) {
-    healthChecks.push({ name: "kafka", url: "", port: 9092 });
-  }
-
-  // AI Pipeline health checks
-  const aiPipelines = config?.plugins?.filter(p => p.type === "ai-pipeline") || [];
-  aiPipelines.forEach((plugin, index) => {
-    const port = config?.pluginConfigs?.[plugin.instance]?.port ?? (8090 + index);
-    const url = DOCKER_MODE ? `http://${plugin.instance}:${port}` : `http://localhost:${port}`;
-    healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
-  });
-
-  // Agent service health checks
-  const agentServices = config?.plugins?.filter(p => p.type === "agent-service") || [];
-  agentServices.forEach((plugin, index) => {
-    const port = config?.pluginConfigs?.[plugin.instance]?.port ?? (8095 + index);
-    const url = DOCKER_MODE ? `http://${plugin.instance}:${port}` : `http://localhost:${port}`;
-    healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
-  });
-
-  // Jaeger health check (always-on)
-  const jaegerUrl = DOCKER_MODE ? "http://jaeger:16686" : "http://localhost:16686";
-  healthChecks.push({ name: "jaeger", url: `${jaegerUrl}/`, port: 16686 });
-
-  // Loki health check (always-on)
-  const lokiUrl = DOCKER_MODE ? "http://loki:3100" : "http://localhost:3100";
-  healthChecks.push({ name: "loki", url: `${lokiUrl}/ready`, port: 3100 });
-
-  // Prometheus + Grafana health checks
-  if (config?.monitoring === "prometheus") {
-    const promUrl = DOCKER_MODE ? "http://prometheus:9090" : "http://localhost:9090";
-    healthChecks.push({ name: "prometheus", url: `${promUrl}/-/healthy`, port: 9090 });
-    const grafUrl = DOCKER_MODE ? "http://grafana:3000" : "http://localhost:3001";
-    healthChecks.push({ name: "grafana", url: `${grafUrl}/api/health`, port: 3001 });
-  }
-
-  // Check each service
-  for (const check of healthChecks) {
-    const startTime = Date.now();
-    let status: "healthy" | "unhealthy" | "unknown" = "unknown";
-    let responseTimeMs: number | undefined;
+  const checkedAt = Date.now();
+  for (const c of containers) {
+    const role = c.name.replace(containerPrefix, "");
+    const healthMatch = /\((healthy|unhealthy|starting)\)/.exec(c.status || "")?.[1];
+    let status: ServiceHealth["status"] = "unknown";
     let details: string | undefined;
 
-    try {
-      if (check.url) {
-        // HTTP health check with fallbacks for dev mode.
-        // Docker mode: try service hostname first, then host.docker.internal for Vite dev server.
-        // Host mode: try nginx container on 3000 first, then Vite dev server on 5173.
-        const urls = [check.url];
-        if (check.name === "frontend") {
-          if (DOCKER_MODE) {
-            urls.push("http://host.docker.internal:3000");
-            urls.push("http://host.docker.internal:5173");
-          } else {
-            urls.push("http://localhost:5173");
-          }
-        }
-
-        let response: Response | null = null;
-        let lastError: Error | null = null;
-        for (const url of urls) {
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 3000);
-            response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeout);
-            if (response.ok) {
-              if (url.includes("5173")) details = "Vite dev server";
-              else if (url.includes("host.docker.internal")) details = "Vite dev server";
-              break;
-            }
-          } catch (e) {
-            lastError = e instanceof Error ? e : new Error(String(e));
-          }
-        }
-        if (!response) throw lastError ?? new Error("Connection failed");
-
-        responseTimeMs = Date.now() - startTime;
-
-        if (response.ok) {
-          status = "healthy";
-          // Try to parse health details from Spring Boot
-          if (check.name === "backend" && config?.backend === "spring-boot") {
-            try {
-              const data = await response.json() as { status?: string };
-              const backendStatus = data.status?.toLowerCase() || "up";
-              if (backendStatus === "degraded" || backendStatus === "down") {
-                status = "unhealthy";
-                details = backendStatus === "degraded" ? "Dependency check failing" : "Service down";
-              } else {
-                details = "UP";
-              }
-            } catch {
-              details = "UP";
-            }
-          }
-        } else {
-          status = "unhealthy";
-          details = `HTTP ${response.status}`;
-        }
-      } else {
-        // Port-based health check (for databases, kafka)
-        const { stdout } = await execa(
-          "docker",
-          ["compose", "ps", "--format", "json"],
-          { cwd: projectDir, reject: false }
-        );
-
-        const lines = stdout.trim().split("\n").filter(Boolean);
-        for (const line of lines) {
-          try {
-            const container = JSON.parse(line);
-            const serviceName = container.Service || container.Name || "";
-            if (serviceName.toLowerCase().includes(check.name)) {
-              const state = container.State?.toLowerCase() || "";
-              const health = container.Health?.toLowerCase() || "";
-
-              if (state === "running") {
-                status = health === "healthy" || !health ? "healthy" : "unhealthy";
-              } else {
-                status = "unhealthy";
-              }
-              details = state;
-              break;
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-        responseTimeMs = Date.now() - startTime;
-      }
-    } catch (error) {
-      responseTimeMs = Date.now() - startTime;
-      // For the frontend, fall back to host.docker.internal (Vite dev server)
-      if (check.name === "frontend" && DOCKER_MODE) {
-        try {
-          const fallbackUrl = "http://host.docker.internal:3000";
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 2000);
-          const fallback = await fetch(fallbackUrl, { signal: controller.signal });
-          clearTimeout(timeout);
-          if (fallback.ok) {
-            status = "healthy";
-            responseTimeMs = Date.now() - startTime;
-            details = "Vite dev server (local)";
-          } else {
-            status = "unhealthy";
-            details = `HTTP ${fallback.status}`;
-          }
-        } catch {
-          status = "unhealthy";
-          details = error instanceof Error ? error.message : "Connection failed";
-        }
-      } else {
-        status = "unhealthy";
-        details = error instanceof Error ? error.message : "Connection failed";
-      }
+    if (c.state === "running" && healthMatch === "healthy") {
+      status = "healthy";
+      details = "Container healthy";
+    } else if (healthMatch === "unhealthy") {
+      status = "unhealthy";
+      details = "Container failing healthcheck";
+    } else if (healthMatch === "starting") {
+      status = "unknown";
+      details = "Healthcheck still starting";
+    } else if (c.state === "running") {
+      // Container running, no HEALTHCHECK defined — treat as healthy.
+      // Real broken-but-running cases (e.g. crashed Spring Boot still appearing
+      // as a process) need their HEALTHCHECK in compose; surfacing that as a
+      // followup TODO.
+      status = "healthy";
+      details = "Running (no healthcheck defined)";
+    } else {
+      status = "unhealthy";
+      details = c.state === "exited" ? "Container exited" : `State: ${c.state}`;
     }
 
     services.push({
-      name: check.name,
+      name: role,
       status,
-      responseTimeMs,
-      lastChecked: Date.now(),
+      lastChecked: checkedAt,
       details,
     });
   }
 
-  return { services, timestamp: Date.now() };
+  return { services, timestamp: checkedAt };
 }
 
 interface PluginStatus {
@@ -1778,9 +1652,16 @@ async function getPluginStatuses(projectDir: string): Promise<PluginStatus[]> {
   const statuses: PluginStatus[] = [];
   const enabledTypes = new Set<string>();
 
+  // Plugin types promoted to client-level infra (ADRs 0008/0009/0010).
+  // Filter them out of the per-service plugin display so the dashboard
+  // doesn't show them twice (once at client level, once as a stale
+  // per-service plugin from old configs).
+  const promotedToClientLevel = new Set(["localstack", "keycloak", "clickhouse", "mlflow", "mage"]);
+
   // User-configured plugin instances
   for (let i = 0; i < (config?.plugins?.length ?? 0); i++) {
     const plugin = config!.plugins![i];
+    if (promotedToClientLevel.has(plugin.type)) continue;
     enabledTypes.add(plugin.type);
 
     const def = PLUGIN_REGISTRY[plugin.type];

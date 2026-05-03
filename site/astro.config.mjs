@@ -78,6 +78,15 @@ export default defineConfig({
       sidebar: [
         { label: 'Getting Started', link: '/getting-started' },
         {
+          label: 'Choose your path',
+          items: [
+            { label: 'Learn', link: '/paths/learn' },
+            { label: 'Build', link: '/paths/build' },
+            { label: 'Deliver', link: '/paths/deliver' },
+          ],
+        },
+        { label: 'Philosophy', link: '/philosophy' },
+        {
           label: 'Guides',
           items: [
             { label: 'The client model', link: '/guides/client-model' },

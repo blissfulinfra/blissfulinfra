@@ -4,18 +4,28 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import { findProjectDir } from "../utils/config.js";
+import { getClientDir, getClientPortBlock } from "../utils/client-registry.js";
 
 export async function logsAction(name?: string, opts: { follow?: boolean; lines?: string; service?: string } = {}): Promise<void> {
-  const projectDir = await findProjectDir(name);
-
-  if (!projectDir) {
-    if (name) {
-      console.error(chalk.red(`Project '${name}' not found.`));
-    } else {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Run from project directory or specify project name:"));
-      console.error(chalk.cyan("  blissful-infra logs my-app"));
+  // If `name` is a known client, route to the client-model logs flow
+  // (tail across the whole client compose project).
+  if (name) {
+    const block = await getClientPortBlock(name);
+    if (block) {
+      const clientDir = getClientDir(name);
+      const tail = opts.lines || "100";
+      const args = ["compose", "-f", "docker-compose.infra.yaml", "logs", `--tail=${tail}`];
+      if (opts.follow) args.push("-f");
+      if (opts.service) args.push(opts.service);
+      await execa("docker", args, { cwd: clientDir, stdio: "inherit" });
+      return;
     }
+  }
+
+  // Otherwise fall back to the flat-model layout
+  const projectDir = await findProjectDir(name);
+  if (!projectDir) {
+    console.error(chalk.red(name ? `'${name}' not found.` : "No blissful-infra.yaml found."));
     process.exit(1);
   }
 

@@ -6,14 +6,33 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import { getClientDir, getClientPortBlock } from "../utils/client-registry.js";
-import { copyTemplate, getAvailableTemplates, getAvailablePlugins, copyPlugin } from "../utils/template.js";
+import { copyTemplate, getAvailableTemplates, getAvailablePlugins, copyPlugin, PROMOTED_TO_CLIENT_LEVEL_PLUGINS } from "../utils/template.js";
 import { parsePluginSpecs, serializePluginSpecs } from "../utils/config.js";
 import { generatePrometheusConfig, regenerateInfraCompose } from "../utils/infra-compose.js";
 import { toExecError } from "../utils/errors.js";
 
 const BACKEND_CHOICES = ["spring-boot", "fastapi", "express", "go-chi", "lambda-python", "none"];
 const FRONTEND_CHOICES = ["react-vite", "nextjs", "none"];
-const PLUGIN_CHOICES = ["localstack", "keycloak", "ai-pipeline", "scraper", "agent-service", "gatling"];
+
+// Service-scoped plugins shown in the interactive prompt.
+//
+// NOTE on what's NOT here:
+//   - localstack, keycloak, clickhouse, mlflow, mage moved to **client-level**
+//     infrastructure (ADRs 0008/0009/0010). Enable them on `client create`.
+//     Power users can still pass them via `--plugins` for service-scoped
+//     instances; we just hide them from the default prompt to nudge people
+//     toward the client-level versions.
+//   - ai-pipeline is in flight (ADR-0010) — still works in old kitchen-sink
+//     shape today; will be refactored to a thin FastAPI service that consumes
+//     the client-level mlflow/mage/clickhouse.
+const PLUGIN_CHOICES = ["ai-pipeline", "scraper", "agent-service", "gatling"];
+
+/**
+ * Plugins that have been promoted to client-level infrastructure but are
+ * still scaffoldable as service-scoped via `--plugins <name>` for backward
+ * compatibility. Used to print a helpful redirect note in the prompt.
+ */
+const PROMOTED_TO_CLIENT_LEVEL = ["localstack", "keycloak", "clickhouse", "mlflow", "mage"];
 
 // Backends that don't follow the long-running-container shape. Service compose
 // generation branches on this — see generateLambdaServiceCompose.
@@ -81,10 +100,17 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     });
   }
   if (opts.plugins === undefined && isTty) {
+    // Heads-up: redirect users to client-level for promoted services
+    console.log(
+      chalk.dim("\n  Tip: ") +
+      `${PROMOTED_TO_CLIENT_LEVEL.join(", ")} are now ` +
+      chalk.bold("client-level") +
+      chalk.dim(" — enable on `client create`, not here.\n"),
+    );
     promptQs.push({
       type: "checkbox",
       name: "plugins",
-      message: "Plugins (space to toggle)",
+      message: "Service-scoped plugins (space to toggle)",
       choices: PLUGIN_CHOICES,
     });
   }
@@ -98,9 +124,22 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     : (opts.backend ?? answers.backend ?? "spring-boot");
   const rawFrontend = opts.frontend ?? answers.frontend;
   const frontend = (rawFrontend && rawFrontend !== "none") ? rawFrontend : undefined;
-  const plugins = opts.plugins
+  const rawPlugins = opts.plugins
     ? parsePluginSpecs(opts.plugins.split(",").map(p => p.trim()))
     : parsePluginSpecs(answers.plugins ?? []);
+
+  // Filter out anything promoted to client-level. They no longer scaffold as
+  // per-service plugins; if the user listed one via --plugins, surface a
+  // notice and drop it silently — the client-level instance already covers it.
+  const plugins = rawPlugins.filter(p => {
+    if (PROMOTED_TO_CLIENT_LEVEL_PLUGINS.has(p.type)) {
+      console.log(chalk.dim(
+        `  ${p.type} is now client-level — skipping as a per-service plugin (enable on \`client create\`).`
+      ));
+      return false;
+    }
+    return true;
+  });
 
   // Scaffold service directory
   const spinner = ora(`Scaffolding ${serviceName}...`).start();

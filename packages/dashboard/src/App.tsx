@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useReducer } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getConfig, serviceUrl } from './config'
@@ -498,7 +498,33 @@ function App() {
   const [metricsLoaded, setMetricsLoaded] = useState(false)
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(TIME_WINDOWS[0])
   const [_healthHistory, setHealthHistory] = useState<HealthHistory>({ timestamps: [], services: {} })
-  const [currentHealth, setCurrentHealth] = useState<ServiceHealth[]>([])
+
+  // Single source of truth for per-project health.
+  //
+  // Before: `currentHealth` was only populated for the SELECTED project;
+  // sidebar fell back to stale `service.status` for non-selected projects.
+  // Result: a service that was actually unhealthy showed green in the
+  // sidebar while red in the detail view — confusing inconsistency.
+  //
+  // Now: one map keyed by project name. Both the sidebar and the detail
+  // panel read from this map; one polling loop populates it for all visible
+  // projects. The reducer just keeps the data manipulation predictable.
+  type HealthAction =
+    | { type: 'set'; project: string; services: ServiceHealth[] }
+    | { type: 'clear'; project: string }
+    | { type: 'reset' }
+  const healthReducer = (state: Record<string, ServiceHealth[]>, action: HealthAction) => {
+    switch (action.type) {
+      case 'set':   return { ...state, [action.project]: action.services }
+      case 'clear': { const { [action.project]: _, ...rest } = state; return rest }
+      case 'reset': return {}
+      default:      return state
+    }
+  }
+  const [healthByProject, dispatchHealth] = useReducer(healthReducer, {} as Record<string, ServiceHealth[]>)
+  // Derived view for the selected project — every existing reference to
+  // `currentHealth` can keep working without a rewrite. Refactor opportunistically.
+  const currentHealth = selectedProject ? (healthByProject[selectedProject.name] || []) : []
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -698,35 +724,31 @@ function App() {
     return 'info'
   }
 
-  const fetchHealth = async () => {
-    if (!selectedProject) return
+  // Fetch health for a single project and dispatch into the reducer.
+  // Caller passes the project name explicitly — no implicit `selectedProject`,
+  // so we can call this for sidebar-visible non-selected projects too.
+  const fetchHealthFor = async (projectName: string) => {
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/health`)
-      if (res.ok) {
-        const data: HealthResponse = await res.json()
-        setCurrentHealth(data.services)
+      const res = await fetch(`${API_BASE}/projects/${projectName}/health`)
+      if (!res.ok) return
+      const data: HealthResponse = await res.json()
+      dispatchHealth({ type: 'set', project: projectName, services: data.services })
 
-        // Update health history
+      // Update history (only for the selected project — sidebar doesn't graph)
+      if (selectedProject?.name === projectName) {
         setHealthHistory((prev) => {
           const maxDataPoints = timeWindow.dataPoints
           const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
           const newServices = { ...prev.services }
-
           for (const service of data.services) {
-            if (!newServices[service.name]) {
-              newServices[service.name] = []
-            }
-            newServices[service.name] = [
-              ...newServices[service.name],
-              service.status,
-            ].slice(-maxDataPoints)
+            if (!newServices[service.name]) newServices[service.name] = []
+            newServices[service.name] = [...newServices[service.name], service.status].slice(-maxDataPoints)
           }
-
           return { timestamps: newTimestamps, services: newServices }
         })
       }
     } catch (e) {
-      console.error('Failed to fetch health:', e)
+      console.error(`Failed to fetch health for ${projectName}:`, e)
     }
   }
 
@@ -1142,13 +1164,20 @@ function App() {
     }
   }, [selectedProject?.name, lokiServiceFilter, lokiLevelFilter, lokiSearch])
 
-  // Health polling runs on all tabs — the status strip is always visible
+  // Health polling — covers ALL projects, not just the selected one.
+  // The sidebar's health dot for a non-selected project also reads from
+  // healthByProject[name], so we keep them all fresh. The cost is one
+  // extra request per project per 5s; in practice you've got 1-3 projects,
+  // and the /health endpoint is cheap (docker inspect, not HTTP probe).
   useEffect(() => {
-    if (!selectedProject) return
-    fetchHealth()
-    const healthInterval = setInterval(fetchHealth, 5000)
-    return () => clearInterval(healthInterval)
-  }, [selectedProject?.name])
+    if (projects.length === 0) return
+    const fetchAll = () => {
+      for (const p of projects) fetchHealthFor(p.name)
+    }
+    fetchAll()
+    const interval = setInterval(fetchAll, 5000)
+    return () => clearInterval(interval)
+  }, [projects.map(p => p.name).join(',')])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
@@ -1597,10 +1626,13 @@ function App() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {(() => {
-                        const isSelected = selectedProject?.name === project.name
-                        const hasHealthData = isSelected && currentHealth.length > 0
-                        const allHealthy = hasHealthData && currentHealth.every(s => s.status === 'healthy')
-                        const anyUnhealthy = hasHealthData && currentHealth.some(s => s.status === 'unhealthy')
+                        // Read live health for THIS project (not just the
+                        // selected one) — single source of truth across the
+                        // sidebar and detail view.
+                        const live = healthByProject[project.name]
+                        const hasHealthData = live && live.length > 0
+                        const allHealthy = hasHealthData && live.every(s => s.status === 'healthy')
+                        const anyUnhealthy = hasHealthData && live.some(s => s.status === 'unhealthy')
                         const dot = hasHealthData
                           ? (allHealthy ? 'bg-green-400' : anyUnhealthy ? 'bg-red-400' : 'bg-yellow-400')
                           : (project.status === 'running' ? 'bg-green-400' : project.status === 'stopped' ? 'bg-red-400' : 'bg-gray-500')
@@ -1628,8 +1660,9 @@ function App() {
                   {project.services.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
                       {project.services.map((service) => {
-                        const isSelected = selectedProject?.name === project.name
-                        const liveHealth = isSelected && currentHealth.length > 0 ? currentHealth.find(h => h.name === service.name) : undefined
+                        // Read this project's live health from the shared map
+                        const live = healthByProject[project.name]
+                        const liveHealth = live?.find(h => h.name === service.name)
                         const dot = liveHealth
                           ? (liveHealth.status === 'healthy' ? 'bg-green-400' : liveHealth.status === 'unhealthy' ? 'bg-red-400' : 'bg-gray-500')
                           : (service.status === 'running' ? 'bg-green-400' : service.status === 'stopped' ? 'bg-red-400' : 'bg-gray-500')
