@@ -322,9 +322,45 @@ The `example` command scaffolds a complete, runnable project using the base temp
 
 ## Next Steps
 
-- **[Learning Guide](./docs/LEARNING_GUIDE.md)** — Understand the enterprise infrastructure patterns blissful-infra uses (Kafka, Kubernetes, GitOps, observability)
-- **[Product Spec](./specs/product.md)** — Full technical specification for all features
+### Managing multiple environments — the client model
+
+`blissful-infra start` is the front door for a single project. When you need
+multiple isolated environments (multiple clients, staging vs production, or
+just keeping projects separate from each other), use the **client model**.
+Each client gets its own Kafka, Postgres, Jenkins, and observability stack
+on its own Docker network — full isolation per tenant.
+
+```bash
+# Create a new client environment (its own Kafka, Postgres, Jenkins, ...)
+blissful-infra client create acme-corp
+
+# Add services to it
+blissful-infra service add acme-corp api --backend spring-boot --frontend react-vite
+
+# Lifecycle
+blissful-infra client up acme-corp
+blissful-infra client status acme-corp
+blissful-infra client down acme-corp
+```
+
+See [specs/client-model.md](./specs/client-model.md) for the full design and
+[docs/adr/0002-per-client-isolation-model.md](./docs/adr/0002-per-client-isolation-model.md)
+for why we chose this shape.
+
+### Architectural decisions
+
+Significant choices are captured as ADRs in
+[docs/adr/](./docs/adr/). Each one documents the *why* behind a decision —
+context, trade-offs, alternatives considered. Read these before making
+cross-cutting changes.
+
+### Specs and reference
+
+- **[Learning Guide](./docs/LEARNING_GUIDE.md)** — Enterprise infrastructure patterns (Kafka, Kubernetes, GitOps, observability)
+- **[Product Spec](./specs/product.md)** — Full technical specification
 - **[Agent Spec](./specs/agent.md)** — How the AI analysis agent works
+- **[Client Model](./specs/client-model.md)** — Multi-tenant client environments
+- **[Analytics Spec](./specs/analytics.md)** — User session analytics pipeline (planned)
 - **[Roadmap](./specs/timeline.md)** — What's built and what's coming
 
 ### Plugins
@@ -343,44 +379,77 @@ blissful-infra start my-app --plugins ai-pipeline
 ### Contributing
 
 ```bash
-# Clone and install
+# Clone and install (npm workspaces resolve the shared package automatically)
 git clone https://github.com/cavanpage/blissful-infra.git
 cd blissful-infra && npm install
 
-# Build the CLI (run from repo root)
-cd packages/cli && npm run build && cd ../..
+# Build everything (shared → cli → dashboard, ordered correctly)
+npm run build
 ```
+
+#### Run the dogfood dev environment
+
+`./dev.sh` brings up a `dev` client (the canonical "real-world client" we
+develop against) with backend + frontend + LocalStack inside the unified
+client-model Compose project. The script creates the client on first run
+and just brings it up on subsequent runs.
+
+```bash
+./dev.sh
+```
+
+After it finishes:
+
+| Service       | URL                          |
+|---------------|------------------------------|
+| Frontend      | <http://localhost:14101>     |
+| Backend API   | <http://localhost:14100>     |
+| LocalStack    | <http://localhost:14102>     |
+| Dashboard     | <http://localhost:3013>      |
+| Grafana       | <http://localhost:3021>      |
+| Jenkins       | <http://localhost:8101>      |
+
+Source code lives at `~/.blissful-infra/clients/dev/app/{backend,frontend}`.
+Edit there to iterate.
 
 #### Working on templates
 
-Templates live in `packages/cli/templates/`. They are copied into scaffolded projects with `{{PROJECT_NAME}}` and `{{#IF_POSTGRES}}` blocks resolved at scaffold time.
+Templates live in `packages/cli/templates/`. They are copied into scaffolded
+projects with `{{PROJECT_NAME}}` and `{{#IF_POSTGRES}}` blocks resolved at
+scaffold time.
 
-**Live dev workflow — edit templates, see changes instantly:**
-
-```bash
-# Terminal 1 — scaffold a dev project (once)
-blissful-infra start dev-app
-
-# Terminal 2 — watch templates and sync changes to the running project
-blissful-infra dev --templates dev-app
-```
-
-Any file you save under `packages/cli/templates/react-vite/src/` or `packages/cli/templates/spring-boot/src/` is immediately processed and copied to `dev-app/frontend/src/` or `dev-app/backend/src/`.
-
-- **Frontend changes** — Vite HMR picks them up in the browser with no restart.
-- **Backend changes** — run `./gradlew classes -t` inside `dev-app/backend/` in a third terminal. Spring Boot devtools restarts the app on each recompile.
+To test a template change end-to-end: edit the template, then create a
+fresh client + service from it.
 
 ```bash
-# Terminal 3 (backend only) — continuous Kotlin compilation
-cd dev-app/backend && ./gradlew classes -t
+# Build the CLI to pick up template changes
+npm run build:cli
+
+# Spin up an isolated test client (different name so it doesn't collide with `dev`)
+blissful-infra client create scratch --yes
+blissful-infra service add scratch app --backend spring-boot --frontend react-vite
+
+# When done
+blissful-infra client remove scratch
 ```
 
-**Cleanup**
+The template hot-reload mode (`blissful-infra dev --templates`) was
+flat-model-only and is currently broken in the client model — see
+[CLAUDE.md](./CLAUDE.md) "TODOs" for the porting plan.
+
+#### Tests
+
+Three layers — see [docs/adr/0005-three-layer-testing-strategy.md](./docs/adr/0005-three-layer-testing-strategy.md).
 
 ```bash
-docker compose -f dev-app/docker-compose.yaml down -v
-rm -rf dev-app
+npm test                  # Layer 1+2: schema + compose validation, ~400ms
+npm run test:watch        # vitest watch mode in packages/cli
+npm run test:integration  # Layer 3: real Docker, ~minutes
+npm run test:all          # everything
 ```
+
+Add a Layer 1/2 test alongside any change to schemas, helpers, or compose
+generators. Layer 3 covers full client/service lifecycle.
 
 ---
 

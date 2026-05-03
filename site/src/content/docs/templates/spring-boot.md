@@ -156,12 +156,7 @@ blissful-infra dev
 # Starts Spring Boot DevTools — saves trigger JVM restart in ~2-3 seconds
 ```
 
-Or for template development (editing the template source itself):
-
-```bash
-# Terminal 1
-blissful-infra dev --templates dev-app
-
-# Terminal 2 — continuous Kotlin compilation
-cd dev-app/backend && ./gradlew classes -t
-```
+Template development (editing the template source itself) is currently
+supported via the repo's `dev.sh` script — see the [Contributing
+section](https://github.com/cavanpage/blissful-infra#contributing) of the
+README for the current workflow.

@@ -1,0 +1,11 @@
+# Lambda function manifest.
+# Drives both local (LocalStack) deploy and future cloud (AWS) deploy.
+# Edit handler/timeout/memory/env here; redeploy with:
+#   blissful-infra lambda deploy <client> {{PROJECT_NAME}}
+name: {{PROJECT_NAME}}
+runtime: python3.11
+handler: handler.lambda_handler
+timeout_seconds: 30
+memory_mb: 256
+environment:
+  GREETING: Hello

@@ -11,9 +11,17 @@ import { parsePluginSpecs, serializePluginSpecs } from "../utils/config.js";
 import { generatePrometheusConfig, regenerateInfraCompose } from "../utils/infra-compose.js";
 import { toExecError } from "../utils/errors.js";
 
-const BACKEND_CHOICES = ["spring-boot", "fastapi", "express", "go-chi", "none"];
+const BACKEND_CHOICES = ["spring-boot", "fastapi", "express", "go-chi", "lambda-python", "none"];
 const FRONTEND_CHOICES = ["react-vite", "nextjs", "none"];
 const PLUGIN_CHOICES = ["localstack", "keycloak", "ai-pipeline", "scraper", "agent-service", "gatling"];
+
+// Backends that don't follow the long-running-container shape. Service compose
+// generation branches on this — see generateLambdaServiceCompose.
+const SERVERLESS_BACKENDS = new Set(["lambda-python"]);
+
+function isServerlessBackend(backend: string): boolean {
+  return SERVERLESS_BACKENDS.has(backend);
+}
 
 interface ServiceAddOptions {
   backend?: string;
@@ -101,8 +109,28 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
   const availableTemplates = getAvailableTemplates();
   const availablePlugins = getAvailablePlugins();
 
+  // Lambda backends are required to have LocalStack — it's the local runtime,
+  // not an optional plugin. Auto-include if the user didn't tick it.
+  if (isServerlessBackend(backend) && !plugins.find(p => p.type === "localstack")) {
+    plugins.push({ type: "localstack", instance: "localstack" });
+  }
+
   // Copy backend template
-  if (availableTemplates.includes(backend)) {
+  if (isServerlessBackend(backend)) {
+    // Lambda templates scaffold *into the service dir* directly (lambda.yaml at
+    // root, lambda/handler.py + requirements.txt, deploy.sh). No `backend/`
+    // subdir — there's no long-running backend container.
+    await copyTemplate(backend, serviceDir, {
+      projectName: serviceName,
+      database: "none",
+      deployTarget: "local-only",
+      plugins: plugins.map(p => p.type),
+    });
+    // Ensure deploy.sh stays executable (Node fs.copyFile may strip the bit)
+    try {
+      await fs.chmod(path.join(serviceDir, "deploy.sh"), 0o755);
+    } catch { /* file may not exist for non-lambda templates */ }
+  } else if (availableTemplates.includes(backend)) {
     await fs.mkdir(path.join(serviceDir, "backend"), { recursive: true });
     await copyTemplate(backend, path.join(serviceDir, "backend"), {
       projectName: serviceName,
@@ -168,8 +196,12 @@ backend: ${backend}${frontendLine}${pluginLine}
   const serviceIndex = allServicesPostAdd.findIndex(s => s.name === serviceName);
   const servicePorts = computeServicePorts(ports.blockIndex, serviceIndex);
 
-  // Generate service docker-compose.yaml joining the client's infra network
-  const serviceCompose = generateServiceCompose(clientName, serviceName, backend, frontend, plugins, servicePorts);
+  // Generate service docker-compose.yaml joining the client's infra network.
+  // Lambda backends use a different shape (no long-running backend, deployer
+  // sidecar registers handler with LocalStack on `service up`).
+  const serviceCompose = isServerlessBackend(backend)
+    ? generateLambdaServiceCompose(clientName, serviceName, servicePorts)
+    : generateServiceCompose(clientName, serviceName, backend, frontend, plugins, servicePorts);
   await fs.writeFile(path.join(serviceDir, "docker-compose.yaml"), serviceCompose);
 
   configSpinner.succeed("Service config written");
@@ -206,7 +238,11 @@ backend: ${backend}${frontendLine}${pluginLine}
     });
     console.log();
     console.log(chalk.green(`${serviceName} is running`));
-    printServiceUrls(clientName, serviceName, frontend, servicePorts, plugins.some(p => p.type === "localstack"));
+    printServiceUrls(
+      clientName, serviceName, frontend, servicePorts,
+      plugins.some(p => p.type === "localstack"),
+      isServerlessBackend(backend),
+    );
   } catch (error) {
     const execError = toExecError(error);
     if (execError.stderr) {
@@ -220,13 +256,13 @@ backend: ${backend}${frontendLine}${pluginLine}
   console.log();
 }
 
-interface ServicePorts {
+export interface ServicePorts {
   backend: number;
   frontend: number;
   localstack: number;
 }
 
-function computeServicePorts(blockIndex: number, serviceIndex: number): ServicePorts {
+export function computeServicePorts(blockIndex: number, serviceIndex: number): ServicePorts {
   const base = 13000 + blockIndex * 100 + serviceIndex * 4;
   return { backend: base, frontend: base + 1, localstack: base + 2 };
 }
@@ -237,9 +273,17 @@ function printServiceUrls(
   frontend: string | undefined,
   ports: ServicePorts,
   hasLocalStack = false,
+  isLambda = false,
 ): void {
   console.log();
   console.log(chalk.dim(`  ${clientName}/${serviceName}`));
+  if (isLambda) {
+    console.log(chalk.dim("  Lambda runtime: ") + chalk.cyan(`http://localhost:${ports.localstack}`)
+      + chalk.dim(" (LocalStack)"));
+    console.log(chalk.dim("  Invoke:         ") + chalk.cyan(
+      `blissful-infra lambda invoke ${clientName} ${serviceName} --payload '{...}'`));
+    return;
+  }
   console.log(chalk.dim("  Backend API: ") + chalk.cyan(`http://localhost:${ports.backend}`));
   if (frontend) {
     console.log(chalk.dim("  Frontend:    ") + chalk.cyan(`http://localhost:${ports.frontend}`));
@@ -249,22 +293,29 @@ function printServiceUrls(
   }
 }
 
-function getServiceComposeKeys(serviceName: string, hasFrontend: boolean, hasLocalStack: boolean): string[] {
+function getServiceComposeKeys(
+  serviceName: string,
+  features: { hasFrontend: boolean; hasLocalStack: boolean; isLambda: boolean },
+): string[] {
+  if (features.isLambda) {
+    return [`${serviceName}-localstack`, `${serviceName}-deployer`];
+  }
   const keys = [`${serviceName}-backend`];
-  if (hasFrontend) keys.push(`${serviceName}-frontend`);
-  if (hasLocalStack) keys.push(`${serviceName}-localstack`);
+  if (features.hasFrontend) keys.push(`${serviceName}-frontend`);
+  if (features.hasLocalStack) keys.push(`${serviceName}-localstack`);
   return keys;
 }
 
-async function detectServiceFeatures(serviceDir: string): Promise<{ hasFrontend: boolean; hasLocalStack: boolean }> {
+async function detectServiceFeatures(serviceDir: string): Promise<{ hasFrontend: boolean; hasLocalStack: boolean; isLambda: boolean }> {
   try {
     const compose = await fs.readFile(path.join(serviceDir, "docker-compose.yaml"), "utf-8");
     return {
       hasFrontend: /-frontend:\s*$/m.test(compose),
       hasLocalStack: /-localstack:\s*$/m.test(compose),
+      isLambda: /-deployer:\s*$/m.test(compose),
     };
   } catch {
-    return { hasFrontend: false, hasLocalStack: false };
+    return { hasFrontend: false, hasLocalStack: false, isLambda: false };
   }
 }
 
@@ -279,8 +330,8 @@ async function serviceUpAction(clientName: string, serviceName: string): Promise
     process.exit(1);
   }
 
-  const { hasFrontend, hasLocalStack } = await detectServiceFeatures(serviceDir);
-  const keys = getServiceComposeKeys(serviceName, hasFrontend, hasLocalStack);
+  const features = await detectServiceFeatures(serviceDir);
+  const keys = getServiceComposeKeys(serviceName, features);
 
   await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "up", "-d", ...keys], {
     cwd: clientDir,
@@ -300,8 +351,8 @@ async function serviceDownAction(clientName: string, serviceName: string): Promi
     process.exit(1);
   }
 
-  const { hasFrontend, hasLocalStack } = await detectServiceFeatures(serviceDir);
-  const keys = getServiceComposeKeys(serviceName, hasFrontend, hasLocalStack);
+  const features = await detectServiceFeatures(serviceDir);
+  const keys = getServiceComposeKeys(serviceName, features);
 
   await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "stop", ...keys], {
     cwd: clientDir,
@@ -325,8 +376,8 @@ async function serviceLogsAction(clientName: string, serviceName: string): Promi
     process.exit(1);
   }
 
-  const { hasFrontend, hasLocalStack } = await detectServiceFeatures(serviceDir);
-  const keys = getServiceComposeKeys(serviceName, hasFrontend, hasLocalStack);
+  const features = await detectServiceFeatures(serviceDir);
+  const keys = getServiceComposeKeys(serviceName, features);
 
   await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "logs", "-f", "--tail", "100", ...keys], {
     cwd: clientDir,
@@ -488,6 +539,91 @@ services:
 
   yaml += "\n";
   return yaml;
+}
+
+/**
+ * Generate compose for a lambda-python service.
+ *
+ * Different shape from `generateServiceCompose`: there's no long-running
+ * backend container. Instead a LocalStack container hosts the function
+ * runtime, and a one-shot deployer sidecar registers the handler with
+ * LocalStack on service up. The deployer reads `lambda.yaml` from the
+ * service dir and zips `lambda/` into a deployment package.
+ *
+ * See ADR-0007 for the full rationale.
+ */
+export function generateLambdaServiceCompose(
+  clientName: string,
+  serviceName: string,
+  ports: ServicePorts,
+): string {
+  const internalNet = `${serviceName}-internal`;
+  const localstackKey = `${serviceName}-localstack`;
+  const deployerKey = `${serviceName}-deployer`;
+
+  return `networks:
+  # Per-service network. infra is declared by the parent client compose;
+  # we reference it here without external:true (see ADR-0001).
+  infra:
+    name: ${clientName}_infra
+  ${internalNet}:
+    driver: bridge
+
+services:
+  ${localstackKey}:
+    image: localstack/localstack:3
+    container_name: ${clientName}-${serviceName}-localstack
+    networks:
+      ${internalNet}:
+        aliases: [localstack]
+      infra: {}
+    ports:
+      - "${ports.localstack}:4566"
+    environment:
+      # Lambda is the runtime here; include adjacent AWS services so handlers
+      # can use them locally without extra config.
+      SERVICES: "lambda,s3,sqs,dynamodb,sns,secretsmanager,iam,logs"
+      DEFAULT_REGION: us-east-1
+      LOCALSTACK_HOST: localstack
+      EXTRA_CORS_ALLOWED_ORIGINS: "*"
+      EXTRA_CORS_ALLOWED_HEADERS: "*"
+      DISABLE_CORS_CHECKS: "1"
+      # LocalStack needs to spawn Lambda Docker containers — share the host socket
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Optional init scripts (e.g. seed buckets/queues before lambdas land)
+      - ./localstack/init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  ${deployerKey}:
+    image: python:3.11-slim
+    container_name: ${clientName}-${serviceName}-deployer
+    networks:
+      - ${internalNet}
+    working_dir: /work
+    volumes:
+      # Mount the whole service dir read-only — deploy.sh reads lambda.yaml + lambda/
+      - .:/work:ro
+    environment:
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      FUNCTION_NAME: ${serviceName}
+    depends_on:
+      ${localstackKey}:
+        condition: service_healthy
+    # Need zip + sh — install once, then run the deploy script.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apt-get update -qq && apt-get install -yqq zip >/dev/null && sh /work/deploy.sh"]
+    restart: "no"
+`;
 }
 
 function appendServiceToClientConfig(content: string, serviceName: string): string {

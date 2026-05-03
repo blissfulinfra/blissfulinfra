@@ -78,9 +78,18 @@ export default defineConfig({
       sidebar: [
         { label: 'Getting Started', link: '/getting-started' },
         {
+          label: 'Guides',
+          items: [
+            { label: 'The client model', link: '/guides/client-model' },
+          ],
+        },
+        {
           label: 'Commands',
           items: [
             { label: 'start', link: '/commands/start' },
+            { label: 'client', link: '/commands/client' },
+            { label: 'service', link: '/commands/service' },
+            { label: 'lambda', link: '/commands/lambda' },
             { label: 'deploy', link: '/commands/deploy' },
             { label: 'dev', link: '/commands/dev' },
             { label: 'dashboard', link: '/commands/dashboard' },
@@ -93,12 +102,14 @@ export default defineConfig({
             { label: 'Overview', link: '/templates/overview' },
             { label: 'Spring Boot', link: '/templates/spring-boot' },
             { label: 'React + Vite', link: '/templates/react-vite' },
+            { label: 'Lambda (Python)', link: '/templates/lambda-python' },
           ],
         },
         {
           label: 'Blog',
           items: [
             { label: 'Stop paying for cloud dev environments', link: '/blog/local-dev-environment' },
+            { label: "Learn AWS for free with LocalStack", link: '/blog/localstack-aws-locally' },
             { label: "A Developer's Guide to IAM", link: '/blog/iam-guide' },
           ],
         },

@@ -31,6 +31,7 @@ import { generateCommand } from "./commands/generate.js";
 // Phase 6 commands (Client Model)
 import { clientCommand } from "./commands/client.js";
 import { serviceCommand } from "./commands/service.js";
+import { lambdaCommand } from "./commands/lambda.js";
 
 const program = new Command();
 
@@ -79,6 +80,7 @@ program.addCommand(generateCommand);
 // Phase 6 commands (Client Model)
 program.addCommand(clientCommand);
 program.addCommand(serviceCommand);
+program.addCommand(lambdaCommand);
 
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {
@@ -97,7 +99,7 @@ async function main() {
 
   // If first arg could be a project name (not a known command or flag)
   if (args.length >= 1 && !args[0].startsWith("-")) {
-    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "perf", "chaos", "compare", "canary", "analyze", "suggest", "example", "help", "client", "service", "generate", "mcp", "init"];
+    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "perf", "chaos", "compare", "canary", "analyze", "suggest", "example", "help", "client", "service", "lambda", "generate", "mcp", "init"];
     const firstArg = args[0];
 
     if (!knownCommands.includes(firstArg) && await isProjectDir(firstArg)) {

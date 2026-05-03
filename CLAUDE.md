@@ -5,6 +5,7 @@
 - User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab) — designed in [specs/analytics.md](specs/analytics.md). Slice A (plumbing) is the next build chunk.
 - **dev-app is now a client-model service** — lives at `~/.blissful-infra/clients/dev/app/` (client `dev`, service `app`). The old `dev-app/` directory at the repo root has been removed. `dev.sh` rebuilt to use `blissful-infra client up dev`. Eat-your-own-dogfood is now the client model. The legacy `blissful-infra start` flat-model path still works for users who want it, but is no longer used internally.
 - **Template hot-reload (`blissful-infra dev --templates <project>`) needs porting** to client-model paths — currently expects a project dir under cwd, would need to accept a client-model service path like `~/.blissful-infra/clients/dev/app`. Niche template-developer feature; defer until needed.
+- **AWS Lambda backend template (`lambda-python`)** is shipped — runs on LocalStack locally, has its own `blissful-infra lambda deploy/invoke/logs` CLI. Cloud deploy adapter for real AWS Lambda is intentionally deferred (see [docs/adr/0007-aws-lambda-local-via-localstack.md](docs/adr/0007-aws-lambda-local-via-localstack.md)). Future runtimes (`lambda-node`, `lambda-go`) follow the same pattern.
 
 ## What this repo is
 

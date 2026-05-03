@@ -194,7 +194,7 @@ export { replaceVariables, isBinaryFile };
 
 /** Core project templates (backend / frontend scaffolding). */
 export function getAvailableTemplates(): string[] {
-  return ["spring-boot", "react-vite"];
+  return ["spring-boot", "react-vite", "lambda-python"];
 }
 
 /** Built-in plugin types that live under templates/plugins/. */

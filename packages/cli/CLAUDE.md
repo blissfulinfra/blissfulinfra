@@ -77,6 +77,21 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 | `service down <client> <svc>` | `service.ts` | Stop a single service |
 | `service logs <client> <svc>` | `service.ts` | Stream logs for a service |
 
+### Lambda (serverless backend on LocalStack)
+| Command | File | What it does |
+|---|---|---|
+| `lambda deploy <client> <svc>` | `lambda.ts` | Re-package handler + register with the service's LocalStack |
+| `lambda invoke <client> <svc>` | `lambda.ts` | Invoke the function with a JSON payload |
+| `lambda logs <client> <svc>` | `lambda.ts` | Tail Lambda logs (CloudWatch emulated by LocalStack) |
+
+Lambda services are created via `service add <c> <s> --backend lambda-python`.
+Compose generation branches on `isServerlessBackend(backend)` —
+`generateLambdaServiceCompose` produces the `localstack + deployer` sidecar
+shape instead of a long-running backend container.
+
+Cloud deploy adapter for real AWS Lambda is intentionally deferred — see
+[docs/adr/0007-aws-lambda-local-via-localstack.md](../../docs/adr/0007-aws-lambda-local-via-localstack.md).
+
 ### CI/CD (Phase 2)
 | Command | File | What it does |
 |---|---|---|
@@ -170,7 +185,58 @@ Jenkins pipelines reach it at `http://host.docker.internal:3002` (from inside Do
 
 ## MCP server (`src/server/mcp.ts`)
 
-Implements the Model Context Protocol, exposing CLI capabilities as tools that Claude Desktop / Claude Code can call. Start with `blissful-infra mcp`. Tools include: `list_projects`, `get_logs`, `get_metrics`, `get_health`, `trigger_build`, `deploy`, `query_logs`.
+Implements the Model Context Protocol over **stdio** transport — designed
+to be spawned as a subprocess by Claude Desktop / Claude Code / Cursor, not
+exposed over a network port. Internally it's a thin shim: each MCP tool
+proxies to a `/api/v1/...` endpoint on the dashboard's API server. ~19
+tools exposed: `list_projects`, `get_logs`, `get_metrics`, `get_health`,
+`trigger_build`, `deploy`, `query_logs`, plus pipeline / environments /
+plugins.
+
+### Wiring it up
+
+Two ways to point the MCP server at the right API:
+
+```bash
+# Auto-discover from the registry — recommended
+blissful-infra mcp --client dev
+
+# Explicit URL — overrides --client when both are passed
+blissful-infra mcp --api http://localhost:3013
+
+# Default (legacy flat-model dashboard) — only works if something is on :3002
+blissful-infra mcp
+```
+
+`--client <name>` reads `~/.blissful-infra/registry.json` (honoring
+`BLISSFUL_HOME` env), looks up the client's allocated dashboard port, and
+constructs the URL automatically. This is the fix for the "every client
+runs its dashboard on a different port" gotcha.
+
+### Claude Desktop config
+
+In `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "blissful-infra-dev": {
+      "command": "blissful-infra",
+      "args": ["mcp", "--client", "dev"]
+    }
+  }
+}
+```
+
+Add one entry per client you want Claude to manage. Each entry runs in its
+own subprocess.
+
+### Verification harness
+
+`scripts/mcp-verify.mjs` and `scripts/mcp-verify-client.mjs` spawn the MCP
+server, perform the handshake, list tools, and call `list_projects` /
+`get_health`. Use these for smoke-testing after any change to api.ts or
+mcp.ts.
 
 ---
 
