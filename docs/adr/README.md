@@ -54,6 +54,7 @@ Use `_template.md` as a starting point.
 | [0005](./0005-three-layer-testing-strategy.md) | Test in three layers: schema/logic, compose validation, real Docker | Accepted | 2026-04-30 |
 | [0006](./0006-keep-zod-for-runtime-validation.md) | Keep Zod as the runtime-validation layer at trust boundaries | Accepted | 2026-04-30 |
 | [0007](./0007-aws-lambda-local-via-localstack.md) | AWS Lambda backend template runs locally on LocalStack; cloud deploy deferred | Proposed | 2026-05-02 |
+| [0008](./0008-clickhouse-as-client-level-warehouse.md) | ClickHouse is the client-level analytical warehouse | Proposed | 2026-05-02 |
 
 When you add an ADR, append a row to this index in the same PR.
 
