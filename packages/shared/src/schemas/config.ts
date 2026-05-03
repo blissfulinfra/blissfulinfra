@@ -144,6 +144,10 @@ export const ObservabilityConfigSchema = z.object({
   grafana: z.boolean().default(true),
   jaeger: z.boolean().default(true),
   loki: z.boolean().default(true),
+  // Note: `clickhouse` here is legacy (was nested under observability before
+  // ADR-0008 promoted it to a top-level infra component). Kept for backwards
+  // compatibility on existing client configs; new code reads
+  // ClientInfrastructure.clickhouse instead.
   clickhouse: z.boolean().default(false),
 });
 
@@ -152,6 +156,14 @@ export const ClientInfrastructureSchema = z.object({
   postgres: z.boolean().default(true),
   jenkins: z.boolean().default(true),
   observability: ObservabilityConfigSchema.optional(),
+  // Promoted to client-level platform services (ADR-0008, 0009, 0010).
+  // All default to `false` — opt-in to keep the lightweight default footprint
+  // small. `client create` interactive prompt + flags drive these.
+  clickhouse: z.boolean().default(false),  // ADR-0008
+  localstack: z.boolean().default(false),  // ADR-0008
+  keycloak:   z.boolean().default(false),  // ADR-0009
+  mlflow:     z.boolean().default(false),  // ADR-0010
+  mage:       z.boolean().default(false),  // ADR-0010
 });
 
 export const ClientServiceRefSchema = z.object({
@@ -191,6 +203,14 @@ export const PortBlockSchema = z.object({
   kafka: z.number(),
   postgres: z.number(),
   dashboard: z.number(),
+  // Optional — only populated when the client has the corresponding
+  // infrastructure component enabled. Older registry entries without these
+  // fields remain valid (the schema's optional() makes them non-breaking).
+  clickhouse: z.number().optional(),  // ADR-0008
+  localstack: z.number().optional(),  // ADR-0008
+  keycloak:   z.number().optional(),  // ADR-0009
+  mlflow:     z.number().optional(),  // ADR-0010
+  mage:       z.number().optional(),  // ADR-0010
 });
 
 export const ClientRegistrySchema = z.object({

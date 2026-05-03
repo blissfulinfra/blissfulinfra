@@ -81,6 +81,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'The client model', link: '/guides/client-model' },
+            { label: 'Warehouse (ClickHouse + LocalStack)', link: '/guides/warehouse' },
           ],
         },
         {

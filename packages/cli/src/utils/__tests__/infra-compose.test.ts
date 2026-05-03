@@ -25,6 +25,11 @@ const fullInfra = {
   kafka: true,
   postgres: true,
   jenkins: true,
+  clickhouse: false,
+  localstack: false,
+  keycloak: false,
+  mlflow: false,
+  mage: false,
   observability: { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false },
 };
 
@@ -32,6 +37,23 @@ const minimalInfra = {
   kafka: false,
   postgres: false,
   jenkins: false,
+  clickhouse: false,
+  localstack: false,
+  keycloak: false,
+  mlflow: false,
+  mage: false,
+  observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+};
+
+const allPromotedInfra = {
+  kafka: true,
+  postgres: true,
+  jenkins: false,
+  clickhouse: true,
+  localstack: true,
+  keycloak: true,
+  mlflow: true,
+  mage: true,
   observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
 };
 
@@ -134,6 +156,53 @@ describe("generateInfraCompose — structural assertions", () => {
       { path: "./api/docker-compose.yaml" },
       { path: "./store/docker-compose.yaml" },
     ]);
+  });
+
+  // ADR-0008/0009/0010 — promoted client-level services
+  it("emits clickhouse + localstack + keycloak + mlflow + mage when all enabled", async () => {
+    await generateInfraCompose({
+      clientName: "tc",
+      clientDir: dir,
+      ports: allocatePortBlock("tc", 0),
+      infrastructure: allPromotedInfra,
+    });
+    const { parsed } = await readGeneratedCompose();
+    const services = parsed.services as Record<string, unknown>;
+    expect(services.clickhouse).toBeDefined();
+    expect(services.localstack).toBeDefined();
+    expect(services.keycloak).toBeDefined();
+    expect(services.mlflow).toBeDefined();
+    expect(services.mage).toBeDefined();
+  });
+
+  it("does NOT emit promoted services when their flags are off", async () => {
+    await generateInfraCompose({
+      clientName: "tc",
+      clientDir: dir,
+      ports: allocatePortBlock("tc", 0),
+      infrastructure: minimalInfra,
+    });
+    const { parsed } = await readGeneratedCompose();
+    const services = parsed.services as Record<string, unknown>;
+    expect(services.clickhouse).toBeUndefined();
+    expect(services.localstack).toBeUndefined();
+    expect(services.keycloak).toBeUndefined();
+    expect(services.mlflow).toBeUndefined();
+    expect(services.mage).toBeUndefined();
+  });
+
+  it("uses port-block-allocated ports for promoted services (not hardcoded)", async () => {
+    const ports = allocatePortBlock("tc", 3);   // block 3 → +3 to all bases
+    await generateInfraCompose({
+      clientName: "tc", clientDir: dir, ports, infrastructure: allPromotedInfra,
+    });
+    const { parsed } = await readGeneratedCompose();
+    const services = parsed.services as Record<string, { ports?: string[] }>;
+    expect(services.clickhouse.ports?.[0]).toBe(`${ports.clickhouse}:8123`);
+    expect(services.localstack.ports?.[0]).toBe(`${ports.localstack}:4566`);
+    expect(services.keycloak.ports?.[0]).toBe(`${ports.keycloak}:8080`);
+    expect(services.mlflow.ports?.[0]).toBe(`${ports.mlflow}:5000`);
+    expect(services.mage.ports?.[0]).toBe(`${ports.mage}:6789`);
   });
 });
 

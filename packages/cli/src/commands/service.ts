@@ -109,10 +109,22 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
   const availableTemplates = getAvailableTemplates();
   const availablePlugins = getAvailablePlugins();
 
-  // Lambda backends are required to have LocalStack — it's the local runtime,
-  // not an optional plugin. Auto-include if the user didn't tick it.
-  if (isServerlessBackend(backend) && !plugins.find(p => p.type === "localstack")) {
-    plugins.push({ type: "localstack", instance: "localstack" });
+  // Lambda backends require LocalStack at the client level (ADR-0008/0007).
+  // Validate the client has it enabled — fail loudly if not, so users don't
+  // discover the misconfig at first invoke.
+  if (isServerlessBackend(backend)) {
+    const clientYamlPath = path.join(clientDir, "blissful-infra.yaml");
+    const clientYaml = await fs.readFile(clientYamlPath, "utf-8").catch(() => "");
+    const hasLocalStackAtClientLevel = /^  localstack:\s*true\s*$/m.test(clientYaml);
+    if (!hasLocalStackAtClientLevel) {
+      console.error(chalk.red(
+        `Lambda services need LocalStack at the client level, but '${clientName}' does not have it enabled.`,
+      ));
+      console.error(chalk.dim("Recreate the client with LocalStack enabled, or add it manually to:"));
+      console.error(chalk.cyan(`  ${clientYamlPath}`));
+      console.error(chalk.dim("  → set `localstack: true` under infrastructure"));
+      process.exit(1);
+    }
   }
 
   // Copy backend template
@@ -555,57 +567,27 @@ services:
 export function generateLambdaServiceCompose(
   clientName: string,
   serviceName: string,
-  ports: ServicePorts,
+  _ports: ServicePorts,
 ): string {
-  const internalNet = `${serviceName}-internal`;
-  const localstackKey = `${serviceName}-localstack`;
+  // ADR-0008 promoted LocalStack to client-level. Lambda services no longer
+  // run their own LocalStack — the deployer just points at the client's
+  // LocalStack on the shared `infra` network. Container set is now just
+  // the deployer; LocalStack lives at client level.
   const deployerKey = `${serviceName}-deployer`;
 
   return `networks:
-  # Per-service network. infra is declared by the parent client compose;
-  # we reference it here without external:true (see ADR-0001).
+  # Shared infra (kafka, postgres, localstack, clickhouse, ...). Declared by
+  # the parent client compose; we reference it without external:true
+  # (see ADR-0001 for the bug that pattern caused).
   infra:
     name: ${clientName}_infra
-  ${internalNet}:
-    driver: bridge
 
 services:
-  ${localstackKey}:
-    image: localstack/localstack:3
-    container_name: ${clientName}-${serviceName}-localstack
-    networks:
-      ${internalNet}:
-        aliases: [localstack]
-      infra: {}
-    ports:
-      - "${ports.localstack}:4566"
-    environment:
-      # Lambda is the runtime here; include adjacent AWS services so handlers
-      # can use them locally without extra config.
-      SERVICES: "lambda,s3,sqs,dynamodb,sns,secretsmanager,iam,logs"
-      DEFAULT_REGION: us-east-1
-      LOCALSTACK_HOST: localstack
-      EXTRA_CORS_ALLOWED_ORIGINS: "*"
-      EXTRA_CORS_ALLOWED_HEADERS: "*"
-      DISABLE_CORS_CHECKS: "1"
-      # LocalStack needs to spawn Lambda Docker containers — share the host socket
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Optional init scripts (e.g. seed buckets/queues before lambdas land)
-      - ./localstack/init:/etc/localstack/init/ready.d:ro
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 30s
-
   ${deployerKey}:
     image: python:3.11-slim
     container_name: ${clientName}-${serviceName}-deployer
     networks:
-      - ${internalNet}
+      - infra
     working_dir: /work
     volumes:
       # Mount the whole service dir read-only — deploy.sh reads lambda.yaml + lambda/
@@ -617,7 +599,7 @@ services:
       AWS_SECRET_ACCESS_KEY: test
       FUNCTION_NAME: ${serviceName}
     depends_on:
-      ${localstackKey}:
+      localstack:
         condition: service_healthy
     # Need zip + sh — install once, then run the deploy script.
     entrypoint: ["/bin/sh", "-c"]

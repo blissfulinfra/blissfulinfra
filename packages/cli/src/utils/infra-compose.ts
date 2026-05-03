@@ -13,15 +13,25 @@ export interface ParsedClientConfig {
  * to regenerate the infra compose with the correct include list.
  */
 export function parseClientConfigYaml(content: string): ParsedClientConfig {
+  // Match flags at top level vs nested under observability:. The new
+  // promoted-to-client-level flags (clickhouse/localstack/keycloak/mlflow/mage)
+  // appear at the infrastructure root.
+  const matchTopLevel = (key: string) =>
+    new RegExp(`^  ${key}:\\s*true\\s*$`, "m").test(content);
   const infra: NonNullable<ClientConfig["infrastructure"]> = {
-    kafka: /kafka:\s*true/.test(content),
-    postgres: /postgres:\s*true/.test(content),
-    jenkins: /jenkins:\s*true/.test(content),
+    kafka:      matchTopLevel("kafka")      || /kafka:\s*true/.test(content),
+    postgres:   matchTopLevel("postgres")   || /postgres:\s*true/.test(content),
+    jenkins:    matchTopLevel("jenkins")    || /jenkins:\s*true/.test(content),
+    clickhouse: matchTopLevel("clickhouse"),
+    localstack: matchTopLevel("localstack"),
+    keycloak:   matchTopLevel("keycloak"),
+    mlflow:     matchTopLevel("mlflow"),
+    mage:       matchTopLevel("mage"),
     observability: {
       prometheus: /prometheus:\s*true/.test(content),
-      grafana: /grafana:\s*true/.test(content),
-      jaeger: /jaeger:\s*true/.test(content),
-      loki: /loki:\s*true/.test(content),
+      grafana:    /grafana:\s*true/.test(content),
+      jaeger:     /jaeger:\s*true/.test(content),
+      loki:       /loki:\s*true/.test(content),
       clickhouse: /clickhouse:\s*true/.test(content),
     },
   };
@@ -268,20 +278,27 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     volumes["grafana-data"] = null;
   }
 
-  // ClickHouse (Phase 8+) — host port derived from block to avoid cross-client collisions
-  if (obs.clickhouse) {
-    const clickhousePort = 8123 + ports.blockIndex;
+  // ClickHouse — client-level analytical warehouse (ADR-0008).
+  // Reads top-level flag (preferred) OR the legacy nested observability flag
+  // for backwards compat with existing client configs.
+  if (infrastructure.clickhouse || obs.clickhouse) {
     services.clickhouse = {
       image: "clickhouse/clickhouse-server:24.3",
       container_name: `${clientName}-clickhouse`,
-      ports: [`${clickhousePort}:8123`],
+      ports: [`${ports.clickhouse ?? 8120 + ports.blockIndex}:8123`],
       networks: ["infra"],
       environment: {
-        CLICKHOUSE_DB: "metrics_db",
+        CLICKHOUSE_DB: "warehouse",
         CLICKHOUSE_USER: "default",
         CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1",
+        // Required for ClickHouse's `s3()` table function to talk to LocalStack
+        // (path-style URLs) — see ADR-0008 lakehouse pattern.
+        CLICKHOUSE_S3_ENDPOINT: "http://localstack:4566",
       },
-      volumes: [`clickhouse-data:/var/lib/clickhouse`],
+      volumes: [
+        "clickhouse-data:/var/lib/clickhouse",
+        "./clickhouse/init:/docker-entrypoint-initdb.d:ro",
+      ],
       healthcheck: {
         test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"],
         interval: "10s",
@@ -291,6 +308,111 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
       },
     };
     volumes["clickhouse-data"] = null;
+  }
+
+  // LocalStack — client-level AWS emulator (ADR-0008).
+  if (infrastructure.localstack) {
+    services.localstack = {
+      image: "localstack/localstack:3",
+      container_name: `${clientName}-localstack`,
+      ports: [`${ports.localstack ?? 4570 + ports.blockIndex}:4566`],
+      networks: ["infra"],
+      environment: {
+        SERVICES: "s3,sqs,dynamodb,sns,secretsmanager,iam,lambda,logs",
+        DEFAULT_REGION: "us-east-1",
+        LOCALSTACK_HOST: "localstack",
+        EXTRA_CORS_ALLOWED_ORIGINS: "*",
+        EXTRA_CORS_ALLOWED_HEADERS: "*",
+        DISABLE_CORS_CHECKS: "1",
+        DOCKER_HOST: "unix:///var/run/docker.sock",
+      },
+      volumes: [
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "./localstack/init:/etc/localstack/init/ready.d:ro",
+        "localstack-data:/var/lib/localstack",
+      ],
+      healthcheck: {
+        test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"],
+        interval: "5s",
+        timeout: "3s",
+        retries: 30,
+        start_period: "30s",
+      },
+    };
+    volumes["localstack-data"] = null;
+  }
+
+  // Keycloak — client-level identity provider (ADR-0009).
+  if (infrastructure.keycloak) {
+    services.keycloak = {
+      image: "quay.io/keycloak/keycloak:24.0",
+      container_name: `${clientName}-keycloak`,
+      ports: [`${ports.keycloak ?? 8050 + ports.blockIndex}:8080`],
+      networks: ["infra"],
+      environment: {
+        KEYCLOAK_ADMIN: "admin",
+        KEYCLOAK_ADMIN_PASSWORD: "admin",
+        KC_DB: "dev-file",
+      },
+      volumes: ["./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"],
+      command: ["start-dev", "--import-realm"],
+      healthcheck: {
+        test: ["CMD", "curl", "-sf", "http://localhost:8080/health/ready"],
+        interval: "15s",
+        timeout: "10s",
+        retries: 20,
+        start_period: "60s",
+      },
+    };
+  }
+
+  // MLflow — client-level model registry & experiment tracking (ADR-0010).
+  if (infrastructure.mlflow) {
+    services.mlflow = {
+      image: "ghcr.io/mlflow/mlflow:v2.13.0",
+      container_name: `${clientName}-mlflow`,
+      ports: [`${ports.mlflow ?? 5050 + ports.blockIndex}:5000`],
+      networks: ["infra"],
+      command: [
+        "mlflow", "server",
+        "--host", "0.0.0.0",
+        "--port", "5000",
+        "--backend-store-uri", "sqlite:///mlflow/mlflow.db",
+        "--default-artifact-root", "/mlflow/artifacts",
+      ],
+      volumes: ["mlflow-data:/mlflow"],
+      healthcheck: {
+        test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 5000), 3)' || exit 1"],
+        interval: "10s",
+        timeout: "10s",
+        retries: 10,
+        start_period: "30s",
+      },
+    };
+    volumes["mlflow-data"] = null;
+  }
+
+  // Mage — client-level visual workflow orchestrator (ADR-0010).
+  if (infrastructure.mage) {
+    services.mage = {
+      image: "mageai/mageai:latest",
+      container_name: `${clientName}-mage`,
+      ports: [`${ports.mage ?? 6750 + ports.blockIndex}:6789`],
+      networks: ["infra"],
+      environment: {
+        PROJECT_NAME: `${clientName}_pipelines`,
+        MAGE_DATA_DIR: "/home/src",
+      },
+      volumes: ["mage-data:/home/src"],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:6789/"],
+        interval: "15s",
+        timeout: "10s",
+        retries: 5,
+        start_period: "30s",
+      },
+    };
+    volumes["mage-data"] = null;
   }
 
   // Dashboard
@@ -307,6 +429,11 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   if (obs.grafana) linkEnv.GRAFANA_URL = `http://localhost:${ports.grafana}`;
   if (obs.prometheus) linkEnv.PROMETHEUS_URL = `http://localhost:${ports.prometheus}`;
   if (infrastructure.jenkins) linkEnv.JENKINS_URL = `http://localhost:${ports.jenkins}`;
+  if (infrastructure.clickhouse && ports.clickhouse) linkEnv.CLICKHOUSE_URL = `http://localhost:${ports.clickhouse}`;
+  if (infrastructure.localstack && ports.localstack) linkEnv.LOCALSTACK_URL = `http://localhost:${ports.localstack}`;
+  if (infrastructure.keycloak && ports.keycloak)     linkEnv.KEYCLOAK_URL   = `http://localhost:${ports.keycloak}`;
+  if (infrastructure.mlflow && ports.mlflow)         linkEnv.MLFLOW_URL     = `http://localhost:${ports.mlflow}`;
+  if (infrastructure.mage && ports.mage)             linkEnv.MAGE_URL       = `http://localhost:${ports.mage}`;
 
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -449,6 +576,98 @@ datasources:
   await fs.writeFile(path.join(dashDir, ".gitkeep"), "");
 }
 
+/**
+ * ClickHouse init script — runs on first container start (mounted at
+ * /docker-entrypoint-initdb.d). Creates the canonical `warehouse` database
+ * and a sample `events` table to demonstrate the lakehouse pattern with
+ * LocalStack S3.
+ */
+export async function generateClickHouseInit(clientDir: string): Promise<void> {
+  const dir = path.join(clientDir, "clickhouse", "init");
+  await fs.mkdir(dir, { recursive: true });
+  const sql = `-- Created by blissful-infra (ADR-0008).
+-- Plugins and services should write into the \`warehouse\` database. Schema
+-- conventions for plugin-owned tables will be formalized in a future ADR;
+-- for now, plugins create their own tables freely.
+CREATE DATABASE IF NOT EXISTS warehouse;
+
+-- Example: a generic events table that analytics-style plugins can use.
+-- Plugins are free to create their own tables instead.
+CREATE TABLE IF NOT EXISTS warehouse.events (
+  ts          DateTime64(3) DEFAULT now64(),
+  source      LowCardinality(String),
+  event_name  LowCardinality(String),
+  user_id     Nullable(String),
+  session_id  Nullable(String),
+  properties  String  -- JSON-encoded freeform props
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(ts)
+ORDER BY (source, ts);
+`;
+  await fs.writeFile(path.join(dir, "00_warehouse.sql"), sql);
+}
+
+/**
+ * LocalStack init script for the client-level instance — runs when LocalStack
+ * is ready. The script creates a default S3 bucket that ClickHouse can read
+ * from via the s3() table function, demonstrating the lakehouse pattern.
+ */
+export async function generateClientLocalStackInit(clientDir: string, clientName: string): Promise<void> {
+  const dir = path.join(clientDir, "localstack", "init");
+  await fs.mkdir(dir, { recursive: true });
+  const sh = `#!/bin/bash
+# Created by blissful-infra (ADR-0008). Runs when LocalStack is ready.
+# Creates a default bucket for the client. Services that need their own
+# buckets should run their own init scripts.
+set -e
+echo "[localstack-init] creating client bucket for ${clientName}..."
+
+awslocal s3 mb s3://${clientName}-data || true
+awslocal s3api put-bucket-cors \\
+  --bucket ${clientName}-data \\
+  --cors-configuration '{"CORSRules":[{"AllowedMethods":["GET","PUT","POST"],"AllowedOrigins":["*"],"AllowedHeaders":["*"]}]}' \\
+  || true
+
+echo "[localstack-init] done"
+`;
+  const file = path.join(dir, "00_create_bucket.sh");
+  await fs.writeFile(file, sh);
+  await fs.chmod(file, 0o755);
+}
+
+/**
+ * Generate a minimal Keycloak realm.json (ADR-0009). Imported on Keycloak
+ * startup via --import-realm. Realm name = client name. Admin: admin/admin.
+ */
+export async function generateKeycloakRealm(clientDir: string, clientName: string): Promise<void> {
+  const dir = path.join(clientDir, "keycloak");
+  await fs.mkdir(dir, { recursive: true });
+  const realm = {
+    realm: clientName,
+    enabled: true,
+    sslRequired: "external",
+    registrationAllowed: false,
+    loginWithEmailAllowed: true,
+    duplicateEmailsAllowed: false,
+    resetPasswordAllowed: true,
+    rememberMe: true,
+    accessTokenLifespan: 3600,
+    clients: [
+      {
+        clientId: `${clientName}-default`,
+        enabled: true,
+        publicClient: true,
+        redirectUris: ["http://localhost:*", "https://*.localhost:*"],
+        webOrigins: ["+"],
+        directAccessGrantsEnabled: true,
+        standardFlowEnabled: true,
+      },
+    ],
+  };
+  await fs.writeFile(path.join(dir, "realm.json"), JSON.stringify(realm, null, 2));
+}
+
 // Minimal YAML serializer (reused from start.ts pattern)
 function generateYaml(obj: unknown, indent = 0): string {
   const spaces = "  ".repeat(indent);
@@ -457,7 +676,21 @@ function generateYaml(obj: unknown, indent = 0): string {
   if (obj === undefined) return "null";
 
   if (typeof obj === "string") {
-    if (obj.includes(":") || obj.includes("#") || obj.startsWith("$") || /^\d+$/.test(obj) || obj.includes('"')) {
+    // Always quote strings that contain YAML-significant characters or that
+    // YAML would interpret as something other than a plain scalar. Notably:
+    //   * starts an alias reference, & starts an anchor, leading - leads a
+    //   sequence, leading ? leads a mapping key, leading | / > start a block
+    //   scalar. Plain digits parse as numbers. Plain `true`/`false`/`null`
+    //   parse as booleans/null. Empty strings would render as nothing.
+    const needsQuoting =
+      obj === "" ||
+      obj.includes(":") || obj.includes("#") || obj.includes('"') || obj.includes("'") ||
+      obj.startsWith("$") || obj.startsWith("*") || obj.startsWith("&") ||
+      obj.startsWith("-") || obj.startsWith("?") || obj.startsWith("|") || obj.startsWith(">") ||
+      obj.startsWith("@") || obj.startsWith("`") || obj.startsWith("%") ||
+      /^\d+$/.test(obj) ||
+      /^(true|false|null|yes|no|on|off|~)$/i.test(obj);
+    if (needsQuoting) {
       return `"${obj.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     }
     return obj;

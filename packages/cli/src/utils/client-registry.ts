@@ -18,7 +18,10 @@ function blissfulHome(): string {
 function clientsDir(): string { return path.join(blissfulHome(), "clients"); }
 function registryPath(): string { return path.join(blissfulHome(), "registry.json"); }
 
-// Port block base values — each client offsets by blockIndex
+// Port block base values — each client offsets by blockIndex.
+// Originally chosen to avoid collisions with the legacy flat-model defaults.
+// When adding new components, pick a base port that's unlikely to conflict
+// with anything else on a typical dev laptop (avoid 80, 443, 3000, 5432, 8080).
 const PORT_BASES = {
   jenkins: 8090,
   grafana: 3010,
@@ -27,6 +30,11 @@ const PORT_BASES = {
   kafka: 9094,
   postgres: 5432,
   dashboard: 3002,
+  clickhouse: 8120,  // ADR-0008 — ClickHouse HTTP interface
+  localstack: 4570,  // ADR-0008 — was 4566 hardcoded; bumped to avoid conflict with legacy per-service LocalStack
+  keycloak: 8050,    // ADR-0009
+  mlflow: 5050,      // ADR-0010 — was 5001 hardcoded in old ai-pipeline plugin
+  mage: 6750,        // ADR-0010 — was 6789 hardcoded in old ai-pipeline plugin
 } as const;
 
 export function getClientsDir(): string {
@@ -52,16 +60,25 @@ export async function saveRegistry(registry: ClientRegistry): Promise<void> {
 }
 
 export function allocatePortBlock(clientName: string, blockIndex: number): PortBlock {
+  // All ports are populated unconditionally (PortBlockSchema makes the
+  // "promoted" ones optional, but it's easier to always allocate and let the
+  // compose generator decide whether to expose them based on the
+  // ClientInfrastructure flags).
   return PortBlockSchema.parse({
     clientName,
     blockIndex,
-    jenkins: PORT_BASES.jenkins + blockIndex,
-    grafana: PORT_BASES.grafana + blockIndex,
+    jenkins:    PORT_BASES.jenkins    + blockIndex,
+    grafana:    PORT_BASES.grafana    + blockIndex,
     prometheus: PORT_BASES.prometheus + blockIndex,
-    jaeger: PORT_BASES.jaeger + blockIndex,
-    kafka: PORT_BASES.kafka + blockIndex,
-    postgres: PORT_BASES.postgres + blockIndex,
-    dashboard: PORT_BASES.dashboard + blockIndex,
+    jaeger:     PORT_BASES.jaeger     + blockIndex,
+    kafka:      PORT_BASES.kafka      + blockIndex,
+    postgres:   PORT_BASES.postgres   + blockIndex,
+    dashboard:  PORT_BASES.dashboard  + blockIndex,
+    clickhouse: PORT_BASES.clickhouse + blockIndex,
+    localstack: PORT_BASES.localstack + blockIndex,
+    keycloak:   PORT_BASES.keycloak   + blockIndex,
+    mlflow:     PORT_BASES.mlflow     + blockIndex,
+    mage:       PORT_BASES.mage       + blockIndex,
   });
 }
 
@@ -110,6 +127,12 @@ export function getClientRequiredPorts(
   if (obs.prometheus) required.push({ port: ports.prometheus, service: "Prometheus" });
   if (obs.grafana) required.push({ port: ports.grafana, service: "Grafana" });
   if (obs.jaeger) required.push({ port: ports.jaeger, service: "Jaeger" });
+  // Promoted client-level platform services (ADR-0008/0009/0010)
+  if (infrastructure.clickhouse && ports.clickhouse) required.push({ port: ports.clickhouse, service: "ClickHouse" });
+  if (infrastructure.localstack && ports.localstack) required.push({ port: ports.localstack, service: "LocalStack" });
+  if (infrastructure.keycloak   && ports.keycloak)   required.push({ port: ports.keycloak,   service: "Keycloak" });
+  if (infrastructure.mlflow     && ports.mlflow)     required.push({ port: ports.mlflow,     service: "MLflow" });
+  if (infrastructure.mage       && ports.mage)       required.push({ port: ports.mage,       service: "Mage" });
   required.push({ port: ports.dashboard, service: "Dashboard" });
 
   return required;

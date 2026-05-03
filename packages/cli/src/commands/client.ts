@@ -18,6 +18,9 @@ import {
   generatePrometheusConfig,
   generateLokiConfig,
   generateGrafanaConfig,
+  generateClickHouseInit,
+  generateClientLocalStackInit,
+  generateKeycloakRealm,
 } from "../utils/infra-compose.js";
 import { ensureJenkinsImage, ensureDashboardImage } from "../utils/infra-images.js";
 import { toExecError } from "../utils/errors.js";
@@ -74,7 +77,12 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
           { name: "Prometheus + Grafana (metrics)", value: "metrics", checked: flagObs },
           { name: "Jaeger (tracing)", value: "jaeger", checked: flagObs },
           { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
-          { name: "ClickHouse (Phase 8+ TSDB)", value: "clickhouse", checked: false },
+          // Promoted to client-level platform services — opt-in (ADR-0008/0009/0010)
+          { name: "ClickHouse (warehouse — ADR-0008)", value: "clickhouse", checked: false },
+          { name: "LocalStack (AWS-emulation — ADR-0008)", value: "localstack", checked: false },
+          { name: "Keycloak (IAM — ADR-0009)", value: "keycloak", checked: false },
+          { name: "MLflow (model registry — ADR-0010)", value: "mlflow", checked: false },
+          { name: "Mage (workflow orchestrator — ADR-0010)", value: "mage", checked: false },
         ],
       },
     ] as never) as { components: string[] };
@@ -83,12 +91,17 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       kafka: answers.components.includes("kafka"),
       postgres: answers.components.includes("postgres"),
       jenkins: answers.components.includes("jenkins"),
+      clickhouse: answers.components.includes("clickhouse"),
+      localstack: answers.components.includes("localstack"),
+      keycloak:   answers.components.includes("keycloak"),
+      mlflow:     answers.components.includes("mlflow"),
+      mage:       answers.components.includes("mage"),
       observability: {
         prometheus: answers.components.includes("metrics"),
         grafana: answers.components.includes("metrics"),
         jaeger: answers.components.includes("jaeger"),
         loki: answers.components.includes("loki"),
-        clickhouse: answers.components.includes("clickhouse"),
+        clickhouse: answers.components.includes("clickhouse"),  // legacy mirror
       },
     };
   } else {
@@ -96,6 +109,14 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       kafka: flagKafka,
       postgres: true,
       jenkins: flagJenkins,
+      // Promoted services — default off in non-interactive mode. Users enable
+      // via flags (e.g. --warehouse, --localstack) when those land, or via
+      // the interactive prompt above.
+      clickhouse: false,
+      localstack: false,
+      keycloak:   false,
+      mlflow:     false,
+      mage:       false,
       observability: flagObs
         ? { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false }
         : { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
@@ -128,6 +149,11 @@ infrastructure:
   kafka: ${infrastructure.kafka}
   postgres: ${infrastructure.postgres}
   jenkins: ${infrastructure.jenkins}
+  clickhouse: ${infrastructure.clickhouse}
+  localstack: ${infrastructure.localstack}
+  keycloak: ${infrastructure.keycloak}
+  mlflow: ${infrastructure.mlflow}
+  mage: ${infrastructure.mage}
   observability:
     prometheus: ${obs.prometheus}
     grafana: ${obs.grafana}
@@ -161,6 +187,16 @@ services: []
   }
   if (obs.grafana && obs.prometheus) {
     await generateGrafanaConfig(clientDir);
+  }
+  // ADR-0008/0009 init scripts for the promoted client-level services
+  if (infrastructure.clickhouse || obs.clickhouse) {
+    await generateClickHouseInit(clientDir);
+  }
+  if (infrastructure.localstack) {
+    await generateClientLocalStackInit(clientDir, clientName);
+  }
+  if (infrastructure.keycloak) {
+    await generateKeycloakRealm(clientDir, clientName);
   }
 
   configSpinner.succeed("Infrastructure configs generated");
@@ -215,6 +251,21 @@ services: []
   }
   if (infrastructure.postgres) {
     console.log(chalk.dim("  Postgres:    ") + chalk.cyan(`localhost:${ports.postgres}`));
+  }
+  if (infrastructure.clickhouse && ports.clickhouse) {
+    console.log(chalk.dim("  ClickHouse:  ") + chalk.cyan(`http://localhost:${ports.clickhouse}/play`));
+  }
+  if (infrastructure.localstack && ports.localstack) {
+    console.log(chalk.dim("  LocalStack:  ") + chalk.cyan(`http://localhost:${ports.localstack}`));
+  }
+  if (infrastructure.keycloak && ports.keycloak) {
+    console.log(chalk.dim("  Keycloak:    ") + chalk.cyan(`http://localhost:${ports.keycloak}/admin`) + chalk.dim("  (admin / admin)"));
+  }
+  if (infrastructure.mlflow && ports.mlflow) {
+    console.log(chalk.dim("  MLflow:      ") + chalk.cyan(`http://localhost:${ports.mlflow}`));
+  }
+  if (infrastructure.mage && ports.mage) {
+    console.log(chalk.dim("  Mage:        ") + chalk.cyan(`http://localhost:${ports.mage}`));
   }
   console.log(chalk.dim("  Dashboard:   ") + chalk.cyan(`http://localhost:${ports.dashboard}`));
   console.log();
