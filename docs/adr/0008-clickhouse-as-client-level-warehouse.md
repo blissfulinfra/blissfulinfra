@@ -1,4 +1,4 @@
-# 0008. ClickHouse is the client-level analytical warehouse
+# 0008. ClickHouse and LocalStack are client-level shared resources
 
 - **Status:** Proposed
 - **Date:** 2026-05-02
@@ -31,27 +31,58 @@ datawarehouse or something."*
 
 ## Decision
 
-**ClickHouse is promoted from a per-plugin opt-in to a first-class
-client-level infrastructure component**, alongside Kafka, Postgres, and
-Jenkins. Every client gets a single ClickHouse instance available to all
-its services and plugins.
+**ClickHouse and LocalStack are promoted to first-class client-level
+infrastructure**, alongside Kafka, Postgres, and Jenkins. Every client
+gets a single ClickHouse and a single LocalStack instance, both available
+to all services and plugins on the shared `<client>_infra` Docker network.
+
+The two together form the analytical-data substrate of a client:
+LocalStack provides S3-compatible object storage (cold/raw data),
+ClickHouse provides the columnar query layer, and ClickHouse's `s3()`
+table function can read directly from LocalStack S3 — a real lakehouse
+pattern locally.
 
 ### What changes today
 
 1. `ClientInfrastructure.observability.clickhouse` already exists as an
    opt-in flag. **Default flips to `true`** — ClickHouse is on by default
-   for new clients. Users who want to skip it pass `--no-warehouse` (or
-   uncheck "Warehouse (ClickHouse)" in the interactive prompt).
-2. ClickHouse gets its own host port allocation in `PortBlockSchema`
-   (`clickhouse: number`) — the existing `8123 + blockIndex` math is
-   formalized.
-3. An init script creates a default `warehouse` database when ClickHouse
-   first starts. Tables get created by plugins/services as they need
-   them (no central schema for now).
-4. The `ai-pipeline` plugin and any future analytical plugin uses the
+   for new clients.
+2. **New flag `ClientInfrastructure.localstack: boolean`**, defaulting to
+   `true`. LocalStack runs on the client `infra` network, available to
+   every service.
+3. `PortBlockSchema` gains `clickhouse: number` and `localstack: number`
+   — formalizes what was previously hardcoded (8123, 4566).
+4. Init scripts at client level (`<client>/clickhouse/init/*.sql` and
+   `<client>/localstack/init/*.sh`) create a default `warehouse` database
+   in ClickHouse and a small set of shared resources in LocalStack.
+   Service-specific resources (per-service buckets, DynamoDB tables) are
+   created by the service's own scaffolding.
+5. The `ai-pipeline` plugin and any future analytical plugin uses the
    client-level ClickHouse instead of standing up their own — referenced
-   via the standard env vars `WAREHOUSE_HOST` / `WAREHOUSE_PORT` /
-   `WAREHOUSE_DATABASE` injected into service compose.
+   via env vars `WAREHOUSE_HOST` / `WAREHOUSE_PORT` injected into service
+   compose.
+6. The `lambda-python` backend (ADR-0007) drops its **per-service**
+   LocalStack and references the **client-level** one. Container name
+   `<client>-localstack` instead of `<client>-<service>-localstack`.
+
+### LocalStack: client-level vs per-service trade-off
+
+This was discussed at length. Honest picture:
+
+**Pro client-level (decision):**
+- One LocalStack per client (300 MB RAM saved per service that previously had its own)
+- Real AWS pattern: one account, multiple services share buckets/tables
+- ClickHouse can read directly from LocalStack S3 over the shared network
+- Cross-service S3 sharing for free (one service uploads, another reads)
+
+**Pro per-service (rejected for default):**
+- Test isolation between services (one service's bucket changes don't affect another's tests)
+- Different `SERVICES=` configurations per service
+- Mirrors per-service IAM-role isolation patterns
+
+The `localstack` plugin remains available as an **opt-in service-level
+LocalStack** for users who want strong test isolation. The default is
+the client-level shared one.
 
 ### What is intentionally NOT in this ADR
 
