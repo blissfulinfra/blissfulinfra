@@ -8,6 +8,7 @@ import { execa } from "execa";
 import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
+import { getClientDir, getClientPortBlock } from "../utils/client-registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -674,16 +675,25 @@ export async function upAction(name?: string): Promise<void> {
     process.exit(1);
   }
 
-  // Find project directory
+  // If `name` is a known client, route to the client-model up flow.
+  if (name) {
+    const block = await getClientPortBlock(name);
+    if (block) {
+      const clientDir = getClientDir(name);
+      await ensureDashboardImage();
+      await execa("docker", ["compose", "-f", "docker-compose.infra.yaml", "up", "-d"], {
+        cwd: clientDir,
+        stdio: "inherit",
+      });
+      console.log(chalk.green(`${name} is up`));
+      return;
+    }
+  }
+
+  // Otherwise fall back to the flat-model layout
   const projectDir = await findProjectDir(name);
   if (!projectDir) {
-    if (name) {
-      console.error(chalk.red(`Project '${name}' not found.`));
-    } else {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Run from project directory or specify project name:"));
-      console.error(chalk.cyan("  blissful-infra up my-app"));
-    }
+    console.error(chalk.red(name ? `'${name}' not found.` : "No blissful-infra.yaml found."));
     process.exit(1);
   }
 

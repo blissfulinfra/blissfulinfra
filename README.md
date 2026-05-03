@@ -11,7 +11,7 @@ One command creates and runs a full-stack app with CI/CD, observability, and an 
 
 ---
 
-[What is blissful-infra?](#what-is-blissful-infra) · [Use Cases](#use-cases) · [Quickstart](#quickstart) · [Basics](#basics) · [Next Steps](#next-steps)
+[What is blissful-infra?](#what-is-blissful-infra) · [Choose your path](#choose-your-path) · [Quickstart](#quickstart) · [Basics](#basics) · [Next Steps](#next-steps)
 
 ---
 
@@ -32,6 +32,24 @@ blissful-infra organizes your local stack into a single managed environment and 
 **What makes it different from tools like Tilt or Garden:**
 
 Those tools orchestrate services you already wrote. blissful-infra also *creates* them, scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start. It's the difference between a toolkit and a complete local platform.
+
+---
+
+## Choose your path
+
+blissful-infra serves three audiences, all working from the same toolchain.
+
+| You are... | Path | Outcome |
+|---|---|---|
+| **Learning** — student, new grad, anyone wanting enterprise-pattern fluency without an AWS bill | [Learn](https://blissful-infra.com/paths/learn) | A guided course that takes you from zero to a running Kubernetes service backed by Kafka, Postgres and Keycloak. Understand each layer before reaching for a managed equivalent. |
+| **Building** — engineer with an idea who wants a fast experimentation loop | [Build](https://blissful-infra.com/paths/build) | One command to a production-grade local stack. Skip the theory, prototype now, dig deeper later. |
+| **Delivering** — small studio or indie team running multiple client projects | [Deliver](https://blissful-infra.com/paths/deliver) | The client model — per-client isolated stacks with their own Kafka, Postgres, observability and CI. One laptop, many clients, no SaaS sprawl. |
+
+### A note on managed services
+
+Most technologies blissful-infra runs locally have excellent managed equivalents — [Auth0](https://auth0.com/) over Keycloak, [RDS](https://aws.amazon.com/rds/) over Postgres, [Confluent Cloud](https://www.confluent.io/) over Kafka, [Datadog](https://www.datadoghq.com/) over the Prometheus/Grafana/Loki stack. Those services are great. They start faster, ship with built-in compliance, and remove most of the operational burden. When you're a small team shipping to production, reaching for one is often the right call.
+
+blissful-infra exists for a different reason. A lot of enterprise development happens on top of managed services that already exist when you arrive — you write business logic against a Cognito instance someone else provisioned, push to an EKS cluster someone else maintains. That's productive but it hides the layers, and starting from a blank slate becomes intimidating. blissful-infra puts every layer back in your hands so you can experiment, break things, and understand the tradeoffs at each level. When you do graduate to a managed service, you'll know what it's doing on your behalf, what you're paying for, and where the meaningful differences are.
 
 ---
 
@@ -450,6 +468,55 @@ npm run test:all          # everything
 
 Add a Layer 1/2 test alongside any change to schemas, helpers, or compose
 generators. Layer 3 covers full client/service lifecycle.
+
+---
+
+## Acknowledgments
+
+blissful-infra is a thin orchestration layer over excellent open-source projects.
+It pulls these as Docker images at runtime — none are vendored or modified.
+
+| Project | License | Role in blissful-infra |
+|---|---|---|
+| [LocalStack](https://localstack.cloud/) | Apache 2.0 | AWS-service emulation (S3, Lambda, SQS, DynamoDB) |
+| [ClickHouse](https://clickhouse.com/) | Apache 2.0 | Columnar analytical warehouse |
+| [Apache Kafka](https://kafka.apache.org/) | Apache 2.0 | Event streaming |
+| [PostgreSQL](https://www.postgresql.org/) | PostgreSQL License | Transactional database |
+| [Jenkins](https://www.jenkins.io/) | MIT | CI/CD pipelines |
+| [Prometheus](https://prometheus.io/) | Apache 2.0 | Metrics collection |
+| [Grafana](https://grafana.com/) | AGPL 3.0 | Metrics & log dashboards |
+| [Jaeger](https://www.jaegertracing.io/) | Apache 2.0 | Distributed tracing |
+| [Loki](https://grafana.com/oss/loki/) + Promtail | AGPL 3.0 | Log aggregation |
+| [Caddy](https://caddyserver.com/) | Apache 2.0 | TLS edge proxy (planned, ADR-0001) |
+| [Keycloak](https://www.keycloak.org/) | Apache 2.0 | Identity & access management |
+| [MLflow](https://mlflow.org/) | Apache 2.0 | ML experiment tracking + model registry |
+| [Mage](https://www.mage.ai/) | Apache 2.0 | Visual workflow orchestration |
+| [Spring Boot](https://spring.io/projects/spring-boot) | Apache 2.0 | Default backend template |
+| [React](https://react.dev/) + [Vite](https://vitejs.dev/) | MIT | Default frontend template |
+
+### Project philosophy: real services, not vendor emulation
+
+blissful-infra integrates real open-source platform services for everything it
+can — Keycloak instead of mocking AWS Cognito, Postgres instead of mocking
+managed RDS, Kafka instead of mocking SQS for queueing. The exception is
+LocalStack for AWS-API-shaped services where the protocol matters (S3, Lambda
+event shapes, etc.) — there's no portable equivalent for those.
+
+Where a paid tier exists upstream (LocalStack Pro, Datadog, Auth0 paid tier,
+etc.), blissful-infra doesn't bundle or recommend it. The aim is
+"production-grade local infrastructure with zero ongoing cost." Anything that
+requires a paid license gets either an open-source equivalent or stays out of
+scope.
+
+For a longer take on why blissful-infra prefers OSS over managed services
+during the learning phase — and why managed services are still often the right
+call once you ship — see the [Philosophy page](https://blissful-infra.com/philosophy).
+
+### AI integration
+
+blissful-infra optionally integrates with [Anthropic's Claude API](https://www.anthropic.com/api)
+for the AI agent and analysis features. Users provide their own
+`ANTHROPIC_API_KEY` — no key is bundled.
 
 ---
 

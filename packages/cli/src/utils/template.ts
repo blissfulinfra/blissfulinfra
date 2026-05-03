@@ -197,10 +197,28 @@ export function getAvailableTemplates(): string[] {
   return ["spring-boot", "react-vite", "lambda-python"];
 }
 
-/** Built-in plugin types that live under templates/plugins/. */
+/** Built-in plugin types that live under templates/plugins/.
+ *
+ * NOTE: localstack and keycloak templates still exist on disk but are no
+ * longer advertised as service-scoped plugins (ADRs 0008/0009). They were
+ * promoted to client-level infrastructure. The templates remain so the
+ * decommission doesn't break old service configs that still reference
+ * `plugins: localstack` — those configs are filtered at read time
+ * instead. New service scaffolding should not pick these up.
+ */
 export function getAvailablePlugins(): string[] {
-  return ["ai-pipeline", "agent-service", "gatling", "localstack"];
+  return ["ai-pipeline", "agent-service", "gatling"];
 }
+
+/** Plugin types that have been promoted to client-level infrastructure
+ *  and should NOT be scaffolded as per-service plugins, even if a user
+ *  passes them via `--plugins` or has them in an old config. */
+export const PROMOTED_TO_CLIENT_LEVEL_PLUGINS = new Set([
+  "localstack",
+  "keycloak",
+  // ai-pipeline isn't fully decomposed yet (ADR-0010 implementation pending),
+  // so it stays as a per-service plugin for now.
+]);
 
 export function getTemplateDir(templateName: string): string {
   return path.join(__dirname, "..", "..", "templates", templateName);

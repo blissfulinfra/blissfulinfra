@@ -6,14 +6,33 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import { getClientDir, getClientPortBlock } from "../utils/client-registry.js";
-import { copyTemplate, getAvailableTemplates, getAvailablePlugins, copyPlugin } from "../utils/template.js";
+import { copyTemplate, getAvailableTemplates, getAvailablePlugins, copyPlugin, PROMOTED_TO_CLIENT_LEVEL_PLUGINS } from "../utils/template.js";
 import { parsePluginSpecs, serializePluginSpecs } from "../utils/config.js";
 import { generatePrometheusConfig, regenerateInfraCompose } from "../utils/infra-compose.js";
 import { toExecError } from "../utils/errors.js";
 
 const BACKEND_CHOICES = ["spring-boot", "fastapi", "express", "go-chi", "lambda-python", "none"];
 const FRONTEND_CHOICES = ["react-vite", "nextjs", "none"];
-const PLUGIN_CHOICES = ["localstack", "keycloak", "ai-pipeline", "scraper", "agent-service", "gatling"];
+
+// Service-scoped plugins shown in the interactive prompt.
+//
+// NOTE on what's NOT here:
+//   - localstack, keycloak, clickhouse, mlflow, mage moved to **client-level**
+//     infrastructure (ADRs 0008/0009/0010). Enable them on `client create`.
+//     Power users can still pass them via `--plugins` for service-scoped
+//     instances; we just hide them from the default prompt to nudge people
+//     toward the client-level versions.
+//   - ai-pipeline is in flight (ADR-0010) — still works in old kitchen-sink
+//     shape today; will be refactored to a thin FastAPI service that consumes
+//     the client-level mlflow/mage/clickhouse.
+const PLUGIN_CHOICES = ["ai-pipeline", "scraper", "agent-service", "gatling"];
+
+/**
+ * Plugins that have been promoted to client-level infrastructure but are
+ * still scaffoldable as service-scoped via `--plugins <name>` for backward
+ * compatibility. Used to print a helpful redirect note in the prompt.
+ */
+const PROMOTED_TO_CLIENT_LEVEL = ["localstack", "keycloak", "clickhouse", "mlflow", "mage"];
 
 // Backends that don't follow the long-running-container shape. Service compose
 // generation branches on this — see generateLambdaServiceCompose.
@@ -81,10 +100,17 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     });
   }
   if (opts.plugins === undefined && isTty) {
+    // Heads-up: redirect users to client-level for promoted services
+    console.log(
+      chalk.dim("\n  Tip: ") +
+      `${PROMOTED_TO_CLIENT_LEVEL.join(", ")} are now ` +
+      chalk.bold("client-level") +
+      chalk.dim(" — enable on `client create`, not here.\n"),
+    );
     promptQs.push({
       type: "checkbox",
       name: "plugins",
-      message: "Plugins (space to toggle)",
+      message: "Service-scoped plugins (space to toggle)",
       choices: PLUGIN_CHOICES,
     });
   }
@@ -98,9 +124,22 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     : (opts.backend ?? answers.backend ?? "spring-boot");
   const rawFrontend = opts.frontend ?? answers.frontend;
   const frontend = (rawFrontend && rawFrontend !== "none") ? rawFrontend : undefined;
-  const plugins = opts.plugins
+  const rawPlugins = opts.plugins
     ? parsePluginSpecs(opts.plugins.split(",").map(p => p.trim()))
     : parsePluginSpecs(answers.plugins ?? []);
+
+  // Filter out anything promoted to client-level. They no longer scaffold as
+  // per-service plugins; if the user listed one via --plugins, surface a
+  // notice and drop it silently — the client-level instance already covers it.
+  const plugins = rawPlugins.filter(p => {
+    if (PROMOTED_TO_CLIENT_LEVEL_PLUGINS.has(p.type)) {
+      console.log(chalk.dim(
+        `  ${p.type} is now client-level — skipping as a per-service plugin (enable on \`client create\`).`
+      ));
+      return false;
+    }
+    return true;
+  });
 
   // Scaffold service directory
   const spinner = ora(`Scaffolding ${serviceName}...`).start();
@@ -109,10 +148,22 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
   const availableTemplates = getAvailableTemplates();
   const availablePlugins = getAvailablePlugins();
 
-  // Lambda backends are required to have LocalStack — it's the local runtime,
-  // not an optional plugin. Auto-include if the user didn't tick it.
-  if (isServerlessBackend(backend) && !plugins.find(p => p.type === "localstack")) {
-    plugins.push({ type: "localstack", instance: "localstack" });
+  // Lambda backends require LocalStack at the client level (ADR-0008/0007).
+  // Validate the client has it enabled — fail loudly if not, so users don't
+  // discover the misconfig at first invoke.
+  if (isServerlessBackend(backend)) {
+    const clientYamlPath = path.join(clientDir, "blissful-infra.yaml");
+    const clientYaml = await fs.readFile(clientYamlPath, "utf-8").catch(() => "");
+    const hasLocalStackAtClientLevel = /^  localstack:\s*true\s*$/m.test(clientYaml);
+    if (!hasLocalStackAtClientLevel) {
+      console.error(chalk.red(
+        `Lambda services need LocalStack at the client level, but '${clientName}' does not have it enabled.`,
+      ));
+      console.error(chalk.dim("Recreate the client with LocalStack enabled, or add it manually to:"));
+      console.error(chalk.cyan(`  ${clientYamlPath}`));
+      console.error(chalk.dim("  → set `localstack: true` under infrastructure"));
+      process.exit(1);
+    }
   }
 
   // Copy backend template
@@ -555,57 +606,27 @@ services:
 export function generateLambdaServiceCompose(
   clientName: string,
   serviceName: string,
-  ports: ServicePorts,
+  _ports: ServicePorts,
 ): string {
-  const internalNet = `${serviceName}-internal`;
-  const localstackKey = `${serviceName}-localstack`;
+  // ADR-0008 promoted LocalStack to client-level. Lambda services no longer
+  // run their own LocalStack — the deployer just points at the client's
+  // LocalStack on the shared `infra` network. Container set is now just
+  // the deployer; LocalStack lives at client level.
   const deployerKey = `${serviceName}-deployer`;
 
   return `networks:
-  # Per-service network. infra is declared by the parent client compose;
-  # we reference it here without external:true (see ADR-0001).
+  # Shared infra (kafka, postgres, localstack, clickhouse, ...). Declared by
+  # the parent client compose; we reference it without external:true
+  # (see ADR-0001 for the bug that pattern caused).
   infra:
     name: ${clientName}_infra
-  ${internalNet}:
-    driver: bridge
 
 services:
-  ${localstackKey}:
-    image: localstack/localstack:3
-    container_name: ${clientName}-${serviceName}-localstack
-    networks:
-      ${internalNet}:
-        aliases: [localstack]
-      infra: {}
-    ports:
-      - "${ports.localstack}:4566"
-    environment:
-      # Lambda is the runtime here; include adjacent AWS services so handlers
-      # can use them locally without extra config.
-      SERVICES: "lambda,s3,sqs,dynamodb,sns,secretsmanager,iam,logs"
-      DEFAULT_REGION: us-east-1
-      LOCALSTACK_HOST: localstack
-      EXTRA_CORS_ALLOWED_ORIGINS: "*"
-      EXTRA_CORS_ALLOWED_HEADERS: "*"
-      DISABLE_CORS_CHECKS: "1"
-      # LocalStack needs to spawn Lambda Docker containers — share the host socket
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Optional init scripts (e.g. seed buckets/queues before lambdas land)
-      - ./localstack/init:/etc/localstack/init/ready.d:ro
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 30s
-
   ${deployerKey}:
     image: python:3.11-slim
     container_name: ${clientName}-${serviceName}-deployer
     networks:
-      - ${internalNet}
+      - infra
     working_dir: /work
     volumes:
       # Mount the whole service dir read-only — deploy.sh reads lambda.yaml + lambda/
@@ -617,7 +638,7 @@ services:
       AWS_SECRET_ACCESS_KEY: test
       FUNCTION_NAME: ${serviceName}
     depends_on:
-      ${localstackKey}:
+      localstack:
         condition: service_healthy
     # Need zip + sh — install once, then run the deploy script.
     entrypoint: ["/bin/sh", "-c"]

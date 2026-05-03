@@ -37,7 +37,20 @@ and brings the service up.
 |---|---|
 | `-b, --backend <name>` | Backend framework. Choices: `spring-boot`, `fastapi`, `express`, `go-chi`, `none`. Default: `spring-boot`. |
 | `-f, --frontend <name>` | Frontend framework. Choices: `react-vite`, `nextjs`, `none`. Default: prompted (no default). |
-| `-p, --plugins <list>` | Comma-separated plugins (`localstack`, `keycloak`, `gatling`, `ai-pipeline`, `scraper`, `agent-service`). |
+| `-p, --plugins <list>` | Comma-separated **service-scoped** plugins. Default-prompt choices: `gatling`, `ai-pipeline`, `scraper`, `agent-service`. |
+
+:::caution[localstack/keycloak/clickhouse/mlflow/mage are now client-level]
+These were per-service plugins originally. They've been promoted to
+**client-level infrastructure** (ADRs [0008](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0008-clickhouse-as-client-level-warehouse.md),
+[0009](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0009-keycloak-as-client-level-iam.md),
+[0010](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0010-decompose-ai-pipeline-plugin.md)). Enable them on
+`client create` (interactive checkbox or `infrastructure.<name>: true` in
+the client config). They no longer appear in the `service add` prompt.
+
+You *can* still pass them as `--plugins <name>` for a service-scoped
+instance (backward compat for advanced users who want strong test
+isolation between services), but the recommended path is client-level.
+:::
 
 If a flag is omitted in interactive mode, you'll be prompted for it. Pass
 all three flags to skip prompts entirely.
@@ -61,10 +74,10 @@ blissful-infra service add dev app
   nextjs
   none
 
-? Plugins (space to toggle)
-> ◯ localstack
-  ◯ keycloak
-  ◯ ai-pipeline
+  Tip: localstack, keycloak, clickhouse, mlflow, mage are now client-level — enable on `client create`, not here.
+
+? Service-scoped plugins (space to toggle)
+> ◯ ai-pipeline
   ◯ scraper
   ◯ agent-service
   ◯ gatling
