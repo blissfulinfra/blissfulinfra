@@ -25,7 +25,7 @@ Set `deploy.target` in `blissful-infra.yaml` before running deploy:
 
 ```yaml
 name: my-app
-backend: express
+backend: spring-boot
 frontend: react-vite
 database: postgres
 deploy:

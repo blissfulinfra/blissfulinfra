@@ -19,8 +19,9 @@ npm run build > /dev/null
 
 if ! $CLI client list 2>/dev/null | grep -q "^  dev "; then
   echo "→ 'dev' client not found, creating with backend + frontend + localstack..."
-  $CLI client create dev --yes
-  $CLI service add dev app --backend spring-boot --frontend react-vite --plugins localstack
+  # LocalStack is now client-level infra (ADR-0008), not a per-service plugin.
+  $CLI client create dev --yes --localstack
+  $CLI service add dev app --backend spring-boot --frontend react-vite
 else
   echo "→ Bringing up 'dev' client..."
   $CLI client up dev

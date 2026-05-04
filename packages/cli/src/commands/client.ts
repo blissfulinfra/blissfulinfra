@@ -24,12 +24,26 @@ import {
 } from "../utils/infra-compose.js";
 import { ensureJenkinsImage, ensureDashboardImage } from "../utils/infra-images.js";
 import { toExecError } from "../utils/errors.js";
+import { setClientInfraFlag } from "../utils/client-config-edit.js";
+import type { InfraComponent } from "../utils/infra-deps.js";
+
+const VALID_INFRA_COMPONENTS: InfraComponent[] = [
+  "kafka", "postgres", "jenkins",
+  "clickhouse", "localstack", "keycloak", "mlflow", "mage",
+  "prometheus", "grafana", "jaeger", "loki",
+];
 
 interface ClientCreateOptions {
   // Commander populates these (defaulting to true) for `--no-X` flags
   jenkins?: boolean;
   kafka?: boolean;
   observability?: boolean;
+  // Opt-in client-level platform services (default off — ADR-0008/0009/0010)
+  clickhouse?: boolean;
+  localstack?: boolean;
+  keycloak?: boolean;
+  mlflow?: boolean;
+  mage?: boolean;
   yes?: boolean;
 }
 
@@ -63,6 +77,11 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
   const flagJenkins = opts.jenkins !== false;
   const flagKafka = opts.kafka !== false;
   const flagObs = opts.observability !== false;
+  const flagClickhouse = opts.clickhouse === true;
+  const flagLocalstack = opts.localstack === true;
+  const flagKeycloak = opts.keycloak === true;
+  const flagMlflow = opts.mlflow === true;
+  const flagMage = opts.mage === true;
 
   if (!useDefaults) {
     const answers = await inquirer.prompt([
@@ -78,11 +97,11 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
           { name: "Jaeger (tracing)", value: "jaeger", checked: flagObs },
           { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
           // Promoted to client-level platform services — opt-in (ADR-0008/0009/0010)
-          { name: "ClickHouse (warehouse — ADR-0008)", value: "clickhouse", checked: false },
-          { name: "LocalStack (AWS-emulation — ADR-0008)", value: "localstack", checked: false },
-          { name: "Keycloak (IAM — ADR-0009)", value: "keycloak", checked: false },
-          { name: "MLflow (model registry — ADR-0010)", value: "mlflow", checked: false },
-          { name: "Mage (workflow orchestrator — ADR-0010)", value: "mage", checked: false },
+          { name: "ClickHouse (warehouse — ADR-0008)", value: "clickhouse", checked: flagClickhouse },
+          { name: "LocalStack (AWS-emulation — ADR-0008)", value: "localstack", checked: flagLocalstack },
+          { name: "Keycloak (IAM — ADR-0009)", value: "keycloak", checked: flagKeycloak },
+          { name: "MLflow (model registry — ADR-0010)", value: "mlflow", checked: flagMlflow },
+          { name: "Mage (workflow orchestrator — ADR-0010)", value: "mage", checked: flagMage },
         ],
       },
     ] as never) as { components: string[] };
@@ -109,16 +128,13 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       kafka: flagKafka,
       postgres: true,
       jenkins: flagJenkins,
-      // Promoted services — default off in non-interactive mode. Users enable
-      // via flags (e.g. --warehouse, --localstack) when those land, or via
-      // the interactive prompt above.
-      clickhouse: false,
-      localstack: false,
-      keycloak:   false,
-      mlflow:     false,
-      mage:       false,
+      clickhouse: flagClickhouse,
+      localstack: flagLocalstack,
+      keycloak:   flagKeycloak,
+      mlflow:     flagMlflow,
+      mage:       flagMage,
       observability: flagObs
-        ? { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false }
+        ? { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: flagClickhouse }
         : { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
     };
   }
@@ -408,6 +424,47 @@ async function clientStatusAction(clientName: string): Promise<void> {
   console.log();
 }
 
+async function clientInfraAction(
+  clientName: string,
+  component: string,
+  enabled: boolean,
+): Promise<void> {
+  const clientDir = getClientDir(clientName);
+  const ports = await getClientPortBlock(clientName);
+
+  if (!ports) {
+    console.error(chalk.red(`Client '${clientName}' not found in registry`));
+    process.exit(1);
+  }
+
+  if (!VALID_INFRA_COMPONENTS.includes(component as InfraComponent)) {
+    console.error(chalk.red(`Unknown infrastructure component: ${component}`));
+    console.error(chalk.dim(`Valid components: ${VALID_INFRA_COMPONENTS.join(", ")}`));
+    process.exit(1);
+  }
+
+  const verb = enabled ? "Enabling" : "Disabling";
+  const spinner = ora(`${verb} ${component} on ${clientName}...`).start();
+
+  let changed: boolean;
+  try {
+    changed = await setClientInfraFlag(clientDir, component as InfraComponent, enabled);
+  } catch (error) {
+    spinner.fail(`Could not edit ${clientName}'s config`);
+    console.error(chalk.red(toExecError(error).message));
+    process.exit(1);
+  }
+
+  if (!changed) {
+    spinner.info(`${component} is already ${enabled ? "enabled" : "disabled"} — no changes`);
+    return;
+  }
+
+  spinner.succeed(`${component} is now ${enabled ? "enabled" : "disabled"} in ${clientName}'s config`);
+
+  console.log(chalk.dim(`Run 'blissful-infra client up ${clientName}' to apply (regenerates compose + starts the new container).`));
+}
+
 async function clientRemoveAction(clientName: string): Promise<void> {
   const clientDir = getClientDir(clientName);
   const ports = await getClientPortBlock(clientName);
@@ -541,6 +598,11 @@ clientCommand
   .option("--no-jenkins", "Skip Jenkins")
   .option("--no-kafka", "Skip Kafka")
   .option("--no-observability", "Skip Prometheus/Grafana/Jaeger/Loki")
+  .option("--clickhouse", "Enable ClickHouse warehouse (ADR-0008)")
+  .option("--localstack", "Enable LocalStack AWS emulation (ADR-0008)")
+  .option("--keycloak", "Enable Keycloak IAM (ADR-0009)")
+  .option("--mlflow", "Enable MLflow model registry (ADR-0010)")
+  .option("--mage", "Enable Mage workflow orchestrator (ADR-0010)")
   .option("-y, --yes", "Skip interactive prompt and use defaults / flag values")
   .action(clientCreateAction);
 
@@ -566,6 +628,24 @@ clientCommand
   .description("Show client status (infra health + all services)")
   .argument("<name>", "Client name")
   .action(clientStatusAction);
+
+const clientInfraCommand = clientCommand
+  .command("infra")
+  .description("Manage infrastructure components on an existing client");
+
+clientInfraCommand
+  .command("add")
+  .description("Enable an infrastructure component")
+  .argument("<client>", "Client name")
+  .argument("<component>", `Component to enable (${VALID_INFRA_COMPONENTS.join(" | ")})`)
+  .action((client: string, component: string) => clientInfraAction(client, component, true));
+
+clientInfraCommand
+  .command("remove")
+  .description("Disable an infrastructure component")
+  .argument("<client>", "Client name")
+  .argument("<component>", `Component to disable (${VALID_INFRA_COMPONENTS.join(" | ")})`)
+  .action((client: string, component: string) => clientInfraAction(client, component, false));
 
 clientCommand
   .command("remove")

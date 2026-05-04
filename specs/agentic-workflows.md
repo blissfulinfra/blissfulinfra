@@ -94,7 +94,7 @@ flowchart TD
 
 **Inputs:**
 - Template description (stack, framework, language)
-- Existing templates as reference patterns (spring-boot, fastapi)
+- Existing templates as reference patterns (spring-boot, lambda-python, react-vite)
 - Template system specification (`packages/cli/src/templates/CLAUDE.md`)
 - Plugin system contracts (`@blissful-infra/shared` schemas)
 

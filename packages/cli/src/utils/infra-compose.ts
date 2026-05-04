@@ -101,6 +101,11 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
       hostname: "kafka",
       ports: [`${ports.kafka}:9094`],
       networks: ["infra"],
+      // Pin "kafka" to loopback so the controller can self-resolve before
+      // Docker's embedded DNS has registered the service. Single-node KRaft
+      // kafka starts fast enough to lose that race under load — see commit
+      // history for the integration-test failure that motivated this.
+      extra_hosts: ["kafka:127.0.0.1"],
       environment: {
         KAFKA_NODE_ID: 1,
         KAFKA_PROCESS_ROLES: "broker,controller",

@@ -25,6 +25,8 @@ For the architectural rationale see [Client model](/guides/client-model).
 | `client up <name>` | Start a stopped client (infra + all its services) |
 | `client down <name>` | Stop a client (containers stay, can be re-upped) |
 | `client status <name>` | Show all containers + their state |
+| `client infra add <client> <component>` | Enable an infra component on an existing client |
+| `client infra remove <client> <component>` | Disable an infra component on an existing client |
 | `client remove <name>` | Tear down completely (containers, networks, volumes, dirs, registry entry) |
 | `client clean` | Remove **all** client environments (with confirmation) |
 
@@ -116,6 +118,30 @@ blissful-infra client status acme-corp # one `docker compose ps` view
 Because all services in a client share one Docker Compose project (see
 [ADR-0003](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0003-unified-compose-project-per-client.md)),
 these commands operate on the unified project — no per-service iteration.
+
+## `client infra add` / `client infra remove`
+
+Toggle a client-level infrastructure component on a client that already
+exists, without recreating it. Useful when a service you add later (or a
+plugin you wire up) needs an infra component you didn't enable up front.
+
+```bash
+blissful-infra client infra add acme-corp localstack
+blissful-infra client infra add acme-corp keycloak
+blissful-infra client infra remove acme-corp mage
+```
+
+Components: `kafka`, `postgres`, `jenkins`, `clickhouse`, `localstack`,
+`keycloak`, `mlflow`, `mage`, `prometheus`, `grafana`, `jaeger`, `loki`.
+
+The command edits `~/.blissful-infra/clients/<client>/blissful-infra.yaml`
+in place. It does **not** restart anything — run
+`blissful-infra client up <client>` afterwards to regenerate the Compose
+file and bring the new container(s) online.
+
+`service add` will offer to enable any required components automatically
+when scaffolding a service that needs them — see
+[`service add`](/commands/service) for the prompt-driven flow.
 
 ## `client remove`
 

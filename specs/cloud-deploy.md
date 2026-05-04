@@ -30,7 +30,7 @@ Defined in `packages/shared/src/schemas/config.ts` as `DeployTargetSchema`.
 
 ```yaml
 name: my-app
-backend: express        # express and hono work natively on CF Workers
+backend: spring-boot    # see "Worker deploy" section for backend compatibility caveats
 frontend: react-vite
 modules:
   database:
@@ -102,9 +102,13 @@ src/deploy/
 
 ### Worker deploy (backend)
 
-Only `express` and `hono` backends are compatible with CF Workers. Warn and exit if
-the project uses `spring-boot`, `fastapi`, or `go-chi` — those runtimes cannot run
-on the Workers edge.
+CF Workers requires a Workers-compatible runtime (Node-compatible isolate or
+Python). The currently shipped backend templates do not target Workers —
+`spring-boot` runs on the JVM and `lambda-python` already targets a serverless
+runtime via LocalStack. The Workers backend deploy adapter will land alongside
+a Workers-compatible template (Express or Hono). Until then, warn and exit if
+`deploy.target: cloudflare` is paired with one of the existing JVM/Lambda
+backends.
 
 ```
 1. Run wrangler deploy from the backend directory

@@ -8,11 +8,18 @@ import { execa } from "execa";
 import { getClientDir, getClientPortBlock } from "../utils/client-registry.js";
 import { copyTemplate, getAvailableTemplates, getAvailablePlugins, copyPlugin, PROMOTED_TO_CLIENT_LEVEL_PLUGINS } from "../utils/template.js";
 import { parsePluginSpecs, serializePluginSpecs } from "../utils/config.js";
-import { generatePrometheusConfig, regenerateInfraCompose } from "../utils/infra-compose.js";
+import { generatePrometheusConfig, regenerateInfraCompose, parseClientConfigYaml } from "../utils/infra-compose.js";
 import { toExecError } from "../utils/errors.js";
+import {
+  resolveServiceManifests,
+  aggregateInfraDeps,
+  diffInfraDeps,
+  type InfraComponent,
+} from "../utils/infra-deps.js";
+import { setClientInfraFlag } from "../utils/client-config-edit.js";
 
-const BACKEND_CHOICES = ["spring-boot", "fastapi", "express", "go-chi", "lambda-python", "none"];
-const FRONTEND_CHOICES = ["react-vite", "nextjs", "none"];
+const BACKEND_CHOICES = ["spring-boot", "lambda-python", "none"];
+const FRONTEND_CHOICES = ["react-vite", "none"];
 
 // Service-scoped plugins shown in the interactive prompt.
 //
@@ -25,7 +32,7 @@ const FRONTEND_CHOICES = ["react-vite", "nextjs", "none"];
 //   - ai-pipeline is in flight (ADR-0010) — still works in old kitchen-sink
 //     shape today; will be refactored to a thin FastAPI service that consumes
 //     the client-level mlflow/mage/clickhouse.
-const PLUGIN_CHOICES = ["ai-pipeline", "scraper", "agent-service", "gatling"];
+const PLUGIN_CHOICES = ["ai-pipeline", "agent-service", "gatling"];
 
 /**
  * Plugins that have been promoted to client-level infrastructure but are
@@ -46,6 +53,7 @@ interface ServiceAddOptions {
   backend?: string;
   frontend?: string;
   plugins?: string;
+  yes?: boolean;
 }
 
 export async function serviceAddAction(clientName: string, serviceName: string, opts: ServiceAddOptions): Promise<void> {
@@ -141,30 +149,83 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     return true;
   });
 
+  // ---------------------------------------------------------------------------
+  // Infrastructure dependency check.
+  //
+  // Each backend / frontend / plugin can declare required + optional
+  // client-level infra in `utils/infra-deps.ts`. We aggregate those manifests,
+  // diff against the client's current config, and either prompt the user
+  // (interactive) or auto-enable required deps (--yes / non-TTY).
+  // ---------------------------------------------------------------------------
+  const manifests = resolveServiceManifests({
+    backend,
+    frontend,
+    plugins: plugins.map(p => ({ type: p.type })),
+  });
+  const aggregated = aggregateInfraDeps(manifests);
+
+  const clientYamlPath = path.join(clientDir, "blissful-infra.yaml");
+  const clientYaml = await fs.readFile(clientYamlPath, "utf-8").catch(() => "");
+  const { infrastructure: clientInfra } = parseClientConfigYaml(clientYaml);
+  const depsDiff = diffInfraDeps(aggregated, clientInfra);
+
+  const useDefaults = opts.yes === true || !isTty;
+
+  if (depsDiff.missingRequired.length > 0) {
+    console.log();
+    console.log(chalk.yellow("This service needs client-level components that aren't enabled:"));
+    for (const dep of depsDiff.missingRequired) {
+      console.log(`  • ${chalk.bold(dep.component)} — ${dep.reason}`);
+    }
+
+    if (!useDefaults) {
+      const { confirm } = (await inquirer.prompt([{
+        type: "confirm",
+        name: "confirm",
+        message: `Enable ${depsDiff.missingRequired.map(d => d.component).join(", ")} on '${clientName}' now?`,
+        default: true,
+      }] as never)) as { confirm: boolean };
+      if (!confirm) {
+        console.error(chalk.red("Cannot scaffold — required infrastructure is missing. Aborting."));
+        process.exit(1);
+      }
+    } else {
+      console.log(chalk.dim("Auto-enabling required components (--yes)."));
+    }
+
+    for (const dep of depsDiff.missingRequired) {
+      await setClientInfraFlag(clientDir, dep.component, true);
+      console.log(chalk.green(`  ✓ Enabled ${dep.component} in ${clientName}`));
+    }
+    console.log(chalk.dim(`  Run \`blissful-infra client up ${clientName}\` to start the new container(s).`));
+  }
+
+  if (depsDiff.missingOptional.length > 0 && !useDefaults) {
+    console.log();
+    console.log(chalk.cyan("This service can use these optional client-level components:"));
+    const { selected } = (await inquirer.prompt([{
+      type: "checkbox",
+      name: "selected",
+      message: "Enable any now? (Space to toggle, Enter to skip)",
+      choices: depsDiff.missingOptional.map(d => ({
+        name: `${d.component} — ${d.reason}`,
+        value: d.component,
+        checked: false,
+      })),
+    }] as never)) as { selected: InfraComponent[] };
+
+    for (const c of selected ?? []) {
+      await setClientInfraFlag(clientDir, c, true);
+      console.log(chalk.green(`  ✓ Enabled ${c} in ${clientName}`));
+    }
+  }
+
   // Scaffold service directory
   const spinner = ora(`Scaffolding ${serviceName}...`).start();
   await fs.mkdir(serviceDir, { recursive: true });
 
   const availableTemplates = getAvailableTemplates();
   const availablePlugins = getAvailablePlugins();
-
-  // Lambda backends require LocalStack at the client level (ADR-0008/0007).
-  // Validate the client has it enabled — fail loudly if not, so users don't
-  // discover the misconfig at first invoke.
-  if (isServerlessBackend(backend)) {
-    const clientYamlPath = path.join(clientDir, "blissful-infra.yaml");
-    const clientYaml = await fs.readFile(clientYamlPath, "utf-8").catch(() => "");
-    const hasLocalStackAtClientLevel = /^  localstack:\s*true\s*$/m.test(clientYaml);
-    if (!hasLocalStackAtClientLevel) {
-      console.error(chalk.red(
-        `Lambda services need LocalStack at the client level, but '${clientName}' does not have it enabled.`,
-      ));
-      console.error(chalk.dim("Recreate the client with LocalStack enabled, or add it manually to:"));
-      console.error(chalk.cyan(`  ${clientYamlPath}`));
-      console.error(chalk.dim("  → set `localstack: true` under infrastructure"));
-      process.exit(1);
-    }
-  }
 
   // Copy backend template
   if (isServerlessBackend(backend)) {
@@ -714,7 +775,8 @@ serviceCommand
   .argument("<service>", "Service name")
   .option("-b, --backend <backend>", "Backend framework (default: spring-boot)")
   .option("-f, --frontend <frontend>", "Frontend framework (e.g. react-vite)")
-  .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. localstack,keycloak)")
+  .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline,gatling)")
+  .option("-y, --yes", "Skip prompts; auto-enable required infra deps, skip optional")
   .action(serviceAddAction);
 
 serviceCommand

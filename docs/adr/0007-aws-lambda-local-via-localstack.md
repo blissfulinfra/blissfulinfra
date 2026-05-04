@@ -6,10 +6,9 @@
 
 ## Context
 
-blissful-infra ships backend templates for `spring-boot`, `fastapi`,
-`express`, and `go-chi` — all "long-running container" shapes. None of them
-match the serverless / function-shape (`(event) → response`) that AWS
-Lambda + Cloudflare Workers + Vercel Functions all use.
+blissful-infra ships a `spring-boot` backend template — a long-running
+container shape. That doesn't match the serverless / function-shape (`(event)
+→ response`) that AWS Lambda + Cloudflare Workers + Vercel Functions all use.
 
 Many real projects start serverless. It's the lowest-friction way to take
 an idea from zero to running: write a handler, deploy, done. No

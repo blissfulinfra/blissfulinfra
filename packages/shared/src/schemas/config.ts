@@ -95,7 +95,7 @@ export const ApiGenerateClientSchema = z.object({
 });
 
 export const ApiGenerateServerSchema = z.object({
-  framework: z.enum(["spring-boot", "fastapi", "express"]).default("spring-boot"),
+  framework: z.enum(["spring-boot"]).default("spring-boot"),
   output: z.string(),
   package: z.string().optional(),
 });

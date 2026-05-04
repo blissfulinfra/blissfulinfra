@@ -14,16 +14,13 @@ interface InitOptions {
 }
 
 const BACKENDS = [
-  { value: "spring-boot",  label: "Spring Boot", hint: "Kotlin + Spring Boot + Kafka" },
-  { value: "fastapi",      label: "FastAPI",      hint: "Python + FastAPI + Kafka" },
-  { value: "express",      label: "Express",      hint: "Node.js + TypeScript + Kafka" },
-  { value: "go-chi",       label: "Go Chi",       hint: "Go + Chi router + Kafka" },
+  { value: "spring-boot",   label: "Spring Boot",  hint: "Kotlin + Spring Boot + Kafka" },
+  { value: "lambda-python", label: "Lambda (Python)", hint: "Serverless on LocalStack" },
 ];
 
 const FRONTENDS = [
-  { value: "react-vite",  label: "React + Vite", hint: "React 19 + TypeScript + Tailwind" },
-  { value: "nextjs",      label: "Next.js",       hint: "Next.js + TypeScript + Tailwind" },
-  { value: "none",        label: "None",          hint: "API only" },
+  { value: "react-vite", label: "React + Vite", hint: "React 19 + TypeScript + Tailwind" },
+  { value: "none",       label: "None",         hint: "API only" },
 ];
 
 const DATABASES = [
@@ -173,8 +170,8 @@ export const initCommand = new Command("init")
   .description("Create a blissful-infra.yaml config file in the current directory")
   .option("-y, --yes", "accept all defaults without prompting")
   .option("--name <name>", "project name")
-  .option("--backend <backend>", "backend framework (spring-boot | fastapi | express | go-chi)")
-  .option("--frontend <frontend>", "frontend framework (react-vite | nextjs | none)")
+  .option("--backend <backend>", "backend framework (spring-boot | lambda-python)")
+  .option("--frontend <frontend>", "frontend framework (react-vite | none)")
   .option("--database <database>", "database (postgres | redis | postgres-redis | none)")
   .option("--deploy-target <target>", "deploy target (local-only | cloudflare | vercel | aws)")
   .action(async (opts: InitOptions) => {

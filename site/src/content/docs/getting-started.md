@@ -69,8 +69,8 @@ my-app/
 The defaults are Spring Boot backend + React+Vite frontend + Postgres database. Override any of them:
 
 ```bash
-# FastAPI backend + Postgres
-blissful-infra start my-app --backend fastapi --database postgres
+# Lambda (Python) serverless backend + Postgres
+blissful-infra start my-app --backend lambda-python --database postgres
 
 # Spring Boot + Postgres AND Redis (cache layer)
 blissful-infra start my-app --database postgres-redis
@@ -87,19 +87,16 @@ blissful-infra start my-app --no-monitoring
 
 ### Available backends
 
-| Flag value    | Stack                                       |
-|---------------|---------------------------------------------|
-| `spring-boot` | Kotlin + Spring Boot 3 + Kafka + WebSockets |
-| `fastapi`     | Python + FastAPI + Kafka + WebSockets       |
-| `express`     | Node.js + Express + TypeScript + Kafka      |
-| `go-chi`      | Go + Chi + Kafka + WebSockets               |
+| Flag value      | Stack                                                    |
+|-----------------|----------------------------------------------------------|
+| `spring-boot`   | Kotlin + Spring Boot 3 + Kafka + WebSockets              |
+| `lambda-python` | Python serverless function deployed to LocalStack Lambda |
 
 ### Available frontends
 
 | Flag value   | Stack                                    |
 |--------------|------------------------------------------|
 | `react-vite` | React + Vite + TypeScript + TailwindCSS  |
-| `nextjs`     | Next.js + TypeScript + TailwindCSS       |
 
 ### Database options
 

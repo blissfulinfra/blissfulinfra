@@ -22,22 +22,16 @@ const BACKEND_TEMPLATES = [
     name: "spring-boot",
     description: "Kotlin + Spring Boot + Kafka + WebSockets",
   },
-  { name: "fastapi", description: "Python + FastAPI + Kafka + WebSockets" },
   {
-    name: "express",
-    description: "Node + Express + TypeScript + Kafka + WebSockets",
+    name: "lambda-python",
+    description: "Serverless Python on LocalStack",
   },
-  { name: "go-chi", description: "Go + Chi router + Kafka + WebSockets" },
 ] as const;
 
 const FRONTEND_TEMPLATES = [
   {
     name: "react-vite",
     description: "React + Vite + TypeScript + TailwindCSS",
-  },
-  {
-    name: "nextjs",
-    description: "Next.js + TypeScript + TailwindCSS",
   },
   {
     name: "none",
@@ -476,8 +470,8 @@ export const createCommand = new Command("create")
   .description("Create a new blissful-infra project")
   .argument("[name]", "Project name")
   .option("-t, --template <template>", "Project type (fullstack, backend, frontend)")
-  .option("-b, --backend <backend>", "Backend template (spring-boot, fastapi, express, go-chi)")
-  .option("-f, --frontend <frontend>", "Frontend template (react-vite, nextjs, none)")
+  .option("-b, --backend <backend>", "Backend template (spring-boot, lambda-python)")
+  .option("-f, --frontend <frontend>", "Frontend template (react-vite, none)")
   .option("-d, --database <database>", "Database to include (none, postgres, redis, postgres-redis)")
   .option("--deploy <target>", "Deployment target (local-only, kubernetes, cloud)")
   .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")

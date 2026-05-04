@@ -31,8 +31,8 @@ blissful-infra start <name> [options]
 # Default stack (Spring Boot + React + Postgres)
 blissful-infra start my-app
 
-# FastAPI backend
-blissful-infra start my-app --backend fastapi
+# Lambda (Python) serverless backend
+blissful-infra start my-app --backend lambda-python
 
 # Postgres + Redis cache layer
 blissful-infra start my-app --database postgres-redis
