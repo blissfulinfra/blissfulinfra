@@ -24,6 +24,14 @@ import {
 } from "../utils/infra-compose.js";
 import { ensureJenkinsImage, ensureDashboardImage } from "../utils/infra-images.js";
 import { toExecError } from "../utils/errors.js";
+import { setClientInfraFlag } from "../utils/client-config-edit.js";
+import type { InfraComponent } from "../utils/infra-deps.js";
+
+const VALID_INFRA_COMPONENTS: InfraComponent[] = [
+  "kafka", "postgres", "jenkins",
+  "clickhouse", "localstack", "keycloak", "mlflow", "mage",
+  "prometheus", "grafana", "jaeger", "loki",
+];
 
 interface ClientCreateOptions {
   // Commander populates these (defaulting to true) for `--no-X` flags
@@ -416,6 +424,47 @@ async function clientStatusAction(clientName: string): Promise<void> {
   console.log();
 }
 
+async function clientInfraAction(
+  clientName: string,
+  component: string,
+  enabled: boolean,
+): Promise<void> {
+  const clientDir = getClientDir(clientName);
+  const ports = await getClientPortBlock(clientName);
+
+  if (!ports) {
+    console.error(chalk.red(`Client '${clientName}' not found in registry`));
+    process.exit(1);
+  }
+
+  if (!VALID_INFRA_COMPONENTS.includes(component as InfraComponent)) {
+    console.error(chalk.red(`Unknown infrastructure component: ${component}`));
+    console.error(chalk.dim(`Valid components: ${VALID_INFRA_COMPONENTS.join(", ")}`));
+    process.exit(1);
+  }
+
+  const verb = enabled ? "Enabling" : "Disabling";
+  const spinner = ora(`${verb} ${component} on ${clientName}...`).start();
+
+  let changed: boolean;
+  try {
+    changed = await setClientInfraFlag(clientDir, component as InfraComponent, enabled);
+  } catch (error) {
+    spinner.fail(`Could not edit ${clientName}'s config`);
+    console.error(chalk.red(toExecError(error).message));
+    process.exit(1);
+  }
+
+  if (!changed) {
+    spinner.info(`${component} is already ${enabled ? "enabled" : "disabled"} — no changes`);
+    return;
+  }
+
+  spinner.succeed(`${component} is now ${enabled ? "enabled" : "disabled"} in ${clientName}'s config`);
+
+  console.log(chalk.dim(`Run 'blissful-infra client up ${clientName}' to apply (regenerates compose + starts the new container).`));
+}
+
 async function clientRemoveAction(clientName: string): Promise<void> {
   const clientDir = getClientDir(clientName);
   const ports = await getClientPortBlock(clientName);
@@ -579,6 +628,24 @@ clientCommand
   .description("Show client status (infra health + all services)")
   .argument("<name>", "Client name")
   .action(clientStatusAction);
+
+const clientInfraCommand = clientCommand
+  .command("infra")
+  .description("Manage infrastructure components on an existing client");
+
+clientInfraCommand
+  .command("add")
+  .description("Enable an infrastructure component")
+  .argument("<client>", "Client name")
+  .argument("<component>", `Component to enable (${VALID_INFRA_COMPONENTS.join(" | ")})`)
+  .action((client: string, component: string) => clientInfraAction(client, component, true));
+
+clientInfraCommand
+  .command("remove")
+  .description("Disable an infrastructure component")
+  .argument("<client>", "Client name")
+  .argument("<component>", `Component to disable (${VALID_INFRA_COMPONENTS.join(" | ")})`)
+  .action((client: string, component: string) => clientInfraAction(client, component, false));
 
 clientCommand
   .command("remove")

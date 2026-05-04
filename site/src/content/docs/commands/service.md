@@ -37,7 +37,7 @@ and brings the service up.
 |---|---|
 | `-b, --backend <name>` | Backend framework. Choices: `spring-boot`, `lambda-python`, `none`. Default: `spring-boot`. |
 | `-f, --frontend <name>` | Frontend framework. Choices: `react-vite`, `none`. Default: prompted (no default). |
-| `-p, --plugins <list>` | Comma-separated **service-scoped** plugins. Default-prompt choices: `gatling`, `ai-pipeline`, `scraper`, `agent-service`. |
+| `-p, --plugins <list>` | Comma-separated **service-scoped** plugins. Choices: `ai-pipeline`, `agent-service`, `gatling`. |
 
 :::caution[localstack/keycloak/clickhouse/mlflow/mage are now client-level]
 These were per-service plugins originally. They've been promoted to
@@ -75,7 +75,6 @@ blissful-infra service add dev app
 
 ? Service-scoped plugins (space to toggle)
 > ◯ ai-pipeline
-  ◯ scraper
   ◯ agent-service
   ◯ gatling
 ```
@@ -86,8 +85,46 @@ blissful-infra service add dev app
 blissful-infra service add dev app \
   --backend spring-boot \
   --frontend react-vite \
-  --plugins localstack
+  --yes
 ```
+
+The `--yes` flag skips both the framework prompts and the optional-deps
+prompt, and **auto-enables any required infrastructure** the service needs
+(see "Infrastructure dependency check" below).
+
+### Infrastructure dependency check
+
+Before scaffolding, `service add` looks up an infra-deps manifest for the
+chosen backend, frontend, and plugins, then diffs that against the client's
+current `infrastructure:` config. Two outcomes:
+
+- **Required components missing** — for example, `lambda-python` needs
+  `localstack` at the client level. The CLI prompts to enable it. With
+  `--yes`, it auto-enables and prints what it did.
+- **Optional components missing** — for example, `spring-boot` *can* use
+  `localstack` for S3 uploads. The CLI shows them as a checkbox prompt and
+  enables only what you select. With `--yes`, optional components are
+  skipped entirely.
+
+```text
+This service needs client-level components that aren't enabled:
+  • postgres — JPA persistence + Flyway migrations
+? Enable postgres on 'dev' now? (Y/n) y
+  ✓ Enabled postgres in dev
+
+This service can use these optional client-level components:
+? Enable any now? (Space to toggle, Enter to skip)
+> ◯ localstack — S3 file uploads via /api/files endpoint
+  ◯ keycloak — JWT auth on protected routes
+```
+
+Toggling a flag only updates `blissful-infra.yaml` — run
+[`blissful-infra client up <client>`](/commands/client) to regenerate the
+Compose file and start the new container(s).
+
+You can also enable / disable infra components on demand later with
+[`blissful-infra client infra add`](/commands/client) and `client infra
+remove`.
 
 ### Per-service host ports
 

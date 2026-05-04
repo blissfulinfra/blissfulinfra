@@ -190,7 +190,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
 
   server.tool(
     "get_plugins",
-    "Get status of all plugins (ai-pipeline, scraper, etc.) for a project",
+    "Get status of all plugins (ai-pipeline, agent-service, gatling) for a project",
     { project: z.string().describe("Project name") },
     async ({ project }) => {
       const data = await apiGet(apiBase, `/api/v1/projects/${project}/plugins`);

@@ -105,7 +105,7 @@ Plugins extend the generated project with additional services. Unlike templates,
 |--------|-------------|
 | `ai-pipeline` | FastAPI + scikit-learn classifier consuming Kafka events. Co-deploys ClickHouse (columnar store), MLflow (experiment tracking), and Mage (visual pipeline orchestrator). |
 | `agent-service` | Claude-powered agent service with workspace access. Reads logs, runs tools, and responds to structured task requests via HTTP API. |
-| `scraper` | Scrapy-based web scraper that publishes articles to a Kafka topic for downstream processing. |
+| `gatling` | JVM load-testing harness scoped to the service. Generates a baseline simulation against the backend. |
 
 Enable plugins at creation time:
 

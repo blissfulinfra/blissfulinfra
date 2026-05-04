@@ -296,7 +296,7 @@ Once connected, you can say things like:
 
 | Command           | Description                              |
 |-------------------|------------------------------------------|
-| `agent [name]`    | AI agent for debugging (uses Ollama)     |
+| `agent [name]`    | AI agent for debugging (Claude or Ollama) |
 | `analyze [name]`  | Root cause analysis on failures          |
 | `perf [name]`     | Performance analysis                     |
 | `chaos [name]`    | Run chaos / resilience tests             |
@@ -349,8 +349,14 @@ on its own Docker network — full isolation per tenant.
 # Create a new client environment (its own Kafka, Postgres, Jenkins, ...)
 blissful-infra client create acme-corp
 
-# Add services to it
+# Add services to it. service add reads each template's infra-deps manifest
+# and prompts to enable any required (or useful optional) client-level
+# components — pass --yes to auto-enable required deps non-interactively.
 blissful-infra service add acme-corp api --backend spring-boot --frontend react-vite
+
+# Toggle infra later, after the client already exists
+blissful-infra client infra add acme-corp localstack
+blissful-infra client infra remove acme-corp mage
 
 # Lifecycle
 blissful-infra client up acme-corp
