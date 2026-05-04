@@ -130,8 +130,8 @@ The Jenkinsfile is generated in your project directory. Push a change to your lo
 The default is Spring Boot + React + Postgres, but you can mix and match:
 
 ```bash
-# FastAPI backend
-blissful-infra start my-app --backend fastapi
+# Lambda (Python) serverless backend
+blissful-infra start my-app --backend lambda-python
 
 # With both Postgres and Redis
 blissful-infra start my-app --database postgres-redis

@@ -28,16 +28,13 @@ Open the generated project in your editor. Modify the controllers, add your own 
 
 | Backend | Best for |
 |---|---|
-| [`spring-boot`](/templates/spring-boot) | JVM shops, complex domain logic, mature observability story |
-| `fastapi` | Python-first teams, ML-adjacent services, OpenAPI by default |
-| `express` | Node monorepos, lightweight services, sharing types with the frontend |
-| `go-chi` | Lightweight binaries, tight performance budgets |
-| [`lambda-python`](/templates/lambda-python) | Event-driven workloads that should run serverless eventually |
+| [`spring-boot`](/templates/spring-boot) | Long-running HTTP API, JPA + Postgres, Kafka producer + consumer, mature JVM observability |
+| [`lambda-python`](/templates/lambda-python) | Event-driven serverless workloads, learning AWS Lambda locally on LocalStack |
 
-Frontend defaults to [React + Vite](/templates/react-vite). Next.js is also available.
+Frontend is [React + Vite](/templates/react-vite). Other frameworks are deliberately out of scope until they're real — see the [Philosophy](/philosophy) page.
 
 ```bash
-blissful-infra start my-app --backend fastapi --frontend react-vite
+blissful-infra start my-app --backend spring-boot --frontend react-vite
 ```
 
 ## When you outgrow a single project

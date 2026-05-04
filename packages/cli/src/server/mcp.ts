@@ -86,10 +86,10 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "Scaffold a new blissful-infra project with the given stack",
     {
       name: z.string().describe("Project name (kebab-case)"),
-      backend: z.enum(["spring-boot", "fastapi", "express", "go-chi"])
+      backend: z.enum(["spring-boot", "lambda-python"])
         .default("spring-boot")
         .describe("Backend framework"),
-      frontend: z.enum(["react-vite", "nextjs"])
+      frontend: z.enum(["react-vite"])
         .default("react-vite")
         .describe("Frontend framework"),
       database: z.enum(["none", "postgres", "redis", "postgres-redis"])

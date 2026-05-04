@@ -62,10 +62,10 @@ blissful-infra agent [name]       # AI debugging agent
 ## Options
 
 ```bash
---backend   spring-boot | fastapi | express | go-chi  (default: spring-boot)
---frontend  react-vite | nextjs                        (default: react-vite)
+--backend   spring-boot | lambda-python                (default: spring-boot)
+--frontend  react-vite                                  (default: react-vite)
 --database  none | postgres | redis | postgres-redis   (default: postgres)
---plugins   ai-pipeline | scraper                      (comma-separated)
+--plugins   ai-pipeline | gatling | agent-service       (comma-separated)
 ```
 
 ## MCP Server

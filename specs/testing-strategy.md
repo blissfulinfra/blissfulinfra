@@ -198,7 +198,7 @@ describe("POST /api/projects/:name/deployments", () => {
 
 ### What a smoke test verifies
 
-For each template (`spring-boot`, `fastapi`, `express`, `go-chi`, `react-vite`):
+For each shipped template (`spring-boot`, `lambda-python`, `react-vite`):
 
 ```
 1. Scaffold            → `blissful-infra start test-{template} --backend {template}`
@@ -214,9 +214,7 @@ For each template (`spring-boot`, `fastapi`, `express`, `go-chi`, `react-vite`):
 | Template | Health endpoint | Test runner (internal) |
 |---|---|---|
 | `spring-boot` | `/actuator/health` | `./gradlew test` |
-| `fastapi` | `/health` | `pytest` |
-| `express` | `/health` | `npm test` |
-| `go-chi` | `/health` | `go test ./...` |
+| `lambda-python` | `lambda invoke` round-trips | `pytest` |
 | `react-vite` | nginx `/` → 200 | Vitest |
 
 The internal test runner step (`./gradlew test`, `pytest`, etc.) is optional in smoke tests — it's covered more thoroughly in each template's own CI pipeline. Smoke tests focus on "does it boot and respond correctly."

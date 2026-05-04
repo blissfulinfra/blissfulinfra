@@ -450,8 +450,8 @@ export function createApiServer(workingDir: string, port = 3002) {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
           types: ["fullstack", "backend", "frontend"],
-          backends: ["spring-boot", "fastapi", "express", "go-chi"],
-          frontends: ["react-vite", "nextjs"],
+          backends: ["spring-boot", "lambda-python"],
+          frontends: ["react-vite"],
           databases: ["none", "postgres", "redis", "postgres-redis"],
         }));
         return;

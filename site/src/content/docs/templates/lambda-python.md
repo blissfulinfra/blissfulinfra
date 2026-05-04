@@ -16,7 +16,7 @@ in AWS.
 - You're learning Lambda and want fast local iteration without an AWS bill
 - You'd ship to AWS Lambda eventually and want code that's portable from day one
 
-For a long-running HTTP backend, pick `spring-boot`, `fastapi`, `express`, or `go-chi` instead.
+For a long-running HTTP backend, pick `spring-boot` instead.
 
 ## Scaffold
 

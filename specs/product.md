@@ -69,10 +69,8 @@ $ npx blissful-infra create
 ? Project name: my-service
 ? Select template:
   ❯ spring-boot    (Kotlin + Spring Boot + Kafka + WebSockets)
-    fastapi        (Python + FastAPI + Kafka + WebSockets)
-    express        (Node + Express + TypeScript + Kafka + WebSockets)
-    go-chi         (Go + Chi router + Kafka + WebSockets)
-    react-vite     (React + Vite + TypeScript + Redux + shadcn/ui)
+    lambda-python  (Python serverless on LocalStack)
+    react-vite     (React + Vite + TypeScript + TailwindCSS)
     fullstack      (Backend + Frontend monorepo)
 
 ? Include database?
@@ -134,15 +132,17 @@ Each template includes:
 | Template | Stack | Test Coverage |
 |----------|-------|---------------|
 | `spring-boot` | Kotlin + Spring Boot + Kafka + WebSockets | JUnit 5 + MockK + WebTestClient + TestContainers |
-| `fastapi` | Python + FastAPI + Kafka + WebSockets | pytest + httpx + TestContainers |
-| `express` | Node + Express + TypeScript + Kafka + WebSockets | Jest + Supertest + TestContainers |
-| `go-chi` | Go + Chi router + Kafka + WebSockets | Go test + httptest + TestContainers |
+| `lambda-python` | Python serverless function on LocalStack | pytest |
+
+Other backend stacks (FastAPI, Express, Go) are not currently shipped — they
+will land when they are real working templates rather than placeholders. See
+the [Philosophy page](https://blissful-infra.com/philosophy).
 
 #### Frontend Templates
 
 | Template | Stack |
 |----------|-------|
-| `react-vite` | React + Vite + TypeScript + Redux Toolkit + shadcn/ui |
+| `react-vite` | React + Vite + TypeScript + TailwindCSS |
 
 #### Fullstack Template
 

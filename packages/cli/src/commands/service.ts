@@ -11,8 +11,8 @@ import { parsePluginSpecs, serializePluginSpecs } from "../utils/config.js";
 import { generatePrometheusConfig, regenerateInfraCompose } from "../utils/infra-compose.js";
 import { toExecError } from "../utils/errors.js";
 
-const BACKEND_CHOICES = ["spring-boot", "fastapi", "express", "go-chi", "lambda-python", "none"];
-const FRONTEND_CHOICES = ["react-vite", "nextjs", "none"];
+const BACKEND_CHOICES = ["spring-boot", "lambda-python", "none"];
+const FRONTEND_CHOICES = ["react-vite", "none"];
 
 // Service-scoped plugins shown in the interactive prompt.
 //

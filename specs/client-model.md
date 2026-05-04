@@ -221,9 +221,9 @@ blissful-infra client remove <client-name>
 ```bash
 # Add a service to an existing client
 blissful-infra service add <client-name> <service-name> [options]
-  --backend spring-boot|fastapi|express
-  --frontend react-vite|nextjs
-  --plugins localstack,keycloak,...
+  --backend spring-boot|lambda-python
+  --frontend react-vite
+  --plugins ai-pipeline|gatling|agent-service
 
 # Start/stop a single service within a client
 blissful-infra service up <client-name> <service-name>

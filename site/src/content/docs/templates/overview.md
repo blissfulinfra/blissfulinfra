@@ -13,10 +13,7 @@ Templates live in `packages/cli/templates/` in the blissful-infra repository:
 packages/cli/templates/
 ├── spring-boot/          # Kotlin + Spring Boot backend
 ├── react-vite/           # React + Vite frontend
-├── fastapi/              # Python + FastAPI backend
-├── express/              # Node.js + Express backend
-├── go-chi/               # Go + Chi backend
-├── nextjs/               # Next.js frontend
+├── lambda-python/        # Python serverless function (LocalStack)
 ├── loki/                 # Log aggregation config
 ├── prometheus/           # Metrics scrape config
 ├── grafana/              # Pre-provisioned dashboards
@@ -61,16 +58,15 @@ Binary files (images, compiled assets, JARs) are copied as-is without substituti
 | Template | Language | Framework | Features |
 |----------|----------|-----------|---------|
 | `spring-boot` | Kotlin | Spring Boot 3 | Kafka producer/consumer, WebSockets, JPA, Flyway, Actuator, OpenTelemetry |
-| `fastapi` | Python | FastAPI | Kafka consumer, WebSockets, async handlers, Pydantic models |
-| `express` | TypeScript | Express | Kafka producer/consumer, WebSockets, TypeScript strict mode |
-| `go-chi` | Go | Chi | Kafka consumer, WebSockets, structured logging |
+| `lambda-python` | Python | AWS Lambda (LocalStack) | Serverless function, deploy + invoke locally |
+
+Other stacks (FastAPI, Express, Go) are deliberately out of scope for now — they will land when there is a real, working template behind them rather than a placeholder. See the [Philosophy](/philosophy) page.
 
 ### Frontend templates
 
 | Template | Language | Framework | Features |
 |----------|----------|-----------|---------|
 | `react-vite` | TypeScript | React + Vite | TailwindCSS, WebSocket client, chat UI, hot reload |
-| `nextjs` | TypeScript | Next.js | App Router, TailwindCSS, WebSocket client |
 
 ### Infrastructure templates
 

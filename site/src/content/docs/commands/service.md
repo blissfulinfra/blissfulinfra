@@ -35,8 +35,8 @@ and brings the service up.
 
 | Flag | Description |
 |---|---|
-| `-b, --backend <name>` | Backend framework. Choices: `spring-boot`, `fastapi`, `express`, `go-chi`, `none`. Default: `spring-boot`. |
-| `-f, --frontend <name>` | Frontend framework. Choices: `react-vite`, `nextjs`, `none`. Default: prompted (no default). |
+| `-b, --backend <name>` | Backend framework. Choices: `spring-boot`, `lambda-python`, `none`. Default: `spring-boot`. |
+| `-f, --frontend <name>` | Frontend framework. Choices: `react-vite`, `none`. Default: prompted (no default). |
 | `-p, --plugins <list>` | Comma-separated **service-scoped** plugins. Default-prompt choices: `gatling`, `ai-pipeline`, `scraper`, `agent-service`. |
 
 :::caution[localstack/keycloak/clickhouse/mlflow/mage are now client-level]
@@ -64,14 +64,11 @@ blissful-infra service add dev app
 ```text
 ? Backend framework  (Use arrow keys)
 > spring-boot
-  fastapi
-  express
-  go-chi
+  lambda-python
   none
 
 ? Frontend framework
 > react-vite
-  nextjs
   none
 
   Tip: localstack, keycloak, clickhouse, mlflow, mage are now client-level — enable on `client create`, not here.

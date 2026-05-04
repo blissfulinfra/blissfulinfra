@@ -29,7 +29,7 @@ api:
       language: typescript        # typescript (default) | python | kotlin
       output: ./frontend/src/api
     server:
-      framework: spring-boot      # spring-boot | fastapi | express
+      framework: spring-boot      # spring-boot (only shipped option today)
       output: ./backend/src/generated
       package: com.example.api    # Java/Kotlin — sets apiPackage and modelPackage
     types:

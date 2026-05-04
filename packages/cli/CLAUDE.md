@@ -280,10 +280,10 @@ The Jenkins Jenkinsfile template calls the API to register a deployment on start
 
 ```yaml
 name: my-app
-backend: spring-boot        # spring-boot | fastapi | express | go-chi
-frontend: react-vite        # react-vite | nextjs
+backend: spring-boot        # spring-boot | lambda-python
+frontend: react-vite        # react-vite
 database: postgres          # none | postgres | redis | postgres-redis
-plugins: []                 # ai-pipeline | scraper | etc.
+plugins: []                 # ai-pipeline | gatling | agent-service
 monitoring: true
 ```
 
