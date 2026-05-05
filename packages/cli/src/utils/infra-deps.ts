@@ -18,6 +18,10 @@ export type InfraComponent =
   | "mage"
   | "prometheus"
   | "grafana"
+  // ADR-0016: tempo is the canonical tracing component; jaeger is a
+  // deprecated alias kept on the type union for back-compat with manifests
+  // and CLI invocations that still use the old name.
+  | "tempo"
   | "jaeger"
   | "loki";
 
@@ -128,9 +132,13 @@ function isComponentEnabled(infra: ClientInfrastructure | undefined, c: InfraCom
     case "mage":       return infra.mage === true;
     case "prometheus":
     case "grafana":
-    case "jaeger":
     case "loki":
       return infra.observability?.[c] === true;
+    case "tempo":
+    case "jaeger":
+      // ADR-0016: either flag satisfies a tempo/jaeger dep, since the
+      // legacy `jaeger: true` config still spawns a Tempo container.
+      return infra.observability?.tempo === true || infra.observability?.jaeger === true;
   }
 }
 

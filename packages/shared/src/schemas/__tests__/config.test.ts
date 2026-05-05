@@ -89,7 +89,7 @@ describe("PortBlockSchema", () => {
       jenkins: 8090,
       grafana: 3010,
       prometheus: 9090,
-      jaeger: 16680,
+      tempo: 3200,  // ADR-0016
       kafka: 9094,
       postgres: 5432,
       dashboard: 3002,
@@ -111,7 +111,7 @@ describe("PortBlockSchema", () => {
     const r = PortBlockSchema.safeParse({
       clientName: "acme", blockIndex: 0,
       jenkins: "8090", grafana: 3010, prometheus: 9090,
-      jaeger: 16680, kafka: 9094, postgres: 5432, dashboard: 3002,
+      tempo: 3200, kafka: 9094, postgres: 5432, dashboard: 3002,
     });
     expect(r.success).toBe(false);
   });
@@ -129,12 +129,12 @@ describe("ClientRegistrySchema", () => {
         "acme": {
           clientName: "acme", blockIndex: 0,
           jenkins: 8090, grafana: 3010, prometheus: 9090,
-          jaeger: 16680, kafka: 9094, postgres: 5432, dashboard: 3002,
+          tempo: 3200, kafka: 9094, postgres: 5432, dashboard: 3002,
         },
         "globex": {
           clientName: "globex", blockIndex: 1,
           jenkins: 8091, grafana: 3011, prometheus: 9091,
-          jaeger: 16681, kafka: 9095, postgres: 5433, dashboard: 3003,
+          tempo: 3201, kafka: 9095, postgres: 5433, dashboard: 3003,
         },
       },
       nextBlockIndex: 2,
@@ -213,7 +213,7 @@ describe("Postgres multi-instance config (ADR-0014)", () => {
   it("PortBlockSchema accepts optional postgresInstances map", () => {
     const r = PortBlockSchema.safeParse({
       clientName: "acme", blockIndex: 0,
-      jenkins: 8090, grafana: 3010, prometheus: 9090, jaeger: 16680,
+      jenkins: 8090, grafana: 3010, prometheus: 9090, tempo: 3200,
       kafka: 9094, postgres: 5432, dashboard: 3002,
       postgresInstances: { legacy: 5600, analytics: 5601 },
     });

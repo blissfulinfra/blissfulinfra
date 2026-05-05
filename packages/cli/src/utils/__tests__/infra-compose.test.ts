@@ -30,7 +30,7 @@ const fullInfra = {
   keycloak: false,
   mlflow: false,
   mage: false,
-  observability: { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false },
+  observability: { prometheus: true, grafana: true, tempo: true, jaeger: false, loki: true, clickhouse: false },
 };
 
 const minimalInfra = {
@@ -42,7 +42,7 @@ const minimalInfra = {
   keycloak: false,
   mlflow: false,
   mage: false,
-  observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+  observability: { prometheus: false, grafana: false, tempo: false, jaeger: false, loki: false, clickhouse: false },
 };
 
 const allPromotedInfra = {
@@ -54,7 +54,7 @@ const allPromotedInfra = {
   keycloak: true,
   mlflow: true,
   mage: true,
-  observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+  observability: { prometheus: false, grafana: false, tempo: false, jaeger: false, loki: false, clickhouse: false },
 };
 
 async function writeYaml(file: string, content: string) {
@@ -103,18 +103,19 @@ describe("generateInfraCompose — structural assertions", () => {
       clientDir: dir,
       ports: allocatePortBlock("tc", 0),
       infrastructure: { kafka: true, postgres: true, jenkins: false,
-        observability: { prometheus: false, grafana: false, jaeger: true, loki: true, clickhouse: false } },
+        observability: { prometheus: false, grafana: false, tempo: true, jaeger: false, loki: true, clickhouse: false } },
     });
     const { parsed } = await readGeneratedCompose();
     const services = parsed.services as Record<string, unknown>;
     expect(Object.keys(services)).toContain("kafka");
     expect(Object.keys(services)).toContain("postgres");
-    expect(Object.keys(services)).toContain("jaeger");
+    expect(Object.keys(services)).toContain("tempo");
     expect(Object.keys(services)).toContain("loki");
     expect(Object.keys(services)).toContain("dashboard");   // dashboard is always present
     expect(Object.keys(services)).not.toContain("jenkins");
     expect(Object.keys(services)).not.toContain("prometheus");
     expect(Object.keys(services)).not.toContain("grafana");
+    expect(Object.keys(services)).not.toContain("jaeger");  // ADR-0016: Jaeger is gone, replaced by Tempo
   });
 
   it("port mappings reflect the allocated port block", async () => {
@@ -147,11 +148,70 @@ describe("generateInfraCompose — structural assertions", () => {
     expect(kafka.extra_hosts).toEqual(["kafka:127.0.0.1"]);
   });
 
+  // ADR-0016: Jaeger replaced by Tempo. New clients spawn `services.tempo`
+  // (with a generated tempo.yaml mounted in), and Grafana is provisioned
+  // with a Tempo datasource that does trace-to-logs correlation back to
+  // the Loki datasource.
+  it("emits a tempo service when obs.tempo is true", async () => {
+    await generateInfraCompose({
+      clientName: "tc",
+      clientDir: dir,
+      ports: allocatePortBlock("tc", 0),
+      infrastructure: { kafka: false, postgres: false, jenkins: false,
+        clickhouse: false, localstack: false, keycloak: false, mlflow: false, mage: false,
+        observability: { prometheus: false, grafana: false, tempo: true, jaeger: false, loki: false, clickhouse: false } },
+    });
+    const { parsed } = await readGeneratedCompose();
+    const tempo = (parsed.services as Record<string, { image?: string; ports?: string[]; volumes?: string[] }>).tempo;
+    expect(tempo).toBeDefined();
+    expect(tempo.image).toMatch(/^grafana\/tempo/);
+    // Block 0 puts tempo at port 3200 mapping to in-container :3200
+    expect(tempo.ports?.[0]).toBe("3200:3200");
+    expect(tempo.volumes?.some(v => v.includes("tempo.yaml"))).toBe(true);
+  });
+
+  // Backwards compat: clients written before ADR-0016 had `jaeger: true` in
+  // their YAML. The compose generator must treat that as an alias and still
+  // emit a Tempo container so existing clients keep working without rewrite.
+  it("legacy obs.jaeger alias also produces a tempo container", async () => {
+    await generateInfraCompose({
+      clientName: "tc",
+      clientDir: dir,
+      ports: allocatePortBlock("tc", 0),
+      infrastructure: { kafka: false, postgres: false, jenkins: false,
+        clickhouse: false, localstack: false, keycloak: false, mlflow: false, mage: false,
+        observability: { prometheus: false, grafana: false, tempo: false, jaeger: true, loki: false, clickhouse: false } },
+    });
+    const { parsed } = await readGeneratedCompose();
+    const services = parsed.services as Record<string, unknown>;
+    expect(services.tempo).toBeDefined();
+    expect(services.jaeger).toBeUndefined();
+  });
+
   // Regression: the Keycloak image is UBI9-minimal and ships without curl
   // or wget, so a `curl http://localhost:8080/health/ready` test fails with
   // `executable file not found in $PATH` and the container is permanently
   // unhealthy. Use bash's /dev/tcp redirect to probe HTTP without external
   // binaries.
+  // The Tempo image is distroless: no curl, no wget, no shell utilities
+  // beyond the Tempo binary itself. Same /dev/tcp probe pattern as Keycloak.
+  it("tempo healthcheck does not depend on curl/wget", async () => {
+    await generateInfraCompose({
+      clientName: "tc",
+      clientDir: dir,
+      ports: allocatePortBlock("tc", 0),
+      infrastructure: { kafka: false, postgres: false, jenkins: false,
+        clickhouse: false, localstack: false, keycloak: false, mlflow: false, mage: false,
+        observability: { prometheus: false, grafana: false, tempo: true, jaeger: false, loki: false, clickhouse: false } },
+    });
+    const { parsed } = await readGeneratedCompose();
+    const tempo = (parsed.services as Record<string, { healthcheck?: { test?: string[] } }>).tempo;
+    const cmd = (tempo.healthcheck?.test ?? []).join(" ");
+    expect(cmd).not.toContain("curl");
+    expect(cmd).not.toContain("wget");
+    expect(cmd).toContain("/dev/tcp");
+  });
+
   it("keycloak healthcheck does not depend on curl/wget", async () => {
     await generateInfraCompose({
       clientName: "tc",
@@ -241,7 +301,7 @@ describe("generateInfraCompose — structural assertions", () => {
           { name: "analytics", version: "16" },
         ],
         clickhouse: false, localstack: false, keycloak: false, mlflow: false, mage: false,
-        observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+        observability: { prometheus: false, grafana: false, tempo: false, jaeger: false, loki: false, clickhouse: false },
       } as never,
     });
     const { parsed } = await readGeneratedCompose();
@@ -287,7 +347,7 @@ describe("generateInfraCompose — structural assertions", () => {
           { name: "default", version: "16", tuning: { sharedBuffers: "512MB", maxConnections: "200" } },
         ],
         clickhouse: false, localstack: false, keycloak: false, mlflow: false, mage: false,
-        observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+        observability: { prometheus: false, grafana: false, tempo: false, jaeger: false, loki: false, clickhouse: false },
       } as never,
     });
     const { parsed } = await readGeneratedCompose();

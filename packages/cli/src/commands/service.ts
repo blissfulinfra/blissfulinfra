@@ -586,7 +586,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9094"
       OTEL_SERVICE_NAME: "${clientName}-${serviceName}-backend"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"
       OTEL_TRACES_EXPORTER: otlp
       JAVA_TOOL_OPTIONS: "-javaagent:/otel-agent.jar"
       DATABASE_URL: "jdbc:postgresql://postgres:5432/${dbUser}"

@@ -142,7 +142,11 @@ export const ProjectConfigSchema = z.object({
 export const ObservabilityConfigSchema = z.object({
   prometheus: z.boolean().default(true),
   grafana: z.boolean().default(true),
-  jaeger: z.boolean().default(true),
+  // ADR-0016 swapped Jaeger for Tempo. `tempo` is the canonical flag.
+  // `jaeger` is kept as a deprecated alias: existing client configs with
+  // `jaeger: true` continue to work and get a Tempo container instead.
+  tempo: z.boolean().default(true),
+  jaeger: z.boolean().default(false),
   loki: z.boolean().default(true),
   // Note: `clickhouse` here is legacy (was nested under observability before
   // ADR-0008 promoted it to a top-level infra component). Kept for backwards
@@ -229,11 +233,14 @@ export const PortBlockSchema = z.object({
   jenkins: z.number(),
   grafana: z.number(),
   prometheus: z.number(),
-  jaeger: z.number(),
+  // ADR-0016: `tempo` is the new canonical tracing port. `jaeger` is kept
+  // optional for back-compat with older registry entries; nothing binds to it.
+  tempo: z.number(),
+  jaeger: z.number().optional(),
   kafka: z.number(),
   postgres: z.number(),
   dashboard: z.number(),
-  // Optional — only populated when the client has the corresponding
+  // Optional: only populated when the client has the corresponding
   // infrastructure component enabled. Older registry entries without these
   // fields remain valid (the schema's optional() makes them non-breaking).
   clickhouse: z.number().optional(),  // ADR-0008

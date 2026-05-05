@@ -18,6 +18,7 @@ import {
   generatePrometheusConfig,
   generateLokiConfig,
   generateGrafanaConfig,
+  generateTempoConfig,
   generateClickHouseInit,
   generateClientLocalStackInit,
   generateKeycloakRealm,
@@ -30,7 +31,7 @@ import type { InfraComponent } from "../utils/infra-deps.js";
 const VALID_INFRA_COMPONENTS: InfraComponent[] = [
   "kafka", "postgres", "jenkins",
   "clickhouse", "localstack", "keycloak", "mlflow", "mage",
-  "prometheus", "grafana", "jaeger", "loki",
+  "prometheus", "grafana", "tempo", "jaeger", "loki",
 ];
 
 interface ClientCreateOptions {
@@ -94,7 +95,7 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
           { name: "Postgres", value: "postgres", checked: true },
           { name: "Jenkins (CI/CD)", value: "jenkins", checked: flagJenkins },
           { name: "Prometheus + Grafana (metrics)", value: "metrics", checked: flagObs },
-          { name: "Jaeger (tracing)", value: "jaeger", checked: flagObs },
+          { name: "Tempo (tracing, ADR-0016)", value: "tempo", checked: flagObs },
           { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
           // Promoted to client-level platform services — opt-in (ADR-0008/0009/0010)
           { name: "ClickHouse warehouse (ADR-0008)", value: "clickhouse", checked: flagClickhouse },
@@ -118,7 +119,8 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       observability: {
         prometheus: answers.components.includes("metrics"),
         grafana: answers.components.includes("metrics"),
-        jaeger: answers.components.includes("jaeger"),
+        tempo: answers.components.includes("tempo"),
+        jaeger: false,  // ADR-0016: legacy alias, never set on new clients
         loki: answers.components.includes("loki"),
         clickhouse: answers.components.includes("clickhouse"),  // legacy mirror
       },
@@ -134,8 +136,8 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       mlflow:     flagMlflow,
       mage:       flagMage,
       observability: flagObs
-        ? { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: flagClickhouse }
-        : { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+        ? { prometheus: true, grafana: true, tempo: true, jaeger: false, loki: true, clickhouse: flagClickhouse }
+        : { prometheus: false, grafana: false, tempo: false, jaeger: false, loki: false, clickhouse: false },
     };
   }
 
@@ -173,7 +175,7 @@ infrastructure:
   observability:
     prometheus: ${obs.prometheus}
     grafana: ${obs.grafana}
-    jaeger: ${obs.jaeger}
+    tempo: ${obs.tempo}
     loki: ${obs.loki}
     clickhouse: ${obs.clickhouse}
 
@@ -200,6 +202,10 @@ services: []
   }
   if (obs.loki) {
     await generateLokiConfig(clientDir);
+  }
+  // ADR-0016: Tempo replaced Jaeger. Either flag triggers tempo.yaml.
+  if (obs.tempo || obs.jaeger) {
+    await generateTempoConfig(clientDir);
   }
   if (obs.grafana && obs.prometheus) {
     await generateGrafanaConfig(clientDir);

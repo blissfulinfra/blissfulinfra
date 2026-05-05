@@ -22,7 +22,7 @@ describe("allocatePortBlock — pure math", () => {
       jenkins: 8090,
       grafana: 3010,
       prometheus: 9090,
-      jaeger: 16680,
+      tempo: 3200,  // ADR-0016: replaced jaeger
       kafka: 9094,
       postgres: 5432,
       dashboard: 3002,
@@ -103,7 +103,7 @@ describe("getClientRequiredPorts — feature-flag-aware", () => {
   it("includes jenkins when infrastructure.jenkins is true", () => {
     const result = getClientRequiredPorts(ports, {
       kafka: true, postgres: true, jenkins: true,
-      observability: { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false },
+      observability: { prometheus: true, grafana: true, tempo: true, jaeger: false, loki: true, clickhouse: false },
     });
     expect(result.find(r => r.service === "Jenkins")?.port).toBe(8090);
   });
@@ -111,7 +111,7 @@ describe("getClientRequiredPorts — feature-flag-aware", () => {
   it("excludes jenkins when infrastructure.jenkins is false", () => {
     const result = getClientRequiredPorts(ports, {
       kafka: true, postgres: true, jenkins: false,
-      observability: { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: false },
+      observability: { prometheus: true, grafana: true, tempo: true, jaeger: false, loki: true, clickhouse: false },
     });
     expect(result.find(r => r.service === "Jenkins")).toBeUndefined();
   });

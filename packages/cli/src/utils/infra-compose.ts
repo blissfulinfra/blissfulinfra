@@ -46,6 +46,9 @@ export function parseClientConfigYaml(content: string): ParsedClientConfig {
     observability: {
       prometheus: asBool(obsIn.prometheus),
       grafana:    asBool(obsIn.grafana),
+      // ADR-0016: tempo is canonical; jaeger is a deprecated alias still
+      // accepted on disk so existing client YAMLs keep working.
+      tempo:      asBool(obsIn.tempo) || asBool(obsIn.jaeger),
       jaeger:     asBool(obsIn.jaeger),
       loki:       asBool(obsIn.loki),
       clickhouse: asBool(obsIn.clickhouse),
@@ -93,7 +96,8 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   const obs = infrastructure.observability ?? {
     prometheus: true,
     grafana: true,
-    jaeger: true,
+    tempo: true,
+    jaeger: false,
     loki: true,
     clickhouse: false,
   };
@@ -222,22 +226,39 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     volumes["jenkins-data"] = null;
   }
 
-  // Jaeger
-  if (obs.jaeger) {
-    services.jaeger = {
-      image: "jaegertracing/all-in-one:1.57",
-      container_name: `${clientName}-jaeger`,
-      ports: [`${ports.jaeger}:16686`],
+  // Tempo (ADR-0016 replaced Jaeger). The legacy `obs.jaeger: true` flag is
+  // treated as an alias for tempo: existing client configs continue to work
+  // and get a Tempo container instead. Backends send OTLP to tempo:4318.
+  const wantsTracing = obs.tempo || obs.jaeger;
+  if (wantsTracing) {
+    services.tempo = {
+      image: "grafana/tempo:2.5.0",
+      container_name: `${clientName}-tempo`,
+      // Map only the HTTP query API to a host port (Grafana queries via
+      // the in-network hostname). 4317/4318 (OTLP receivers) are
+      // in-network only, services reach them via `tempo:4318`.
+      ports: [`${ports.tempo}:3200`],
       networks: ["infra"],
-      environment: { COLLECTOR_OTLP_ENABLED: "true" },
+      command: ["-config.file=/etc/tempo/tempo.yaml"],
+      volumes: [
+        "./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro",
+        "tempo-data:/var/tempo",
+      ],
       healthcheck: {
-        test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"],
+        test: [
+          "CMD-SHELL",
+          // Tempo image is distroless: no curl/wget. Use bash's /dev/tcp
+          // probe and grep for an HTTP status line. /ready returns 200
+          // once the receivers are listening.
+          "exec 3<>/dev/tcp/localhost/3200 && printf 'GET /ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q HTTP <&3",
+        ],
         interval: "10s",
         timeout: "5s",
-        retries: 3,
-        start_period: "10s",
+        retries: 5,
+        start_period: "15s",
       },
     };
+    volumes["tempo-data"] = null;
   }
 
   // Loki + Promtail
@@ -488,7 +509,15 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   };
   // Tool URLs use the client's allocated host ports so the dashboard's
   // header links and trace links point to the right place per-client.
-  if (obs.jaeger) linkEnv.JAEGER_URL = `http://localhost:${ports.jaeger}`;
+  // ADR-0016: Tempo replaced Jaeger as the tracing backend. The trace
+  // explorer link points at Grafana's Explore tab with the Tempo
+  // datasource preselected, since users view traces inside Grafana now.
+  if ((obs.tempo || obs.jaeger) && obs.grafana) {
+    linkEnv.TEMPO_URL = `http://localhost:${ports.grafana}/explore?left=` +
+      encodeURIComponent(JSON.stringify({ datasource: "Tempo", queries: [{ refId: "A" }] }));
+  } else if (obs.tempo || obs.jaeger) {
+    linkEnv.TEMPO_URL = `http://localhost:${ports.tempo}`;
+  }
   if (obs.grafana) linkEnv.GRAFANA_URL = `http://localhost:${ports.grafana}`;
   if (obs.prometheus) linkEnv.PROMETHEUS_URL = `http://localhost:${ports.prometheus}`;
   if (infrastructure.jenkins) linkEnv.JENKINS_URL = `http://localhost:${ports.jenkins}`;
@@ -618,25 +647,109 @@ export async function generateGrafanaConfig(clientDir: string): Promise<void> {
   await fs.mkdir(provDir, { recursive: true });
   await fs.mkdir(dashDir, { recursive: true });
 
+  // ADR-0016: Tempo replaces Jaeger. The Tempo datasource is configured
+  // with `tracesToLogsV2` so clicking a span in Grafana's trace explorer
+  // jumps straight to the matching Loki log lines. This is the killer
+  // observability feature the swap was made for.
   const datasources = `apiVersion: 1
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
-  - name: Jaeger
-    type: jaeger
+  - name: Tempo
+    uid: tempo
+    type: tempo
     access: proxy
-    url: http://jaeger:16686
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        filterByTraceID: true
+        filterBySpanID: false
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
 `;
 
   await fs.writeFile(path.join(provDir, "datasources.yaml"), datasources);
   await fs.writeFile(path.join(dashDir, ".gitkeep"), "");
+}
+
+/**
+ * Generate the client-level Tempo config (ADR-0016). Tempo wants its own
+ * config file mounted in (unlike Jaeger all-in-one). This config:
+ *   - Listens for OTLP on 4317 (gRPC) and 4318 (HTTP) on all interfaces
+ *   - Stores trace blocks on the local filesystem at /var/tempo
+ *   - Serves the HTTP query API on :3200 (mapped to a host port for Grafana)
+ *
+ * For cloud deploys the storage backend should switch to S3/GCS/Azure;
+ * that's a deploy-adapter concern, not local dev.
+ */
+export async function generateTempoConfig(clientDir: string): Promise<void> {
+  const dir = path.join(clientDir, "tempo");
+  await fs.mkdir(dir, { recursive: true });
+  const config = `# Generated by blissful-infra (ADR-0016).
+# Local-dev defaults: filesystem storage, no auth, OTLP on 4317/4318.
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  trace_idle_period: 10s
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+
+# Required for trace-to-metrics + service map in Grafana (ADR-0016).
+# Tempo generates RED metrics from spans and exposes them as
+# Prometheus remote-write to a target; we keep them in-memory only for
+# local dev (no remote_write block configured).
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
+`;
+  await fs.writeFile(path.join(dir, "tempo.yaml"), config);
 }
 
 /**
