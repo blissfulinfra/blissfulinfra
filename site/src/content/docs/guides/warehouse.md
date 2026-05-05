@@ -130,6 +130,20 @@ ORDER BY n DESC;
 
 Same query works against real S3 in production by changing the URL.
 
+## Plugins that consume the warehouse
+
+The `ai-pipeline` plugin (ADR-0010) connects to the **client-level**
+ClickHouse + MLflow on the shared infra network instead of co-deploying
+its own. When you `service add <client> <service> --plugins ai-pipeline`,
+the deps check requires both at the client level — the prompt offers to
+enable them if they aren't already.
+
+| Connection | Value (in-network) |
+|---|---|
+| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` |
+| `CLICKHOUSE_HOST` | `clickhouse` |
+| `CLICKHOUSE_DB` | `warehouse` (matches the client init script) |
+
 ## What the warehouse is NOT (yet)
 
 - **Not a cross-client store.** Each client has its own ClickHouse +

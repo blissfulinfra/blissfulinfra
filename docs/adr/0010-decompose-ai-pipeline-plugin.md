@@ -1,8 +1,17 @@
 # 0010. Decompose the `ai-pipeline` plugin into client-level platform services
 
-- **Status:** Proposed
+- **Status:** Accepted — implemented in client-model `service add` 2026-05-04
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
+
+> **Implementation note (2026-05-04):** the client-model
+> `generateServiceCompose` now emits a single ai-pipeline FastAPI container
+> that connects to the client-level `clickhouse` and `mlflow` services on the
+> shared infra network. Co-deployed ClickHouse / MLflow inside the plugin
+> compose are gone for the client model. The legacy flat-model
+> `blissful-infra start --plugins ai-pipeline` still bundles them for
+> backwards compat — flat model is deprecated and will be removed in a
+> future ADR.
 
 ## Context
 

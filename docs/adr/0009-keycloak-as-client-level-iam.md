@@ -1,6 +1,6 @@
 # 0009. Keycloak is the client-level identity provider
 
-- **Status:** Proposed
+- **Status:** Accepted (Spring Boot + React-Vite template wiring landed 2026-05-04)
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 

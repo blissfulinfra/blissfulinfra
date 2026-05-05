@@ -1,6 +1,6 @@
 # 0008. ClickHouse and LocalStack are client-level shared resources
 
-- **Status:** Proposed
+- **Status:** Accepted (template wiring landed 2026-05-04)
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 

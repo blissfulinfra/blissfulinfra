@@ -58,7 +58,11 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8001/realms/{{PROJECT_NAME}}}
+          # The compose-time KEYCLOAK_ISSUER_URI env var supplies the in-network
+          # URL (http://keycloak:8080/realms/<client-name>) so token validation
+          # works. The localhost fallback is only useful when running the JAR
+          # outside Docker.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8050/realms/{{KEYCLOAK_REALM}}}
 {{/IF_KEYCLOAK}}
 
 {{#IF_LOCALSTACK}}
