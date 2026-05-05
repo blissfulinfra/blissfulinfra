@@ -49,7 +49,7 @@ The following has shipped since the original timeline was written. These items a
 - [x] "Deploy to the cloud" section (Cloudflare → Vercel → AWS roadmap)
 
 ### Dashboard & Deployment Tracking
-- [x] Deployments tab: deployment history, P95 latency delta, Jaeger trace links, status badges
+- [x] Deployments tab: deployment history, P95 latency delta, Tempo trace links (Grafana Explore), status badges
 - [x] Jenkins pipeline wired to deployment tracking API (POST on start, PATCH on success/failure)
 - [x] Jenkins Deploy stage added: restarts containers via API, health-checks `/actuator/health`
 
@@ -933,13 +933,14 @@ Full spec: [cloud-hosting.md](./cloud-hosting.md)
 
 **Location:** `packages/cli/templates/cluster/vault/`
 
-#### 6.6.3 Distributed Tracing (Jaeger)
-- [x] Jaeger all-in-one deployment
+#### 6.6.3 Distributed Tracing (Tempo, originally Jaeger)
+- [x] Jaeger all-in-one deployment (initial implementation)
 - [x] OpenTelemetry SDK in templates
+- [x] Tempo replaces Jaeger; traces viewable in Grafana with click-through to Loki ([ADR-0016](../docs/adr/0016-tempo-replaces-jaeger.md))
 - [ ] Trace correlation in dashboard
 - [ ] Span analysis in agent
 
-**Location:** `packages/cli/templates/cluster/jaeger/`
+**Location:** `packages/cli/templates/cluster/tempo/` (was `cluster/jaeger/` pre ADR-0016)
 
 #### 6.6.4 API Gateway (Kong/Traefik)
 - [ ] Ingress controller setup
@@ -965,7 +966,7 @@ Full spec: [cloud-hosting.md](./cloud-hosting.md)
 |-----------|------|---------|------------|
 | Service Mesh | Istio | mTLS, traffic management | High |
 | Secrets | Vault | Credential management | Medium |
-| Tracing | Jaeger | Distributed tracing | Low |
+| Tracing | Tempo (was Jaeger) | Distributed tracing in Grafana, ADR-0016 | Low |
 | Gateway | Traefik | Ingress, rate limiting | Medium |
 | Network Policies | K8s native | Pod isolation | Low |
 | Certificates | cert-manager | TLS management | Medium |
@@ -1323,7 +1324,7 @@ Replace `RestTemplate` (deprecated) with reactive `WebClient` and wire in a real
 - [ ] Create `ExternalApiService.kt`, call a free public API (e.g. `https://catfact.ninja/fact`) returning a `Mono<T>`
 - [ ] Add `GET /external` endpoint in `HelloController` that calls `ExternalApiService`
 - [ ] Wrap `WebClient` call with Resilience4j `@CircuitBreaker` (ties 6.10.1 + 6.10.2 together)
-- [ ] OTEL Java agent automatically propagates trace context through `WebClient`, verify in Jaeger
+- [ ] OTEL Java agent automatically propagates trace context through `WebClient`, verify in Grafana's Tempo Explore
 
 **Reference:** https://docs.spring.io/spring-framework/reference/web/webflux-webclient/client-retrieve.html
 
@@ -1498,10 +1499,10 @@ $ curl http://localhost:8080/hello
 $ for i in {1..20}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/hello; done
 200 200 200 ... 429 429 429
 
-# External API call works and shows up in Jaeger with child span
+# External API call works and shows up in Tempo (via Grafana) with a child span
 $ curl http://localhost:8080/external
 {"fact": "Cats have 32 muscles in each ear."}
-# Jaeger: root span GET /external → child span GET catfact.ninja/fact
+# Trace explorer (Grafana, Tempo datasource): root span GET /external; child span GET catfact.ninja/fact
 
 # Validation error returns RFC 7807 problem details
 $ curl -X POST http://localhost:8080/echo -d '{}'

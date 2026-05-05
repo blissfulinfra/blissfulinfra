@@ -179,14 +179,14 @@ flowchart TD
 **Inputs (continuous):**
 - Prometheus metrics (CPU, memory, p95 latency, error rate), polled every 30s
 - Loki/Docker logs, tailed in real time
-- Jaeger traces, sampled on high-latency requests
+- Tempo traces (queried via Grafana's Tempo datasource), sampled on high-latency requests
 - Deployment events from the deployment tracking API
 - Alert thresholds from `@blissful-infra/shared` AlertsConfig
 
 **Toolset:**
 - `query_prometheus`, run PromQL queries
 - `query_logs`, search Loki/JSONL logs
-- `get_traces`, fetch Jaeger traces by service and time window
+- `get_traces`, fetch Tempo traces by service and time window (via Grafana's Tempo datasource API)
 - `get_deployment_history`, recent deployments and their latency deltas
 - `run_health_checks`, hit all service health endpoints
 - `restart_service`, `docker compose restart <service>` (runbook action)

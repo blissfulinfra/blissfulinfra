@@ -37,7 +37,7 @@ Client: acme-corp
 │   ├── Postgres       : shared instance, per-service schemas
 │   ├── Prometheus     : scrapes all acme-corp services
 │   ├── Grafana        : dashboards for all acme-corp services
-│   └── Jaeger / Loki  : traces and logs
+│   └── Tempo / Loki   : traces and logs (both viewed in Grafana)
 │
 ├── Service: payment-service   (Spring Boot)
 ├── Service: storefront        (React + Spring Boot)
@@ -48,7 +48,7 @@ Client: globex-inc
 │   ├── Jenkins
 │   ├── Kafka
 │   ├── Postgres
-│   ├── Prometheus / Grafana / Jaeger / Loki
+│   ├── Prometheus / Grafana / Tempo / Loki
 │
 └── Service: inventory-api     (Spring Boot)
 ```
@@ -86,7 +86,7 @@ merged into the client's parent Compose file at runtime.
 
 ```text
 docker-compose.infra.yaml  (name: acme-corp)
-├── kafka, postgres, jenkins, grafana, prometheus, jaeger, loki, dashboard
+├── kafka, postgres, jenkins, grafana, prometheus, tempo, loki, dashboard
 ├── include:
 │   ├── ./payment-service/docker-compose.yaml
 │   ├── ./storefront/docker-compose.yaml
@@ -112,7 +112,7 @@ second block 1, etc. Within a block:
 | Jenkins | 8090 | 8091 |
 | Grafana | 3010 | 3011 |
 | Prometheus | 9090 | 9091 |
-| Jaeger UI | 16680 | 16681 |
+| Tempo (HTTP API) | 3200 | 3201 |
 | Kafka | 9094 | 9095 |
 | Postgres | 5432 | 5433 |
 | Dashboard | 3002 | 3003 |

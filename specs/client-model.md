@@ -55,9 +55,9 @@ infrastructure:
   observability:
     prometheus: true
     grafana: true
-    jaeger: true
+    tempo: true             # ADR-0016: Tempo replaced Jaeger
     loki: true
-    clickhouse: false   # Phase 8+: Flink + ClickHouse metrics pipeline
+    clickhouse: false       # Phase 8+: Flink + ClickHouse metrics pipeline
 
 plugins: []             # client-level plugins (e.g. localstack for whole env)
 
@@ -127,7 +127,7 @@ Two compose files per client:
 
 ### `docker-compose.infra.yaml`, shared infrastructure
 
-Owned by the client. Contains Jenkins, Kafka, Zookeeper, Postgres, Prometheus, Grafana, Jaeger, Loki, Promtail. Creates the client's Docker network: `{client-name}_infra`.
+Owned by the client. Contains Jenkins, Kafka, Zookeeper, Postgres, Prometheus, Grafana, Tempo, Loki, Promtail. Creates the client's Docker network: `{client-name}_infra`.
 
 ```yaml
 # docker-compose.infra.yaml (acme-corp)
@@ -185,7 +185,7 @@ services:
     # ...
 ```
 
-Because all services join the same `infra` network, they can reach Kafka at `kafka:9092`, Postgres at `postgres:5432`, and Jaeger at `jaeger:4318`, using the same service names regardless of which service they belong to.
+Because all services join the same `infra` network, they can reach Kafka at `kafka:9092`, Postgres at `postgres:5432`, and Tempo at `tempo:4318`, using the same service names regardless of which service they belong to.
 
 ---
 
@@ -198,7 +198,7 @@ Because all services join the same `infra` network, they can reach Kafka at `kaf
 blissful-infra client create <client-name> [options]
   --no-jenkins          Skip Jenkins
   --no-kafka            Skip Kafka
-  --no-observability    Skip Prometheus/Grafana/Jaeger/Loki
+  --no-observability    Skip Prometheus/Grafana/Tempo/Loki
 
 # List all client environments
 blissful-infra client list
@@ -258,7 +258,7 @@ When `blissful-infra client create acme-corp` runs:
    Jenkins:    http://localhost:8091   (admin / admin)
    Grafana:    http://localhost:3011
    Prometheus: http://localhost:9091
-   Jaeger:     http://localhost:16691
+   Tempo:      http://localhost:3201
    ```
 
 Port allocation is discussed below.
@@ -274,7 +274,7 @@ Each client gets a port block. The CLI tracks assigned blocks in `~/.blissful-in
 | Jenkins | +0 | 8090 | 8091 |
 | Grafana | +1 | 3010 | 3011 |
 | Prometheus | +2 | 9090 | 9091 |
-| Jaeger UI | +3 | 16680 | 16681 |
+| Tempo (HTTP API) | +3 | 3200 | 3201 |
 | Kafka | +4 | 9094 | 9095 |
 | Postgres | +5 | 5432 | 5433 |
 | Dashboard | +6 | 3002 | 3003 |
@@ -390,4 +390,4 @@ This migration runs automatically on first `blissful-infra` invocation after upg
 - **Prometheus is dynamic**: scrape targets are added/removed as services come and go. No restart required.
 - **Jenkins is per-client**: not global. A client's Jenkins only knows about that client's services.
 - **Port blocks**: deterministic port assignment prevents conflicts when running multiple clients simultaneously.
-- **Observability is project-scoped**: each client has its own Grafana/Prometheus/Jaeger stack. No cross-client metric visibility (by design for client confidentiality).
+- **Observability is project-scoped**: each client has its own Grafana/Prometheus/Tempo/Loki stack. No cross-client metric visibility (by design for client confidentiality).

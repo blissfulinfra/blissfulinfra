@@ -16,7 +16,7 @@ That's the whole setup. You now have:
 
 - A backend at `http://localhost:8080` with REST, Kafka, Postgres, and Redis caching wired in
 - A frontend at `http://localhost:3000` already calling the backend
-- Grafana, Prometheus, Loki, Jaeger running and pre-provisioned with dashboards
+- Grafana, Prometheus, Loki, Tempo running and pre-provisioned (Grafana shows metrics, logs, and traces with click-through correlation)
 - A Jenkins pipeline ready to build and deploy your service
 - A management dashboard at `http://localhost:3002`
 
@@ -56,7 +56,7 @@ blissful-infra client up idea-one
 | AWS-shaped storage / queues / Lambda | LocalStack at the client level. See the [warehouse guide](/guides/warehouse). |
 | ML pipeline (Kafka, classifier, ClickHouse, MLflow) | `--plugins ai-pipeline` on `service add` |
 | Identity provider | Keycloak at the client level (opt-in via `infrastructure.keycloak: true`) |
-| Distributed tracing across services | Jaeger is already wired. Instrument and watch it work. |
+| Distributed tracing across services | Tempo is already wired (OTLP backend). Instrument and watch traces inside Grafana, with click-through to logs. |
 
 ## Shipping it
 

@@ -89,7 +89,7 @@ All backend templates generate a working chat application to demonstrate the sta
 5. Persisted to Postgres (with `postgres` or `postgres-redis`)
 6. Served from the Redis cache on subsequent page loads (with `postgres-redis`)
 
-This means you can observe Kafka message flow, cache hit/miss patterns in Grafana, and distributed traces in Jaeger, all from a working app, before writing any code.
+This means you can observe Kafka message flow, cache hit/miss patterns, and distributed traces all from a working app, inside a single Grafana UI, before writing any code.
 
 ## Extending templates
 

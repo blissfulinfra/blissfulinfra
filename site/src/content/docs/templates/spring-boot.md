@@ -107,9 +107,9 @@ The JPA, Flyway, and repository layers are omitted entirely. The app runs withou
 
 ### Distributed tracing
 
-The Dockerfile copies the OpenTelemetry Java agent JAR into the image and adds `-javaagent:/otel-agent.jar` via `JAVA_TOOL_OPTIONS`. This instruments all HTTP requests, Kafka produces/consumes, and JDBC queries automatically. Traces are exported to Jaeger at `http://jaeger:4318` (OTLP/HTTP).
+The Dockerfile copies the OpenTelemetry Java agent JAR into the image and adds `-javaagent:/otel-agent.jar` via `JAVA_TOOL_OPTIONS`. This instruments all HTTP requests, Kafka produces/consumes, and JDBC queries automatically. Traces are exported via OTLP/HTTP to Tempo at `http://tempo:4318` ([ADR-0016](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0016-tempo-replaces-jaeger.md) replaced Jaeger with Tempo).
 
-Open Jaeger at `http://localhost:16686` and search for service `<project-name>-backend` to see traces.
+Open Grafana at `http://localhost:3001`, switch to the Explore tab, pick the Tempo datasource, and search for `service.name = <project-name>-backend`. Click any span to jump to the matching Loki log lines at that timestamp.
 
 ### Metrics
 

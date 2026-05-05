@@ -72,7 +72,7 @@ Required ports (default stack):
 | 9092 | Kafka external listener |
 | 5432 | Postgres |
 | 6379 | Redis (with `redis` or `postgres-redis`) |
-| 16686 | Jaeger |
+| 3200 | Tempo (tracing; view traces inside Grafana) |
 | 3100 | Loki |
 | 5050 | Docker registry |
 
@@ -99,7 +99,7 @@ For the default `spring-boot` + `react-vite` + `postgres` stack, this creates:
 
 The CLI programmatically generates `docker-compose.yaml` based on your flags. Services included:
 
-**Always present:** `kafka`, `backend`, `frontend`, `nginx`, `jaeger`, `loki`, `promtail`, `dashboard`
+**Always present:** `kafka`, `backend`, `frontend`, `nginx`, `tempo`, `loki`, `promtail`, `dashboard`
 
 **With `postgres` or `postgres-redis`:** adds `postgres`
 
@@ -113,7 +113,7 @@ All services have health checks and proper `depends_on` conditions so containers
 
 ### 5. Build and start
 
-Runs `docker compose up -d --build` in the project directory. The backend Dockerfile includes the OpenTelemetry Java agent for automatic distributed tracing to Jaeger.
+Runs `docker compose up -d --build` in the project directory. The backend Dockerfile includes the OpenTelemetry Java agent for automatic distributed tracing. Spans are sent OTLP to Tempo on the infra network and viewable inside Grafana.
 
 ### 6. Jenkins job registration
 

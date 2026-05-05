@@ -2,7 +2,7 @@
 
 ## Vision
 
-Enterprise-grade observability on your laptop. Every blissful-infra project ships with a full local observability stack that mirrors what engineering teams run in production. Prometheus, Grafana, Jaeger and Loki, pre-wired and provisioned with zero configuration.
+Enterprise-grade observability on your laptop. Every blissful-infra project ships with a full local observability stack that mirrors what engineering teams run in production: Prometheus, Grafana, Tempo, and Loki, pre-wired and provisioned with zero configuration. All three signal types (metrics, logs, traces) live behind a single Grafana UI with click-through correlation.
 
 For teams that use enterprise APM tools (Wavefront, Datadog, Honeycomb, Dynatrace), blissful-infra provides an optional Kafka-based export path that pipes metrics to any backend without changing application code. The local Prometheus/Grafana stack is always primary, the enterprise export is additive, never a replacement.
 
@@ -14,12 +14,12 @@ The following is already shipped and working:
 
 ```
 Spring Boot → /actuator/prometheus → Prometheus (scrape every 15s) → Grafana
-Spring Boot → OTel Java agent → Jaeger (traces)
-All containers → Promtail → Loki (logs)
+Spring Boot → OTel Java agent → Tempo (OTLP traces) → Grafana
+All containers → Promtail → Loki (logs) → Grafana
 Deployment tracking → P95 latency delta captured on every deploy
 ```
 
-Grafana has pre-provisioned dashboards for JVM heap, HTTP request rate, error rate and latency percentiles. Jaeger receives traces from every HTTP request and Kafka message automatically via the OTel agent, no instrumentation code required.
+Grafana has pre-provisioned dashboards for JVM heap, HTTP request rate, error rate and latency percentiles. Tempo receives traces from every HTTP request and Kafka message automatically via the OTel agent, no instrumentation code required. The Grafana Tempo datasource is configured with `tracesToLogsV2` so clicking a span jumps to the matching Loki log lines at that timestamp ([ADR-0016](../docs/adr/0016-tempo-replaces-jaeger.md)).
 
 ---
 
@@ -177,7 +177,7 @@ The existing dashboard at `localhost:3002` gains two new views:
 ### Regression report
 - Per-deployment comparison table: metric before, metric after, delta, threshold status
 - Domain breakdown, which domains regressed, which improved
-- Link to the Jaeger trace that best illustrates the regression (highest latency span in the window)
+- Link to the Grafana trace explorer (Tempo datasource) showing the highest-latency span in the window
 
 ---
 

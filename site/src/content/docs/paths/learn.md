@@ -12,7 +12,7 @@ The job market expects "experience with distributed systems" but very few entry-
 By the end of this path you will have:
 
 - A running full-stack service: Spring Boot API, React frontend, Postgres, Kafka, Redis cache
-- Production-shaped observability: Prometheus metrics, Grafana dashboards, Loki logs, Jaeger tracing
+- Production-shaped observability: Prometheus metrics, Grafana dashboards, Loki logs, Tempo distributed tracing (click-through correlation between all three)
 - A real CI/CD pipeline: Jenkins, multi-stage build, deploy on green
 - An identity layer: Keycloak with realms, JWTs, role-based access
 - AWS-shaped services running locally: LocalStack for S3, Lambda, SQS
@@ -40,7 +40,7 @@ How the generated backend is structured. REST endpoints, Kafka producer and cons
 
 ### Module 3: Observability
 
-Prometheus scrapes metrics. Loki collects logs. Jaeger traces requests across services. Grafana visualizes all three. Why each is a separate tool, and what to use which one for.
+Prometheus scrapes metrics. Loki collects logs. Tempo traces requests across services. Grafana visualizes all three in one UI, with click-through correlation. Why each is a separate tool, and what to use which one for.
 
 *Course module: coming soon.*
 
