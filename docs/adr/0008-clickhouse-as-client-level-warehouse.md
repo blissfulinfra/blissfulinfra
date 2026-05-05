@@ -1,6 +1,6 @@
 # 0008. ClickHouse and LocalStack are client-level shared resources
 
-- **Status:** Proposed
+- **Status:** Accepted (template wiring landed 2026-05-04)
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 
@@ -39,26 +39,26 @@ to all services and plugins on the shared `<client>_infra` Docker network.
 The two together form the analytical-data substrate of a client:
 LocalStack provides S3-compatible object storage (cold/raw data),
 ClickHouse provides the columnar query layer, and ClickHouse's `s3()`
-table function can read directly from LocalStack S3 — a real lakehouse
+table function can read directly from LocalStack S3, a real lakehouse
 pattern locally.
 
 ### What changes today
 
 1. `ClientInfrastructure.observability.clickhouse` already exists as an
-   opt-in flag. **Default flips to `true`** — ClickHouse is on by default
+   opt-in flag. **Default flips to `true`**: ClickHouse is on by default
    for new clients.
 2. **New flag `ClientInfrastructure.localstack: boolean`**, defaulting to
    `true`. LocalStack runs on the client `infra` network, available to
    every service.
 3. `PortBlockSchema` gains `clickhouse: number` and `localstack: number`
-   — formalizes what was previously hardcoded (8123, 4566).
+formalizes what was previously hardcoded (8123, 4566).
 4. Init scripts at client level (`<client>/clickhouse/init/*.sql` and
    `<client>/localstack/init/*.sh`) create a default `warehouse` database
    in ClickHouse and a small set of shared resources in LocalStack.
    Service-specific resources (per-service buckets, DynamoDB tables) are
    created by the service's own scaffolding.
 5. The `ai-pipeline` plugin and any future analytical plugin uses the
-   client-level ClickHouse instead of standing up their own — referenced
+   client-level ClickHouse instead of standing up their own, referenced
    via env vars `WAREHOUSE_HOST` / `WAREHOUSE_PORT` injected into service
    compose.
 6. The `lambda-python` backend (ADR-0007) drops its **per-service**
@@ -121,7 +121,7 @@ The full discussion is in the conversation log; the short version:
 ### Positive
 
 - **Single warehouse per client.** `ai-pipeline`, future analytics,
-  forecasting, anomaly detection — all read/write the same store. Cross-cutting queries become trivial.
+  forecasting, anomaly detection, all read/write the same store. Cross-cutting queries become trivial.
 - **Less infra cost per plugin.** Plugins drop their own ClickHouse
   containers (one shared instance instead of N).
 - **Mirrors real data stacks.** Warehouse + multiple readers + multiple
@@ -129,7 +129,7 @@ The full discussion is in the conversation log; the short version:
 - **Cloud migration is one-front.** Replace local ClickHouse with managed
   ClickHouse, every plugin's connection string changes via env var, done.
 - **POC is small.** The infrastructure piece is just promoting a flag.
-  The interesting work (plugin contract) is deferred — we'll learn what
+  The interesting work (plugin contract) is deferred, we'll learn what
   it should look like by using the warehouse first.
 
 ### Negative
@@ -148,9 +148,9 @@ The full discussion is in the conversation log; the short version:
 ### Risks / follow-ups
 
 - **The plugin contract ADR is the real architectural work.** This ADR
-  is just the foundation. The contract — who owns which tables, how
+  is just the foundation. The contract, who owns which tables, how
   migrations work, how schemas are namespaced, how readers know what's
-  available — is what makes this useful at scale. Do not let "we have a
+  available, is what makes this useful at scale. Do not let "we have a
   warehouse now" stop short of "plugins use it cleanly."
 - **Migration tooling is missing.** Without a plugin contract, every
   plugin's tables are a free-for-all. As we add plugins, conflicts will
@@ -165,20 +165,20 @@ The full discussion is in the conversation log; the short version:
   because it makes cross-plugin queries impossible and triples infra cost
   on a laptop running 3+ analytical plugins.
 - **Use Postgres for analytics.** Postgres is already client-level.
-  **Rejected** — Postgres is fine for small analytical queries but
+  **Rejected**: Postgres is fine for small analytical queries but
   degrades on large fact tables; mixing OLTP and OLAP workloads on one
   database hurts both.
 - **DuckDB embedded in each service.** No shared service to run.
   **Rejected** for now (interesting; defer until users need cross-process
   zero-ops). Mentioned in the conversation as an option for a future ADR.
 - **Build the full plugin contract first, then promote.** **Rejected**
-  for scoping reasons — the user wants a POC. Promote first, design the
+  for scoping reasons, the user wants a POC. Promote first, design the
   contract from real usage.
 
 ## References
 
-- [specs/analytics.md](../../specs/analytics.md) — the analytics pipeline
+- [specs/analytics.md](../../specs/analytics.md), the analytics pipeline
   was the first place we noted this gap
-- ADR-0002 (per-client isolation) — the boundary the warehouse fits inside
-- ADR-0003 (unified compose project) — ClickHouse rides the same shape
+- ADR-0002 (per-client isolation), the boundary the warehouse fits inside
+- ADR-0003 (unified compose project). ClickHouse rides the same shape
 - Conversation log 2026-05-02 (warehouse + plugin contract discussion)

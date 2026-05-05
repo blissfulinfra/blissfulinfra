@@ -31,13 +31,13 @@ api:
     server:
       framework: spring-boot      # spring-boot (only shipped option today)
       output: ./backend/src/generated
-      package: com.example.api    # Java/Kotlin — sets apiPackage and modelPackage
+      package: com.example.api    # Java/Kotlin: sets apiPackage and modelPackage
     types:
       output: ./frontend/src/api/types.ts
       runtime: zod                # zod | none
 ```
 
-All `generate:` sub-keys are optional — only configured generators run.
+All `generate:` sub-keys are optional, only configured generators run.
 
 ---
 
@@ -48,15 +48,15 @@ All `generate:` sub-keys are optional — only configured generators run.
 **Tool:** [`openapi-typescript`](https://openapi-ts.dev) + [`openapi-fetch`](https://openapi-ts.dev/openapi-fetch/)
 
 Generates:
-- `{output}/index.ts` — TypeScript path/operation types derived directly from the spec
-- `{output}/client.ts` — Typed fetch wrapper using `openapi-fetch`
+- `{output}/index.ts`, TypeScript path/operation types derived directly from the spec
+- `{output}/client.ts`, Typed fetch wrapper using `openapi-fetch`
 
 ```typescript
-// Before — raw fetch, no types
+// Before: raw fetch, no types
 const res = await fetch(`/api/items/${id}`)
 const item = await res.json()  // typed as `any`
 
-// After — fully typed, throws on non-2xx
+// After: fully typed, throws on non-2xx
 import { client } from "@/api/client"
 const { data } = await client.GET("/api/items/{id}", { params: { path: { id } } })
 // data is typed as components["schemas"]["Item"]
@@ -68,10 +68,10 @@ The client constructor accepts a `baseUrl` for pointing at different environment
 
 **Tool:** [`@openapitools/openapi-generator-cli`](https://openapi-generator.tech) via `npx`
 
-Generates Spring Boot controller interfaces with `interfaceOnly=true` — engineer implements the `@Service` layer, the generated interface defines the contract:
+Generates Spring Boot controller interfaces with `interfaceOnly=true`, engineer implements the `@Service` layer, the generated interface defines the contract:
 
 ```kotlin
-// Generated — do not edit
+// Generated: do not edit
 @Api(tags = ["items"])
 interface ItemsApi {
     @GetMapping("/api/items")
@@ -106,7 +106,7 @@ When `runtime: none`, generates plain TypeScript interfaces only (no runtime val
 ## First-run scaffold
 
 When `blissful-infra start` creates a new project and the config includes an `api:` block, the CLI:
-1. Copies `templates/openapi/openapi.yaml` to the `spec` path if it doesn't exist — a starter spec with health check, list, get, and create endpoints
+1. Copies `templates/openapi/openapi.yaml` to the `spec` path if it doesn't exist, a starter spec with health check, list, get, and create endpoints
 2. Runs all configured generators automatically
 
 ```bash
@@ -127,7 +127,7 @@ $ blissful-infra generate --watch
 ✓ Zod schemas → ./frontend/src/api/types.ts
 
 Watching openapi.yaml for changes...
-↺ Spec changed — regenerating...
+↺ Spec changed: regenerating...
 ✓ TypeScript client → ./frontend/src/api
 ✓ Zod schemas → ./frontend/src/api/types.ts
 ```
@@ -152,4 +152,4 @@ Watching openapi.yaml for changes...
 
 ## Generated file ownership
 
-Files under `generate.client.output`, `generate.server.output`, and `generate.types.output` are **owned by the generator**. Do not edit them manually — changes will be overwritten on the next `blissful-infra generate` run. Add the output directories to `.gitignore` or commit them as read-only artifacts, depending on your team's preference.
+Files under `generate.client.output`, `generate.server.output`, and `generate.types.output` are **owned by the generator**. Do not edit them manually, changes will be overwritten on the next `blissful-infra generate` run. Add the output directories to `.gitignore` or commit them as read-only artifacts, depending on your team's preference.

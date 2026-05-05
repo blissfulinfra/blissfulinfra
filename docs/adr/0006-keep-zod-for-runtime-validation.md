@@ -17,7 +17,7 @@ While reviewing the code in preparation for adding tests, we asked:
 The honest answer is nuanced:
 
 - **For purely internal types** (passing already-validated objects between
-  TypeScript functions), TypeScript is enough. Zod adds nothing — the
+  TypeScript functions), TypeScript is enough. Zod adds nothing, the
   compiler already enforces shapes.
 - **At trust boundaries**, TypeScript types are erased at runtime.
   `as ClientConfig` is a lie when the input is a parsed YAML file the
@@ -29,7 +29,7 @@ The trust boundaries we have:
 1. `blissful-infra.yaml` files (user-editable)
 2. HTTP request bodies received by the API server (port 3002)
 3. `~/.blissful-infra/registry.json` (could be from an older CLI version)
-4. Env vars (technically — but rarely structured)
+4. Env vars (technically, but rarely structured)
 
 We considered four shapes:
 
@@ -58,7 +58,7 @@ The pragmatic case for keeping Zod:
 - It works. There are ~30 schemas in `packages/shared`, ~10 `.parse()`
   call sites that catch real bugs. Removing it costs ~½ day for no
   user-visible benefit.
-- The "two mental models" (interface + schema) cost is overstated —
+- The "two mental models" (interface + schema) cost is overstated
   in practice both come from the same source (`z.object(...) → z.infer`),
   so contributors only think in one direction.
 - TypeScript-only would require either YOLO casts (loses runtime safety)
@@ -128,7 +128,7 @@ JSON registries on disk. Everything else: interfaces.
 
 - **Option A: Drop Zod entirely.** ~½ day to migrate, hand-rolled
   validators at every parse point, ~5x more code per validator. Loses
-  the auto-inferred-type ergonomics. Rejected — costs more than it
+  the auto-inferred-type ergonomics. Rejected, costs more than it
   saves.
 - **Option B: Zod only at trust boundaries (~5 schemas), interfaces
   elsewhere.** This is essentially what we already have functionally.
@@ -141,13 +141,13 @@ JSON registries on disk. Everything else: interfaces.
 - **Option D: OpenAPI-first.** Strongest long-term option. Single source
   of truth across HTTP API + config. Tooling explosion (Swagger UI, mock
   servers, generated clients). Multi-day refactor with no immediate
-  payoff. Deferred — not rejected. Trigger: third external API consumer
+  payoff. Deferred, not rejected. Trigger: third external API consumer
   or breaking-change pain.
 
 ## References
 
-- [packages/shared/CLAUDE.md](../../packages/shared/CLAUDE.md) — schema
+- [packages/shared/CLAUDE.md](../../packages/shared/CLAUDE.md), schema
   conventions
-- [packages/shared/src/schemas/config.ts](../../packages/shared/src/schemas/config.ts) — current schemas
-- [packages/shared/src/schemas/__tests__/config.test.ts](../../packages/shared/src/schemas/__tests__/config.test.ts) — Layer 1 schema tests
-- ADR-0005 (testing strategy) — schema tests are Layer 1
+- [packages/shared/src/schemas/config.ts](../../packages/shared/src/schemas/config.ts), current schemas
+- [packages/shared/src/schemas/__tests__/config.test.ts](../../packages/shared/src/schemas/__tests__/config.test.ts). Layer 1 schema tests
+- ADR-0005 (testing strategy), schema tests are Layer 1

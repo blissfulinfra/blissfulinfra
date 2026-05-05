@@ -1,12 +1,12 @@
-# Blissful Infra — User Session Analytics (ClickHouse)
+# Blissful Infra. User Session Analytics (ClickHouse)
 
 ## Vision
 
 Enterprise-grade product analytics built into the platform: every blissful-infra
 client environment ships with a ClickHouse-backed analytics pipeline that
 captures user sessions across frontend and backend without per-project setup.
-The same primitives that Cloudflare, Discord and Uber use at scale — columnar
-TSDB + async Kafka pipeline + JSON-flexible event schema — exposed as a
+The same primitives that Cloudflare, Discord and Uber use at scale, columnar
+TSDB + async Kafka pipeline + JSON-flexible event schema, exposed as a
 first-class feature alongside Jenkins and observability.
 
 The goal is not "yet another tracking tool." The goal is that when an engineer
@@ -66,15 +66,15 @@ ORDER BY (client_name, service_name, ts, session_id);
 ```
 
 **Indexes:**
-- Primary order: `(client_name, service_name, ts, session_id)` — fast for
+- Primary order: `(client_name, service_name, ts, session_id)`, fast for
   per-client and per-service queries (the common case).
 - TTL: keep raw events for 90 days, then aggregate into a `sessions` materialized
   view for long-term storage.
 
 **Materialized views:**
-- `sessions_mv` — derived from events, one row per session_id with start_ts,
+- `sessions_mv`, derived from events, one row per session_id with start_ts,
   end_ts, event_count, page_count, first_page, last_page, user_id.
-- `daily_active_users_mv` — count distinct user_id per day.
+- `daily_active_users_mv`, count distinct user_id per day.
 
 ---
 
@@ -136,7 +136,7 @@ New per-client container (sibling to dashboard). Subscribes to
 ClickHouse via HTTP interface (`/?query=INSERT INTO events FORMAT JSONEachRow`).
 
 Implementation: small Node service in `packages/cli/src/server/analytics-ingest.ts`,
-or a Kotlin job in the spring-boot template — pick one. Recommend Node since
+or a Kotlin job in the spring-boot template, pick one. Recommend Node since
 the dashboard server is already Node and we can colocate.
 
 ### 4. Dashboard Sessions tab
@@ -155,13 +155,13 @@ API server proxies these to ClickHouse using the official `@clickhouse/client`
 npm package.
 
 UI sections (all charts via Recharts):
-- **Live ticker** — events/sec across the client (websocket from API server)
-- **Sessions per hour** — bar chart, last 24h
-- **Top events** — table, sortable
-- **Top pages** — table with avg time on page
-- **Session detail** — timeline of events for one session_id, linked to Jaeger
+- **Live ticker**: events/sec across the client (websocket from API server)
+- **Sessions per hour**: bar chart, last 24h
+- **Top events**: table, sortable
+- **Top pages**: table with avg time on page
+- **Session detail**: timeline of events for one session_id, linked to Jaeger
   trace via `trace_id`
-- **Funnel builder** — pick 2-5 events, see drop-off
+- **Funnel builder**: pick 2-5 events, see drop-off
 
 ---
 
@@ -169,11 +169,11 @@ UI sections (all charts via Recharts):
 
 Build incrementally. Each slice is independently testable.
 
-### Slice A — Plumbing (foundation)
+### Slice A. Plumbing (foundation)
 **Goal:** verify the architecture works end-to-end with one curl call.
 
 - Default `clickhouse: true` in `ClientInfrastructureSchema`
-- ClickHouse compose entry already exists in [infra-compose.ts](../packages/cli/src/utils/infra-compose.ts) — keep
+- ClickHouse compose entry already exists in [infra-compose.ts](../packages/cli/src/utils/infra-compose.ts), keep
 - Add Kafka topic `analytics-events` to client infra (auto-create on first publish)
 - Add `analytics-ingest` consumer container to the client infra compose
 - Write the ClickHouse `events` table on container init (init script in `clickhouse/init/`)
@@ -182,7 +182,7 @@ Build incrementally. Each slice is independently testable.
 
 **Done when:** `SELECT * FROM events ORDER BY ts DESC LIMIT 10` shows curl-injected events.
 
-### Slice B — Frontend SDK
+### Slice B. Frontend SDK
 **Goal:** real user data flowing without manual curl.
 
 - Create `templates/react-vite/src/lib/analytics.ts`
@@ -193,7 +193,7 @@ Build incrementally. Each slice is independently testable.
 
 **Done when:** opening the frontend in a browser produces session and page_view events in ClickHouse without any code changes.
 
-### Slice C — Dashboard Sessions tab
+### Slice C. Dashboard Sessions tab
 **Goal:** see what your users are doing.
 
 - 5 new `/api/v1/analytics/...` endpoints (see API list above)
@@ -203,7 +203,7 @@ Build incrementally. Each slice is independently testable.
 
 **Done when:** loading the frontend, clicking around, then opening the Sessions tab shows your activity in real time.
 
-### Slice D — Backend auto-instrumentation (optional)
+### Slice D. Backend auto-instrumentation (optional)
 **Goal:** backend visibility for free.
 
 - Spring filter in the template that emits `request_started` / `request_completed` events for every API call
@@ -236,11 +236,11 @@ mixing analytics in there ruins both workloads.
    the eventual cloud deploy story, need consent banner + data-retention
    controls.
 2. **User identification.** Recommend `identify(userId)` is opt-in per
-   service — some services don't have user accounts.
+   service, some services don't have user accounts.
 3. **Multi-tenant isolation.** ClickHouse is per-client (good). Within a
    client, services share the events table with `service_name` discriminator.
    That's correct for cross-service funnels but means a noisy service can fill
    the partition.
 4. **Sampling.** Skip for v1, add later if write throughput becomes a problem.
-5. **Schema evolution.** ClickHouse `ALTER TABLE ADD COLUMN` is fast — defer
+5. **Schema evolution.** ClickHouse `ALTER TABLE ADD COLUMN` is fast, defer
    migration tooling.

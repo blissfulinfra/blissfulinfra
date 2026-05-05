@@ -1,8 +1,8 @@
-# Blissful Infra Cloud — Hosted Tier Specification
+# Blissful Infra Cloud. Hosted Tier Specification
 
 ## Vision
 
-The same app you sandbox locally ships to real infrastructure with one command. No Terraform, no DevOps team, no cloud account required. blissful-infra Cloud is the natural next step after `blissful-infra start` — when you're ready to share your project with the world, you run `blissful-infra deploy` and it's live at `yourproject.blissful-infra.com` in under two minutes.
+The same app you sandbox locally ships to real infrastructure with one command. No Terraform, no DevOps team, no cloud account required. blissful-infra Cloud is the natural next step after `blissful-infra start`, when you're ready to share your project with the world, you run `blissful-infra deploy` and it's live at `yourproject.blissful-infra.com` in under two minutes.
 
 ---
 
@@ -14,9 +14,9 @@ The same app you sandbox locally ships to real infrastructure with one command. 
 | **Hosted** | $5/month | Solo developers ready to ship |
 | **Team** | Contact us | Small teams, custom domains, priority support |
 
-The $5 tier is intentionally low — impulse-buy pricing that keeps the barrier to first deployment as close to zero as possible. The team tier is negotiated case-by-case.
+The $5 tier is intentionally low, impulse-buy pricing that keeps the barrier to first deployment as close to zero as possible. The team tier is negotiated case-by-case.
 
-**Billing provider:** Polar.sh (merchant of record — handles global tax/VAT automatically)
+**Billing provider:** Polar.sh (merchant of record, handles global tax/VAT automatically)
 
 ---
 
@@ -28,22 +28,22 @@ The $5 tier is intentionally low — impulse-buy pricing that keeps the barrier 
 | Custom domain | Bring your own (CNAME to Cloudflare) |
 | Frontend hosting | Cloudflare Pages (unlimited bandwidth) |
 | Backend | Cloudflare Workers (100k requests/day free tier) |
-| Database | Cloudflare D1 — 5GB SQLite (maps from local Postgres) |
-| Cache | Cloudflare KV — 1GB (maps from local Redis) |
-| Queue | Cloudflare Queues — async messaging (maps from local Kafka) |
+| Database | Cloudflare D1, 5GB SQLite (maps from local Postgres) |
+| Cache | Cloudflare KV, 1GB (maps from local Redis) |
+| Queue | Cloudflare Queues, async messaging (maps from local Kafka) |
 | SSL | Automatic via Cloudflare |
 | Auto-deploy | `blissful-infra deploy` from CLI |
 | Project dashboard | Manage hosted projects at blissful-infra.com |
 
 **Hard limits at $5/tier:**
 - 1 hosted project per subscription
-- 100k Worker requests/day (soft — overage notified, not cut off)
+- 100k Worker requests/day (soft, overage notified, not cut off)
 - 5GB D1 storage
 - Builds: 500/month
 
 ---
 
-## Module Mapping — Local → Cloud
+## Module Mapping. Local → Cloud
 
 The `blissful-infra.yaml` config schema already captures this via the `modules` block. At deploy time, each local service maps to its Cloudflare equivalent:
 
@@ -52,7 +52,7 @@ The `blissful-infra.yaml` config schema already captures this via the `modules` 
 | React + Vite frontend | Cloudflare Pages | Static build, CDN-distributed |
 | Express / Go Chi backend | Cloudflare Worker | Native JS/Go Workers support |
 | Spring Boot backend | Cloudflare Worker (via adapter) | JVM → lightweight JS proxy; full container support via Cloudflare Containers (beta) |
-| Postgres | Cloudflare D1 | SQLite dialect — Flyway migrations auto-converted |
+| Postgres | Cloudflare D1 | SQLite dialect. Flyway migrations auto-converted |
 | Redis | Cloudflare KV | Key-value, TTL supported |
 | Kafka | Cloudflare Queues | Producer/consumer pattern, async |
 | nginx | Cloudflare routing | Worker routes replace nginx reverse proxy rules |
@@ -66,7 +66,7 @@ The `blissful-infra.yaml` config schema already captures this via the `modules` 
 ### CLI experience
 
 ```bash
-# First deploy — interactive setup
+# First deploy: interactive setup
 blissful-infra deploy
 
 ? Project name: my-app
@@ -94,7 +94,7 @@ Building and deploying...
 Live at: https://my-app.blissful-infra.com
 Dashboard: https://blissful-infra.com/dashboard
 
-# Subsequent deploys — one command
+# Subsequent deploys: one command
 blissful-infra deploy
 ✓ Deployed in 38s → https://my-app.blissful-infra.com
 ```
@@ -167,7 +167,7 @@ POST /billing/cancel          → cancel subscription (project stays live until 
 ```
 
 **Tech stack for control plane:**
-- Cloudflare Worker (the control plane itself runs on Cloudflare — dogfoods the product)
+- Cloudflare Worker (the control plane itself runs on Cloudflare, dogfoods the product)
 - Cloudflare D1 for user/project/deployment records
 - Cloudflare KV for session tokens
 - Polar.sh webhooks for subscription lifecycle events
@@ -176,7 +176,7 @@ POST /billing/cancel          → cancel subscription (project stays live until 
 
 ## Authentication
 
-**GitHub OAuth** — developers live on GitHub. No new account to create.
+**GitHub OAuth**: developers live on GitHub. No new account to create.
 
 Flow:
 1. `blissful-infra deploy` detects no auth token → opens browser to `https://blissful-infra.com/auth/github`
@@ -197,7 +197,7 @@ For users who want `myapp.com` instead of `myapp.blissful-infra.com`:
 4. Cloudflare detects the CNAME and issues an SSL certificate automatically
 5. Both `myapp.com` and `myapp.blissful-infra.com` serve the project
 
-Custom domain is included in the $5 tier — no upsell needed.
+Custom domain is included in the $5 tier, no upsell needed.
 
 ---
 
@@ -248,7 +248,7 @@ New page documenting the full deploy flow, module mapping, and custom domain set
 **What requires workarounds:**
 - Spring Boot: needs adapter layer until Cloudflare Containers GA
 - WebSockets: Cloudflare Workers support WebSockets but with limitations (Durable Objects required for stateful WS)
-- Kafka consumer groups: Cloudflare Queues doesn't support consumer groups — single consumer only
+- Kafka consumer groups: Cloudflare Queues doesn't support consumer groups, single consumer only
 
 **What won't work at $5:**
 - Long-running background jobs (Workers have CPU time limits)
@@ -259,7 +259,7 @@ New page documenting the full deploy flow, module mapping, and custom domain set
 
 ## Implementation Phases
 
-### Phase 6a — Foundation
+### Phase 6a. Foundation
 - [ ] Control plane API (Cloudflare Worker + D1)
 - [ ] GitHub OAuth flow
 - [ ] Polar.sh billing integration (subscribe, webhook, status check)
@@ -268,23 +268,23 @@ New page documenting the full deploy flow, module mapping, and custom domain set
 - [ ] React + Vite frontend deploy (Pages)
 - [ ] Express backend deploy (Worker)
 
-### Phase 6b — Database + Storage
+### Phase 6b. Database + Storage
 - [ ] D1 provisioning + Flyway migration conversion
 - [ ] KV namespace provisioning
 - [ ] Cloudflare Queues provisioning
 - [ ] Module mapping validated end-to-end
 
-### Phase 6c — Dashboard + Custom Domains
+### Phase 6c. Dashboard + Custom Domains
 - [ ] `/dashboard` page on blissful-infra.com
 - [ ] Custom domain CNAME flow
 - [ ] Deployment history in dashboard
 - [ ] Resource usage display
 
-### Phase 6d — Spring Boot Support
+### Phase 6d. Spring Boot Support
 - [ ] Worker adapter for Spring Boot (proxy approach)
 - [ ] Cloudflare Containers integration (when GA)
 
-### Phase 6e — Vercel + AWS
+### Phase 6e. Vercel + AWS
 - [ ] `blissful-infra deploy --target vercel`
 - [ ] `blissful-infra deploy --target aws` (ECS Fargate + RDS)
 - [ ] Unified deploy command that reads `deploy.target` from `blissful-infra.yaml`

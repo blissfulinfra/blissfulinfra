@@ -31,7 +31,7 @@ blissful-infra organizes your local stack into a single managed environment and 
 
 **What makes it different from tools like Tilt or Garden:**
 
-Those tools orchestrate services you already wrote. blissful-infra also *creates* them, scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start. It's the difference between a toolkit and a complete local platform.
+Those tools orchestrate services you already wrote. blissful-infra also *creates* them, scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start.
 
 ---
 
@@ -41,15 +41,15 @@ blissful-infra serves three audiences, all working from the same toolchain.
 
 | You are... | Path | Outcome |
 |---|---|---|
-| **Learning** — student, new grad, anyone wanting enterprise-pattern fluency without an AWS bill | [Learn](https://blissful-infra.com/paths/learn) | A guided course that takes you from zero to a running Kubernetes service backed by Kafka, Postgres and Keycloak. Understand each layer before reaching for a managed equivalent. |
-| **Building** — engineer with an idea who wants a fast experimentation loop | [Build](https://blissful-infra.com/paths/build) | One command to a production-grade local stack. Skip the theory, prototype now, dig deeper later. |
-| **Delivering** — small studio or indie team running multiple client projects | [Deliver](https://blissful-infra.com/paths/deliver) | The client model — per-client isolated stacks with their own Kafka, Postgres, observability and CI. One laptop, many clients, no SaaS sprawl. |
+| **Learning**: student, new grad, or anyone wanting enterprise-pattern fluency without an AWS bill | [Learn](https://blissful-infra.com/paths/learn) | A guided course that takes you from zero to a running Kubernetes service backed by Kafka, Postgres, and Keycloak. Understand each layer before reaching for a managed equivalent. |
+| **Building**: engineer with an idea who wants a fast experimentation loop | [Build](https://blissful-infra.com/paths/build) | One command to a production-grade local stack. Skip the theory, prototype now, dig deeper later. |
+| **Delivering**: small studio or indie team running multiple client projects | [Deliver](https://blissful-infra.com/paths/deliver) | Per-client isolated stacks with their own Kafka, Postgres, observability, and CI. One laptop, many clients, no SaaS sprawl. |
 
 ### A note on managed services
 
-Most technologies blissful-infra runs locally have excellent managed equivalents — [Auth0](https://auth0.com/) over Keycloak, [RDS](https://aws.amazon.com/rds/) over Postgres, [Confluent Cloud](https://www.confluent.io/) over Kafka, [Datadog](https://www.datadoghq.com/) over the Prometheus/Grafana/Loki stack. Those services are great. They start faster, ship with built-in compliance, and remove most of the operational burden. When you're a small team shipping to production, reaching for one is often the right call.
+Most technologies blissful-infra runs locally have excellent managed equivalents: [Auth0](https://auth0.com/) over Keycloak, [RDS](https://aws.amazon.com/rds/) over Postgres, [Confluent Cloud](https://www.confluent.io/) over Kafka, [Datadog](https://www.datadoghq.com/) over the Prometheus/Grafana/Loki stack. Those services are great. They start faster, ship with built-in compliance, and remove most of the operational burden. When you're a small team shipping to production, reaching for one is often the right call.
 
-blissful-infra exists for a different reason. A lot of enterprise development happens on top of managed services that already exist when you arrive — you write business logic against a Cognito instance someone else provisioned, push to an EKS cluster someone else maintains. That's productive but it hides the layers, and starting from a blank slate becomes intimidating. blissful-infra puts every layer back in your hands so you can experiment, break things, and understand the tradeoffs at each level. When you do graduate to a managed service, you'll know what it's doing on your behalf, what you're paying for, and where the meaningful differences are.
+blissful-infra exists for a different reason. A lot of enterprise development happens on top of managed services that already exist when you arrive. You write business logic against a Cognito instance someone else provisioned, push to an EKS cluster someone else maintains. That's productive, but it hides the layers, and starting from a blank slate becomes intimidating. blissful-infra puts every layer back in your hands so you can experiment, break things, and understand the tradeoffs at each level. When you do graduate to a managed service, you'll know what it's doing on your behalf, what you're paying for, and where the meaningful differences are.
 
 ---
 
@@ -135,21 +135,20 @@ A blissful-infra project is a directory with a `blissful-infra.yaml` config file
 
 ```
 my-app/
-├── backend/              # Spring Boot / FastAPI / Express / Go
+├── backend/              # Spring Boot (Kotlin)
 │   └── Jenkinsfile       # CI/CD pipeline definition
 ├── frontend/             # React + Vite
 ├── loki/                 # Log aggregation config
 ├── prometheus/           # Metrics scrape config (with monitoring)
 ├── grafana/              # Dashboards and datasources (with monitoring)
 ├── ai-pipeline/          # ML service (if --plugins ai-pipeline)
-├── k8s/                  # Kubernetes manifests + Argo CD (if --deploy kubernetes)
 ├── docker-compose.yaml   # Everything wired together
 └── blissful-infra.yaml   # Project config
 ```
 
 ### Templates
 
-blissful-infra ships with one full-stack template (Spring Boot + React + Vite) and one serverless template. Other stacks are deliberately out of scope until they're real — see [Project philosophy](#project-philosophy-real-services-not-vendor-emulation).
+blissful-infra ships with one full-stack template (Spring Boot + React + Vite) and one serverless template. Other stacks are deliberately out of scope until they're real. See [Project philosophy](#project-philosophy-real-services-not-vendor-emulation).
 
 **Backend**
 
@@ -220,7 +219,7 @@ blissful-infra ships an [MCP](https://modelcontextprotocol.io) server so Claude 
 
 **Requirements:** the dashboard must be running (`blissful-infra dashboard`) before you start the MCP server.
 
-**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+**Claude Desktop**: add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -234,7 +233,7 @@ blissful-infra ships an [MCP](https://modelcontextprotocol.io) server so Claude 
 }
 ```
 
-**Claude Code** — add to your project's `.mcp.json` or run:
+**Claude Code**: add to your project's `.mcp.json` or run:
 
 ```bash
 blissful-infra mcp --api http://localhost:3002
@@ -337,21 +336,21 @@ The `example` command scaffolds a complete, runnable project using the base temp
 
 ## Next Steps
 
-### Managing multiple environments — the client model
+### Managing multiple environments: the client model
 
 `blissful-infra start` is the front door for a single project. When you need
 multiple isolated environments (multiple clients, staging vs production, or
 just keeping projects separate from each other), use the **client model**.
 Each client gets its own Kafka, Postgres, Jenkins, and observability stack
-on its own Docker network — full isolation per tenant.
+on its own Docker network. Full isolation per tenant.
 
 ```bash
 # Create a new client environment (its own Kafka, Postgres, Jenkins, ...)
 blissful-infra client create acme-corp
 
-# Add services to it. service add reads each template's infra-deps manifest
+# Add services to it. `service add` reads each template's infra-deps manifest
 # and prompts to enable any required (or useful optional) client-level
-# components — pass --yes to auto-enable required deps non-interactively.
+# components. Pass --yes to auto-enable required deps non-interactively.
 blissful-infra service add acme-corp api --backend spring-boot --frontend react-vite
 
 # Toggle infra later, after the client already exists
@@ -371,18 +370,18 @@ for why we chose this shape.
 ### Architectural decisions
 
 Significant choices are captured as ADRs in
-[docs/adr/](./docs/adr/). Each one documents the *why* behind a decision —
+[docs/adr/](./docs/adr/). Each one documents the *why* behind a decision:
 context, trade-offs, alternatives considered. Read these before making
 cross-cutting changes.
 
 ### Specs and reference
 
-- **[Learning Guide](./docs/LEARNING_GUIDE.md)** — Enterprise infrastructure patterns (Kafka, Kubernetes, GitOps, observability)
-- **[Product Spec](./specs/product.md)** — Full technical specification
-- **[Agent Spec](./specs/agent.md)** — How the AI analysis agent works
-- **[Client Model](./specs/client-model.md)** — Multi-tenant client environments
-- **[Analytics Spec](./specs/analytics.md)** — User session analytics pipeline (planned)
-- **[Roadmap](./specs/timeline.md)** — What's built and what's coming
+- **[Learning Guide](./docs/LEARNING_GUIDE.md)**: Enterprise infrastructure patterns (Kafka, Kubernetes, GitOps, observability)
+- **[Product Spec](./specs/product.md)**: Full technical specification
+- **[Agent Spec](./specs/agent.md)**: How the AI analysis agent works
+- **[Client Model](./specs/client-model.md)**: Multi-tenant client environments
+- **[Analytics Spec](./specs/analytics.md)**: User session analytics pipeline (planned)
+- **[Roadmap](./specs/timeline.md)**: What's built and what's coming
 
 ### Plugins
 
@@ -404,7 +403,7 @@ blissful-infra start my-app --plugins ai-pipeline
 git clone https://github.com/cavanpage/blissful-infra.git
 cd blissful-infra && npm install
 
-# Build everything (shared → cli → dashboard, ordered correctly)
+# Build everything (shared, then cli, then dashboard)
 npm run build
 ```
 
@@ -455,12 +454,12 @@ blissful-infra client remove scratch
 ```
 
 The template hot-reload mode (`blissful-infra dev --templates`) was
-flat-model-only and is currently broken in the client model — see
-[CLAUDE.md](./CLAUDE.md) "TODOs" for the porting plan.
+flat-model-only and is currently broken in the client model. See the
+"TODOs" in [CLAUDE.md](./CLAUDE.md) for the porting plan.
 
 #### Tests
 
-Three layers — see [docs/adr/0005-three-layer-testing-strategy.md](./docs/adr/0005-three-layer-testing-strategy.md).
+Three layers. See [docs/adr/0005-three-layer-testing-strategy.md](./docs/adr/0005-three-layer-testing-strategy.md).
 
 ```bash
 npm test                  # Layer 1+2: schema + compose validation, ~400ms
@@ -477,7 +476,7 @@ generators. Layer 3 covers full client/service lifecycle.
 ## Acknowledgments
 
 blissful-infra is a thin orchestration layer over excellent open-source projects.
-It pulls these as Docker images at runtime — none are vendored or modified.
+It pulls these as Docker images at runtime. None are vendored or modified.
 
 | Project | License | Role in blissful-infra |
 |---|---|---|
@@ -500,10 +499,10 @@ It pulls these as Docker images at runtime — none are vendored or modified.
 ### Project philosophy: real services, not vendor emulation
 
 blissful-infra integrates real open-source platform services for everything it
-can — Keycloak instead of mocking AWS Cognito, Postgres instead of mocking
+can. Keycloak instead of mocking AWS Cognito, Postgres instead of mocking
 managed RDS, Kafka instead of mocking SQS for queueing. The exception is
 LocalStack for AWS-API-shaped services where the protocol matters (S3, Lambda
-event shapes, etc.) — there's no portable equivalent for those.
+event shapes, etc.). There's no portable equivalent for those.
 
 Where a paid tier exists upstream (LocalStack Pro, Datadog, Auth0 paid tier,
 etc.), blissful-infra doesn't bundle or recommend it. The aim is
@@ -512,14 +511,14 @@ requires a paid license gets either an open-source equivalent or stays out of
 scope.
 
 For a longer take on why blissful-infra prefers OSS over managed services
-during the learning phase — and why managed services are still often the right
-call once you ship — see the [Philosophy page](https://blissful-infra.com/philosophy).
+during the learning phase, and why managed services are still often the right
+call once you ship, see the [Philosophy page](https://blissful-infra.com/philosophy).
 
 ### AI integration
 
 blissful-infra optionally integrates with [Anthropic's Claude API](https://www.anthropic.com/api)
 for the AI agent and analysis features. Users provide their own
-`ANTHROPIC_API_KEY` — no key is bundled.
+`ANTHROPIC_API_KEY`. No key is bundled.
 
 ---
 

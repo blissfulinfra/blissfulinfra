@@ -7,7 +7,7 @@
 ## Context
 
 The repo had zero tests for months. Every iteration on the client model
-introduced bugs we'd already fixed in slightly different forms — the
+introduced bugs we'd already fixed in slightly different forms, the
 "include external:true bleed" (ADR-0003), the LocalStack init script
 permission bit, the `AWS_PUBLIC_ENDPOINT_URL` missing env var, the
 DATABASE_URL pointing at a nonexistent DB. Each one was caught only by
@@ -20,7 +20,7 @@ I change something."*
 We considered three rough strategies:
 
 1. **Pure unit tests with mocks.** Fast but barely test the real risk
-   surface — the bugs we kept hitting were YAML-quoting, network wiring,
+   surface, the bugs we kept hitting were YAML-quoting, network wiring,
    and integration-with-real-Docker bugs. Mocking Docker would mock
    away the bugs we needed to catch.
 2. **All-integration, all-the-time.** Slow (each test ~30s+ for real
@@ -35,7 +35,7 @@ hit real services."* Mocks were off the table for the integration layer.
 Three layers, each catching a different class of bug. Run them in increasing
 order of cost.
 
-### Layer 1 — Schema + pure logic (~ms each)
+### Layer 1, Schema + pure logic (~ms each)
 
 - Vitest, Node environment, no I/O
 - Tests Zod schemas (accept/reject for representative valid + invalid
@@ -43,20 +43,20 @@ order of cost.
 - Lives at `src/**/__tests__/*.test.ts` colocated with code
 - Run on every save during development (`npm run test:watch`)
 
-### Layer 2 — Compose validation (~hundreds of ms each)
+### Layer 2, Compose validation (~hundreds of ms each)
 
 - Vitest, generates real YAML to a temp dir, runs
   `docker compose config --quiet` to validate
-- Tests YAML correctness — quoting, structure, network names, includes —
+- Tests YAML correctness, quoting, structure, network names, includes
   without ever starting a container
 - This layer would have caught most of the bugs we hit this week
   (notably the `external: true` bleed in ADR-0003)
 - Lives in the same `__tests__/` dirs as Layer 1
-- `docker compose config` only validates parsing — Docker daemon does
+- `docker compose config` only validates parsing. Docker daemon does
   not need to be running for most cases. Skips cleanly when daemon is
   unreachable
 
-### Layer 3 — Integration (~minutes each)
+### Layer 3, Integration (~minutes each)
 
 - Vitest, spawns the actual `node packages/cli/dist/index.js` binary
 - Real `docker compose up`, real containers, real
@@ -77,7 +77,7 @@ order of cost.
 ```bash
 npm test                  # L1 + L2 (~400ms total, run before every commit)
 npm run test:watch        # vitest watch
-npm run test:integration  # L3 — real Docker, run before push
+npm run test:integration  # L3: real Docker, run before push
 npm run test:all          # everything
 ```
 
@@ -109,7 +109,7 @@ redirect the registry path without monkey-patching `os.homedir()`.
 - **L3 tests are slow.** First run pulls images (~2 min); subsequent runs
   are ~30-60s per test depending on healthcheck stability.
 - **L3 tests need Docker locally.** Devs without Docker can run L1+L2 but
-  not L3. Acceptable — blissful-infra is a Docker-first product.
+  not L3. Acceptable, blissful-infra is a Docker-first product.
 - **Three test "modes" to understand.** Slightly more cognitive overhead
   than one-flat-test-suite. Mitigated by clear docs in CLAUDE.md and
   by the speed difference (you'll always know which mode you're in).
@@ -138,10 +138,10 @@ redirect the registry path without monkey-patching `os.homedir()`.
   with Docker*. Mocks would test our test-doubles, not Docker. Rejected
   per project rules.
 - **End-to-end only** (skip L1+L2, do everything in L3). Each test is
-  ~30s+ — run-test-on-save becomes impossible. Rejected for inner-loop
+  ~30s+, run-test-on-save becomes impossible. Rejected for inner-loop
   experience.
 - **Schema-only tests** (skip L2+L3). Cheap but barely tests the real
-  surface. Rejected — schema tests catch maybe 10% of the bugs we've
+  surface. Rejected, schema tests catch maybe 10% of the bugs we've
   been hitting.
 - **Snapshot testing for L2** (snapshot full compose output, diff on
   change). Adds maintenance cost for marginal coverage gain. Targeted
@@ -149,9 +149,9 @@ redirect the registry path without monkey-patching `os.homedir()`.
 
 ## References
 
-- [packages/cli/src/utils/__tests__/client-registry.test.ts](../../packages/cli/src/utils/__tests__/client-registry.test.ts) — Layer 1 example
-- [packages/cli/src/utils/__tests__/infra-compose.test.ts](../../packages/cli/src/utils/__tests__/infra-compose.test.ts) — Layer 1 + 2 example
-- [packages/cli/src/__tests__/integration/client-lifecycle.test.ts](../../packages/cli/src/__tests__/integration/client-lifecycle.test.ts) — Layer 3 example
-- [CLAUDE.md](../../CLAUDE.md) — Testing convention section
-- ADR-0003 (unified Compose project) — the bug whose regression lives in
+- [packages/cli/src/utils/__tests__/client-registry.test.ts](../../packages/cli/src/utils/__tests__/client-registry.test.ts). Layer 1 example
+- [packages/cli/src/utils/__tests__/infra-compose.test.ts](../../packages/cli/src/utils/__tests__/infra-compose.test.ts). Layer 1 + 2 example
+- [packages/cli/src/__tests__/integration/client-lifecycle.test.ts](../../packages/cli/src/__tests__/integration/client-lifecycle.test.ts). Layer 3 example
+- [CLAUDE.md](../../CLAUDE.md). Testing convention section
+- ADR-0003 (unified Compose project), the bug whose regression lives in
   the L2 suite

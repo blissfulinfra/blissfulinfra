@@ -15,8 +15,24 @@ export interface TemplateVariables {
   // Plugin instance variables
   instanceName?: string;
   apiPort?: number;
-  // Active plugin types (used for {{#IF_KEYCLOAK}} etc. conditionals in backend/frontend templates)
+  // Active per-service plugin types (used for {{#IF_KEYCLOAK}} etc. conditionals).
+  // Most of these were promoted to client-level (see clientInfra below) — kept
+  // for backwards compatibility on legacy flat-model service-scoped plugins.
   plugins?: string[];
+  // Client-level infrastructure components enabled on the parent client.
+  // After ADRs 0008/0009/0010 promoted localstack/keycloak/clickhouse/mlflow/
+  // mage to client level, the IF_<COMPONENT> template guards must also fire
+  // when the *client* has them enabled — not just when the *service* does.
+  clientInfra?: {
+    keycloak?: boolean;
+    localstack?: boolean;
+    clickhouse?: boolean;
+    mlflow?: boolean;
+    mage?: boolean;
+  };
+  // Used to template the Keycloak realm name (= client name) into Spring
+  // Boot's application.yaml and the React-Vite keycloak.ts default URL.
+  clientName?: string;
 }
 
 export async function copyTemplate(
@@ -156,14 +172,20 @@ function replaceVariables(content: string, variables: TemplateVariables): string
     isLocalOnly ? "$1" : ""
   );
 
-  // Plugin conditionals
-  const hasKeycloak = variables.plugins?.includes("keycloak") ?? false;
+  // Plugin conditionals — fire when EITHER the per-service plugin is set
+  // (legacy / power-user path) OR the parent client has the promoted client-
+  // level component enabled (the recommended path post ADR-0008/0009).
+  const hasKeycloak =
+    (variables.plugins?.includes("keycloak") ?? false) ||
+    (variables.clientInfra?.keycloak ?? false);
   result = result.replace(
     /\{\{#IF_KEYCLOAK\}\}([\s\S]*?)\{\{\/IF_KEYCLOAK\}\}/g,
     hasKeycloak ? "$1" : ""
   );
 
-  const hasLocalStack = variables.plugins?.includes("localstack") ?? false;
+  const hasLocalStack =
+    (variables.plugins?.includes("localstack") ?? false) ||
+    (variables.clientInfra?.localstack ?? false);
   result = result.replace(
     /\{\{#IF_LOCALSTACK\}\}([\s\S]*?)\{\{\/IF_LOCALSTACK\}\}/g,
     hasLocalStack ? "$1" : ""
@@ -185,6 +207,12 @@ function replaceVariables(content: string, variables: TemplateVariables): string
   result = result
     .replace(/\{\{INSTANCE_NAME\}\}/g, variables.instanceName || variables.projectName)
     .replace(/\{\{API_PORT\}\}/g, String(variables.apiPort || 8090));
+
+  // Client-level identifiers — Keycloak realm name is the client name
+  // (one realm per client; see generateKeycloakRealm).
+  result = result
+    .replace(/\{\{CLIENT_NAME\}\}/g, variables.clientName || variables.projectName)
+    .replace(/\{\{KEYCLOAK_REALM\}\}/g, variables.clientName || variables.projectName);
 
   return result;
 }

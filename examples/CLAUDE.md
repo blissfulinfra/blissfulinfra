@@ -1,4 +1,4 @@
-# examples/ — Example Applications
+# examples/, Example Applications
 
 Fully-working example projects that demonstrate the blissful-infra platform. These are shipped inside the `@blissful-infra/cli` npm package and scaffold-able via:
 
@@ -50,7 +50,7 @@ plugins:
 | Spring Boot API | `backend/` (scaffolded from template) | REST API, Kafka producer/consumer |
 | Postgres | (docker image) | Relational store |
 | AI Pipeline | `ai-pipeline/` | FastAPI + scikit-learn; trains TF-IDF + ALS models |
-| Scraper | `scraper/` | Scrapy spider — crawls HN public API every 15 min, publishes to Kafka |
+| Scraper | `scraper/` | Scrapy spider, crawls HN public API every 15 min, publishes to Kafka |
 
 **Data flow:**
 ```
@@ -81,4 +81,4 @@ Scrapy (HN API → Kafka scraped-articles)
 4. Run `npm run build:cli` to copy the example into `dist/examples/`.
 5. Test with `blissful-infra example <name>`.
 
-Keep examples realistic and runnable — they are the primary way users evaluate the platform.
+Keep examples realistic and runnable, they are the primary way users evaluate the platform.

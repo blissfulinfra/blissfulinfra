@@ -64,13 +64,18 @@ export const TEMPLATE_INFRA_MANIFESTS: Record<string, InfraManifest> = {
  */
 export const PLUGIN_INFRA_MANIFESTS: Record<string, InfraManifest> = {
   "ai-pipeline": {
+    // ADR-0010: ai-pipeline now consumes the client-level versions of these
+    // services rather than co-deploying its own. ClickHouse + MLflow are
+    // required because the FastAPI service connects to them on startup;
+    // Mage is optional (it's a separate orchestrator UI, not consumed by
+    // the FastAPI service code).
     requires: [
-      { component: "kafka", reason: "consumes events produced by the backend" },
+      { component: "kafka",      reason: "consumes events produced by the backend" },
+      { component: "clickhouse", reason: "stores model predictions in the client warehouse" },
+      { component: "mlflow",     reason: "tracks experiments + registers trained models" },
     ],
     optional: [
-      { component: "clickhouse", reason: "stores model predictions for analytics" },
-      { component: "mlflow",     reason: "tracks experiments + registers trained models" },
-      { component: "mage",       reason: "visual orchestration of the data pipeline" },
+      { component: "mage", reason: "visual orchestration of the data pipeline" },
     ],
   },
   "agent-service": {},

@@ -1,8 +1,8 @@
-# Blissful Infra — Client Environment Model
+# Blissful Infra. Client Environment Model
 
 ## Vision
 
-A solo developer or agency managing multiple client projects needs complete environment isolation — not just per-service isolation, but per-client isolation. Each client gets their own Jenkins, Kafka, Postgres, Grafana, and observability stack, all running locally in Docker with zero interference between clients.
+A solo developer or agency managing multiple client projects needs complete environment isolation, not just per-service isolation, but per-client isolation. Each client gets their own Jenkins, Kafka, Postgres, Grafana, and observability stack, all running locally in Docker with zero interference between clients.
 
 Within a client environment, multiple services share that client's infrastructure. This mirrors how real engineering teams are structured: a platform team owns shared infrastructure, individual services plug into it.
 
@@ -13,12 +13,12 @@ Within a client environment, multiple services share that client's infrastructur
 ```
 Client: acme-corp
 ├── Infrastructure (shared across all services)
-│   ├── Jenkins         — CI/CD pipelines for all acme-corp services
-│   ├── Kafka           — shared message bus
-│   ├── Postgres        — shared instance, per-service schemas
-│   ├── Prometheus      — scrapes all acme-corp services
-│   ├── Grafana         — dashboards for all acme-corp services
-│   └── ClickHouse      — metrics TSDB (Phase 8+)
+│   ├── Jenkins        : CI/CD pipelines for all acme-corp services
+│   ├── Kafka          : shared message bus
+│   ├── Postgres       : shared instance, per-service schemas
+│   ├── Prometheus     : scrapes all acme-corp services
+│   ├── Grafana        : dashboards for all acme-corp services
+│   └── ClickHouse     : metrics TSDB (Phase 8+)
 │
 ├── Service: payment-service   (Spring Boot)
 ├── Service: storefront        (React + Spring Boot)
@@ -41,7 +41,7 @@ No resources are shared across clients. `acme-corp`'s Kafka and `globex-inc`'s K
 
 ## Config Schema
 
-### Client config — `blissful-infra.yaml` (client root)
+### Client config, `blissful-infra.yaml` (client root)
 
 ```yaml
 # ~/.blissful-infra/clients/acme-corp/blissful-infra.yaml
@@ -57,7 +57,7 @@ infrastructure:
     grafana: true
     jaeger: true
     loki: true
-    clickhouse: false   # Phase 8+ — Flink + ClickHouse metrics pipeline
+    clickhouse: false   # Phase 8+: Flink + ClickHouse metrics pipeline
 
 plugins: []             # client-level plugins (e.g. localstack for whole env)
 
@@ -73,13 +73,13 @@ services:
     path: ./notifications
 ```
 
-### Service config — `blissful-infra.yaml` (service level)
+### Service config, `blissful-infra.yaml` (service level)
 
 ```yaml
 # ~/.blissful-infra/clients/acme-corp/payment-service/blissful-infra.yaml
 type: service
 name: payment-service
-client: acme-corp       # parent client — inherits its infrastructure
+client: acme-corp       # parent client: inherits its infrastructure
 
 backend: spring-boot
 frontend: react-vite    # optional
@@ -88,7 +88,7 @@ plugins:
     instance: localstack
 ```
 
-Services do not redeclare Kafka, Postgres, or Jenkins — they inherit these from the client. A service config only declares what is unique to that service: its backend/frontend template and any service-level plugins.
+Services do not redeclare Kafka, Postgres, or Jenkins, they inherit these from the client. A service config only declares what is unique to that service: its backend/frontend template and any service-level plugins.
 
 ---
 
@@ -125,7 +125,7 @@ Services do not redeclare Kafka, Postgres, or Jenkins — they inherit these fro
 
 Two compose files per client:
 
-### `docker-compose.infra.yaml` — shared infrastructure
+### `docker-compose.infra.yaml`, shared infrastructure
 
 Owned by the client. Contains Jenkins, Kafka, Zookeeper, Postgres, Prometheus, Grafana, Jaeger, Loki, Promtail. Creates the client's Docker network: `{client-name}_infra`.
 
@@ -159,9 +159,9 @@ services:
     # prometheus.yml scrapes all service backends via DNS on infra network
 ```
 
-### `docker-compose.yaml` — service containers
+### `docker-compose.yaml`, service containers
 
-Each service has its own compose file. Services join the client's shared `infra` network as an **external** network — they do not create it, they join it.
+Each service has its own compose file. Services join the client's shared `infra` network as an **external** network, they do not create it, they join it.
 
 ```yaml
 # docker-compose.yaml (payment-service)
@@ -185,7 +185,7 @@ services:
     # ...
 ```
 
-Because all services join the same `infra` network, they can reach Kafka at `kafka:9092`, Postgres at `postgres:5432`, and Jaeger at `jaeger:4318` — using the same service names regardless of which service they belong to.
+Because all services join the same `infra` network, they can reach Kafka at `kafka:9092`, Postgres at `postgres:5432`, and Jaeger at `jaeger:4318`, using the same service names regardless of which service they belong to.
 
 ---
 
@@ -248,7 +248,7 @@ When `blissful-infra client create acme-corp` runs:
 3. Generate `docker-compose.infra.yaml` from declared infrastructure
 4. Generate `prometheus.yml` with empty scrape targets (populated as services are added)
 5. Generate Grafana provisioning config (datasources, dashboard paths)
-6. Generate Jenkins config — scoped to this client
+6. Generate Jenkins config, scoped to this client
 7. Start infra: `docker compose -f docker-compose.infra.yaml up -d`
 8. Wait for healthchecks
 9. Print access URLs:
@@ -306,7 +306,7 @@ Prometheus is then sent a `/-/reload` signal to pick up the new config without r
 
 ## Jenkins Scope
 
-Each client gets its own Jenkins instance. Jenkins knows about all services within that client — it can trigger cross-service builds and has a unified view of that client's CI/CD.
+Each client gets its own Jenkins instance. Jenkins knows about all services within that client, it can trigger cross-service builds and has a unified view of that client's CI/CD.
 
 The Jenkinsfile template is unchanged. The Jenkins URL injected into each service's pipeline points to the client's Jenkins instance (resolved via the infra network at `jenkins:8080`).
 
@@ -359,7 +359,7 @@ This migration runs automatically on first `blissful-infra` invocation after upg
 
 ## Implementation Phases
 
-### Phase A — Client model foundation
+### Phase A. Client model foundation
 - `ClientConfigSchema` in `packages/shared/src/schemas/config.ts`
 - `ServiceConfigSchema` replacing / extending `ProjectConfigSchema`
 - `blissful-infra client create` command
@@ -367,17 +367,17 @@ This migration runs automatically on first `blissful-infra` invocation after upg
 - External network wiring in service compose files
 - Port allocation registry
 
-### Phase B — Service management
+### Phase B. Service management
 - `blissful-infra service add` command
 - Dynamic Prometheus scrape config update on service add
 - Jenkins job registration scoped to client
 
-### Phase C — Dashboard
+### Phase C. Dashboard
 - Client selector in dashboard UI
 - Client-scoped API endpoints
 - Infra health panel (shows Jenkins/Kafka/Postgres/Grafana status per client)
 
-### Phase D — Migration
+### Phase D. Migration
 - `blissful-infra migrate` command
 - Backwards-compatible `start` command shim
 
@@ -385,9 +385,9 @@ This migration runs automatically on first `blissful-infra` invocation after upg
 
 ## Key Design Decisions
 
-- **Full isolation by default** — no shared infrastructure between clients, ever. Docker networks enforce this at the OS level.
-- **Backwards compatibility** — `blissful-infra start` continues to work. The flat model is the single-service-client degenerate case.
-- **Prometheus is dynamic** — scrape targets are added/removed as services come and go. No restart required.
-- **Jenkins is per-client** — not global. A client's Jenkins only knows about that client's services.
-- **Port blocks** — deterministic port assignment prevents conflicts when running multiple clients simultaneously.
-- **Observability is project-scoped** — each client has its own Grafana/Prometheus/Jaeger stack. No cross-client metric visibility (by design for client confidentiality).
+- **Full isolation by default**: no shared infrastructure between clients, ever. Docker networks enforce this at the OS level.
+- **Backwards compatibility**: `blissful-infra start` continues to work. The flat model is the single-service-client degenerate case.
+- **Prometheus is dynamic**: scrape targets are added/removed as services come and go. No restart required.
+- **Jenkins is per-client**: not global. A client's Jenkins only knows about that client's services.
+- **Port blocks**: deterministic port assignment prevents conflicts when running multiple clients simultaneously.
+- **Observability is project-scoped**: each client has its own Grafana/Prometheus/Jaeger stack. No cross-client metric visibility (by design for client confidentiality).

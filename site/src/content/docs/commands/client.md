@@ -1,11 +1,11 @@
 ---
 title: blissful-infra client
-description: Manage isolated client environments — each one its own Kafka, Postgres, Jenkins, and observability stack.
+description: Manage isolated client environments, each one its own Kafka, Postgres, Jenkins, and observability stack.
 ---
 
 `blissful-infra client` manages isolated **client environments**. Each
-client is a fully self-contained stack — its own Kafka, Postgres, Jenkins,
-Prometheus, Grafana, Jaeger, Loki, and dashboard — running on its own
+client is a fully self-contained stack, its own Kafka, Postgres, Jenkins,
+Prometheus, Grafana, Jaeger, Loki, and dashboard, running on its own
 Docker network with its own port block.
 
 This is the path to take when you need multiple environments isolated from
@@ -45,7 +45,7 @@ the infra Compose file, and brings everything up.
 | Flag | Description |
 |---|---|
 | `-y, --yes` | Skip the interactive infrastructure-components prompt and use defaults |
-| `--no-jenkins` | Skip Jenkins (faster create — first Jenkins build takes ~2 min) |
+| `--no-jenkins` | Skip Jenkins (faster create, first Jenkins build takes ~2 min) |
 | `--no-kafka` | Skip Kafka |
 | `--no-observability` | Skip Prometheus, Grafana, Jaeger, Loki |
 
@@ -102,7 +102,7 @@ Client environments:
   globex-inc stopped  (ports: 8091+)
 ```
 
-The "ports: NNNN+" indicates the start of the client's port block — every
+The "ports: NNNN+" indicates the start of the client's port block, every
 service in the client uses ports offset from this base.
 
 ## `client up` / `client down` / `client status`
@@ -117,7 +117,7 @@ blissful-infra client status acme-corp # one `docker compose ps` view
 
 Because all services in a client share one Docker Compose project (see
 [ADR-0003](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0003-unified-compose-project-per-client.md)),
-these commands operate on the unified project — no per-service iteration.
+these commands operate on the unified project, no per-service iteration.
 
 ## `client infra add` / `client infra remove`
 
@@ -135,12 +135,12 @@ Components: `kafka`, `postgres`, `jenkins`, `clickhouse`, `localstack`,
 `keycloak`, `mlflow`, `mage`, `prometheus`, `grafana`, `jaeger`, `loki`.
 
 The command edits `~/.blissful-infra/clients/<client>/blissful-infra.yaml`
-in place. It does **not** restart anything — run
+in place. It does **not** restart anything, run
 `blissful-infra client up <client>` afterwards to regenerate the Compose
 file and bring the new container(s) online.
 
 `service add` will offer to enable any required components automatically
-when scaffolding a service that needs them — see
+when scaffolding a service that needs them, see
 [`service add`](/commands/service) for the prompt-driven flow.
 
 ## `client remove`
@@ -151,13 +151,13 @@ blissful-infra client remove acme-corp
 
 Stops containers, removes the Docker network and volumes, deletes
 `~/.blissful-infra/clients/acme-corp/`, and removes the registry entry.
-Destructive — make sure you've backed up anything from the postgres or
+Destructive, make sure you've backed up anything from the postgres or
 localstack volumes you want to keep.
 
 ## `client clean`
 
 ```bash
-blissful-infra client clean       # interactive — lists all clients, asks to confirm
+blissful-infra client clean       # interactive: lists all clients, asks to confirm
 blissful-infra client clean -f    # skip confirmation
 ```
 

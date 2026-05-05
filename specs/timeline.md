@@ -15,21 +15,21 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ✅ Complete |
 | **Phase 5.5** | Foundation | Schema contracts, modularity, docs site, testing strategy | 🔧 In Progress |
-| **Phase 6** | Client Model | Per-client isolated environments — client create/service add commands, port blocks, external networks | ⏳ Next |
+| **Phase 6** | Client Model | Per-client isolated environments, client create/service add commands, port blocks, external networks | ⏳ Next |
 | **Phase 6.5** | Test Coverage | Vitest suite: schemas, utils, API contract, template smoke | ⏳ Next |
-| **Phase 7** | Cloud Hosting | $5 hosted tier — Cloudflare deploy, billing, dashboard | ⏳ Planned |
+| **Phase 7** | Cloud Hosting | $5 hosted tier. Cloudflare deploy, billing, dashboard | ⏳ Planned |
 | **Phase 8** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
 | **Phase 9** | Observability++ | Kafka → Flink → ClickHouse metrics pipeline, EWMA anomaly detection, S3 archival | ⏳ Planned |
-| **Phase 10** | Security | Penetration testing framework — OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
+| **Phase 10** | Security | Penetration testing framework. OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
 
 ---
 
 ## Current State (as of 2026-03-27)
 
-The following has shipped since the original timeline was written. These items are complete and on `dev` — pending merge to `main`.
+The following has shipped since the original timeline was written. These items are complete and on `dev`, pending merge to `main`.
 
 ### Infrastructure & Contracts
-- [x] `packages/shared` — Zod schema contract layer between CLI and dashboard (`@blissful-infra/shared`)
+- [x] `packages/shared`, Zod schema contract layer between CLI and dashboard (`@blissful-infra/shared`)
 - [x] All domain schemas: `deployments`, `config`, `api`, `metrics`, `alerts`, `logs`, `plugins`
 - [x] API server validates `POST /deployments` and `PATCH /deployments/:id` against shared schemas (structured 400 on bad input)
 - [x] `deployment-storage.ts` uses `DeploymentRecordSchema.safeParse` instead of unsafe casts
@@ -39,8 +39,8 @@ The following has shipped since the original timeline was written. These items a
 
 ### Documentation & Modularity
 - [x] CLAUDE.md hierarchy: root + `packages/cli` + `packages/cli/src/templates` + `packages/dashboard` + `site` + `examples` + `packages/shared`
-- [x] `specs/agentic-workflows.md` — full spec for all 5 agents ([agentic-workflows.md](./agentic-workflows.md))
-- [x] `specs/testing-strategy.md` — full test pyramid, implementation order, CI matrix ([testing-strategy.md](./testing-strategy.md))
+- [x] `specs/agentic-workflows.md`, full spec for all 5 agents ([agentic-workflows.md](./agentic-workflows.md))
+- [x] `specs/testing-strategy.md`, full test pyramid, implementation order, CI matrix ([testing-strategy.md](./testing-strategy.md))
 
 ### Docs Site (blissful-infra.com)
 - [x] Astro 6 + Starlight 0.38.2 static site deployed to Cloudflare Pages
@@ -73,7 +73,7 @@ These are the concrete next tasks in priority order. Each has a home in an upcom
 - [ ] Write unit tests for `packages/cli/src/utils/deployment-storage.ts` (JSONL round-trip with temp dir)
 - See [testing-strategy.md](./testing-strategy.md) for full details
 
-### 3. Cloud deploy — Cloudflare first (Phase 6 start)
+### 3. Cloud deploy. Cloudflare first (Phase 6 start)
 - [ ] `blissful-infra deploy --target cloudflare` command
 - [ ] Map local modules to Cloudflare primitives: Postgres → D1, Redis → KV, Kafka → Queues
 - [ ] Frontend deploy via Cloudflare Pages (`wrangler pages deploy`)
@@ -81,7 +81,7 @@ These are the concrete next tasks in priority order. Each has a home in an upcom
 - [ ] Update `blissful-infra.yaml` write path to persist `deploy.cloudflare` config
 - [ ] Docs page: `site/src/content/docs/deploy/cloudflare.md`
 
-### 4. Monitor agent — Phase 7a (always-on watcher)
+### 4. Monitor agent. Phase 7a (always-on watcher)
 - [ ] Background process started by `blissful-infra up` alongside the API server
 - [ ] Polls Prometheus every 30s, tails logs in real time
 - [ ] Incident classification against the table in [agentic-workflows.md](./agentic-workflows.md)
@@ -89,7 +89,7 @@ These are the concrete next tasks in priority order. Each has a home in an upcom
 - [ ] Executes defined runbooks (restart on unhealthy, suggest rollback on latency regression)
 - [ ] "Agent Activity" feed tab in dashboard
 
-### 5. Template smoke test — spring-boot (Phase 6.5)
+### 5. Template smoke test, spring-boot (Phase 6.5)
 - [ ] Vitest test that scaffolds `spring-boot`, runs `docker compose build`, hits `/actuator/health`
 - [ ] Proves the smoke test pattern before adding other templates
 - [ ] Add to nightly CI matrix
@@ -97,7 +97,7 @@ These are the concrete next tasks in priority order. Each has a home in an upcom
 ### 6. Penetration testing framework (Phase 8 start)
 - [ ] OWASP Top 10 coverage across the API server and scaffolded app templates
 - [ ] Automated scanning with OWASP ZAP as a Docker service in the local stack
-- [ ] Security CI gate — fail pipeline on high/critical findings
+- [ ] Security CI gate, fail pipeline on high/critical findings
 - [ ] `blissful-infra security scan` command to run ZAP against the running stack
 - [ ] Report output to dashboard and deployment tracking record
 - [ ] See [specs/penetration-testing.md](./penetration-testing.md) for full spec (to be written)
@@ -288,7 +288,7 @@ Stopped.
 
 ### Phase 2 Definition of Done
 ```
-# Create and run a project — Jenkins starts automatically
+# Create and run a project: Jenkins starts automatically
 $ blissful-infra start my-service
 Starting Jenkins CI/CD server...
 ✓ Jenkins is ready
@@ -402,20 +402,20 @@ flowchart LR
 **Grafana setup:**
 - [ ] Grafana container with Prometheus datasource pre-configured
 - [ ] Pre-built dashboards (auto-provisioned via `/etc/grafana/provisioning/`):
-  - Service Overview — request rate, error rate, response time (p50/p95/p99)
-  - JVM Metrics — heap usage, GC pauses, thread count
-  - Infrastructure — container CPU, memory, network I/O
-  - Kafka — consumer lag, throughput, partition status
+  - Service Overview, request rate, error rate, response time (p50/p95/p99)
+  - JVM Metrics, heap usage, GC pauses, thread count
+  - Infrastructure, container CPU, memory, network I/O
+  - Kafka, consumer lag, throughput, partition status
 - [ ] Anonymous access enabled (no login for local dev)
 - [ ] Port: 3001
 
 **CLI integration:**
-- [ ] `blissful-infra start --monitoring prometheus` — includes Prometheus + Grafana in docker-compose
-- [ ] `blissful-infra dashboard` — opens Grafana (port 3001) when monitoring=prometheus, otherwise opens custom dashboard
+- [ ] `blissful-infra start --monitoring prometheus`, includes Prometheus + Grafana in docker-compose
+- [ ] `blissful-infra dashboard`, opens Grafana (port 3001) when monitoring=prometheus, otherwise opens custom dashboard
 - [ ] Console output shows Prometheus and Grafana URLs on startup
 
 **Agent integration (Phase 7):**
-- [ ] `query_prometheus` read tool for watchdog agent — run PromQL queries to detect anomalies
+- [ ] `query_prometheus` read tool for watchdog agent, run PromQL queries to detect anomalies
 - [ ] Watchdog can query error rate spikes, latency regressions, resource exhaustion via PromQL
 - [ ] Grafana alert rules as an additional trigger source for watchdog notifications
 
@@ -853,8 +853,8 @@ Created PR #142: fix/bounded-greeting-cache
 
 Full spec: [cloud-hosting.md](./cloud-hosting.md)
 
-### 6a — Foundation ⏳
-- [ ] Control plane API (Cloudflare Worker + D1 — dogfoods the product)
+### 6a. Foundation ⏳
+- [ ] Control plane API (Cloudflare Worker + D1, dogfoods the product)
 - [ ] GitHub OAuth auth flow + JWT storage in `~/.blissful-infra/auth.json`
 - [ ] Polar.sh billing integration: subscribe, webhook lifecycle, subscription status check
 - [ ] `blissful-infra deploy --target cloudflare` CLI command
@@ -862,24 +862,24 @@ Full spec: [cloud-hosting.md](./cloud-hosting.md)
 - [ ] React + Vite frontend → Cloudflare Pages deploy
 - [ ] Express backend → Cloudflare Worker deploy
 
-### 6b — Data Layer ⏳
+### 6b. Data Layer ⏳
 - [ ] Cloudflare D1 provisioning + Flyway migration auto-conversion (Postgres → SQLite dialect)
 - [ ] Cloudflare KV namespace provisioning (maps from Redis)
 - [ ] Cloudflare Queues provisioning (maps from Kafka)
 - [ ] Module mapping validated end-to-end for a full scaffolded project
 
-### 6c — Dashboard + Custom Domains ⏳
-- [ ] `/dashboard` page on blissful-infra.com — manage hosted projects, deployment history, resource usage
+### 6c. Dashboard + Custom Domains ⏳
+- [ ] `/dashboard` page on blissful-infra.com, manage hosted projects, deployment history, resource usage
 - [ ] Custom domain CNAME flow (`blissful-infra deploy --domain myapp.com`)
 - [ ] Billing management via Polar.sh portal (subscription status, cancel)
 - [ ] `/pricing` page on blissful-infra.com
 - [ ] `/deploy/cloudflare` docs page
 
-### 6d — Spring Boot + Containers ⏳
+### 6d. Spring Boot + Containers ⏳
 - [ ] Worker adapter for Spring Boot (lightweight JS proxy until Cloudflare Containers GA)
 - [ ] Cloudflare Containers integration when GA (full JVM support)
 
-### 6e — Additional Deploy Targets ⏳
+### 6e. Additional Deploy Targets ⏳
 - [ ] `blissful-infra deploy --target vercel` (frontend on Vercel, serverless functions, Vercel Postgres)
 - [ ] `blissful-infra deploy --target aws` (ECS Fargate + RDS + SQS)
 - [ ] Unified deploy command reads `deploy.target` from `blissful-infra.yaml`
@@ -980,7 +980,7 @@ Full spec: [cloud-hosting.md](./cloud-hosting.md)
 
 Today's plugins (`ai-pipeline`, `agent-service`) are hard-coded: recognized by name in `start.ts`, templates live inside the CLI package, and docker-compose contributions are written inline. This blocks third parties from extending the platform.
 
-The plugin SDK decouples plugin logic from the CLI by introducing a `plugin.json` manifest contract — inspired by how Nx handles generators/executors and how Garden handles providers. The CLI becomes a loader that knows nothing about specific plugin behaviour; it only reads the manifest.
+The plugin SDK decouples plugin logic from the CLI by introducing a `plugin.json` manifest contract, inspired by how Nx handles generators/executors and how Garden handles providers. The CLI becomes a loader that knows nothing about specific plugin behaviour; it only reads the manifest.
 
 **What other tools do:**
 
@@ -988,7 +988,7 @@ The plugin SDK decouples plugin logic from the CLI by introducing a `plugin.json
 |------|---------|
 | Nx | `blissful-infra-plugin-*` npm packages exporting generators and executors |
 | Garden | npm packages implementing a typed provider interface, resolved and executed at runtime |
-| Tilt | Git-hosted Starlark files, loaded by URL — no install step |
+| Tilt | Git-hosted Starlark files, loaded by URL, no install step |
 | Backstage | npm packages exporting React components + API routers, registered in app config |
 
 For blissful-infra, the **npm package pattern** is the right fit: Node-based CLI, existing npm distribution, plugin authors already know npm.
@@ -1024,17 +1024,17 @@ blissful-infra-plugin-redis-cache/
 }
 ```
 
-The CLI reads `plugin.json` at runtime — no hard-coded knowledge of the plugin is needed in the core CLI.
+The CLI reads `plugin.json` at runtime, no hard-coded knowledge of the plugin is needed in the core CLI.
 
 #### Plugin Resolution Order
 
-1. `~/.blissful-infra/plugins/<name>/` — locally installed plugins
+1. `~/.blissful-infra/plugins/<name>/`, locally installed plugins
 2. Globally installed npm packages matching `blissful-infra-plugin-<name>`
 3. Built-in plugins bundled with the CLI (`ai-pipeline`, `agent-service`)
 
 #### Dashboard Integration
 
-Rather than loading external React components (complex, fragile), plugins that expose a `/health` and `/status` endpoint automatically get a **generic plugin card** in the dashboard — service name, health status, port, and a link to the plugin's own UI if it serves one. Richer dashboard integration requires the plugin to serve its own frontend on its port.
+Rather than loading external React components (complex, fragile), plugins that expose a `/health` and `/status` endpoint automatically get a **generic plugin card** in the dashboard, service name, health status, port, and a link to the plugin's own UI if it serves one. Richer dashboard integration requires the plugin to serve its own frontend on its port.
 
 #### Implementation Plan
 
@@ -1047,24 +1047,24 @@ Rather than loading external React components (complex, fragile), plugins that e
 **Location:** `packages/cli/src/utils/plugin-manifest.ts`
 
 ##### 6.7.2 Plugin Resolver
-- [ ] `resolvePlugin(name)` — searches local dir → global npm → built-ins
-- [ ] `loadManifest(pluginDir)` — reads and validates `plugin.json`
-- [ ] `getPluginTemplate(manifest)` — returns path to template directory
-- [ ] `getServiceDefinition(manifest, projectName, port)` — generates docker-compose service block from manifest
+- [ ] `resolvePlugin(name)`, searches local dir → global npm → built-ins
+- [ ] `loadManifest(pluginDir)`, reads and validates `plugin.json`
+- [ ] `getPluginTemplate(manifest)`, returns path to template directory
+- [ ] `getServiceDefinition(manifest, projectName, port)`, generates docker-compose service block from manifest
 
 **Location:** `packages/cli/src/utils/plugin-resolver.ts`
 
 ##### 6.7.3 `blissful-infra plugin` Command
-- [ ] `plugin install <name>` — install from npm or local path (`npm install -g blissful-infra-plugin-<name>`)
-- [ ] `plugin list` — list installed plugins with versions
-- [ ] `plugin remove <name>` — uninstall a plugin
-- [ ] `plugin info <name>` — show plugin manifest details
+- [ ] `plugin install <name>`, install from npm or local path (`npm install -g blissful-infra-plugin-<name>`)
+- [ ] `plugin list`, list installed plugins with versions
+- [ ] `plugin remove <name>`, uninstall a plugin
+- [ ] `plugin info <name>`, show plugin manifest details
 
 **Location:** `packages/cli/src/commands/plugin.ts`
 
 ##### 6.7.4 Dynamic Docker-Compose Generation
 - [ ] Replace hard-coded `ai-pipeline` / `agent-service` blocks in `start.ts` and `up.ts` with manifest-driven generation
-- [ ] `generatePluginService(manifest, projectName, port)` — replaces inline service objects
+- [ ] `generatePluginService(manifest, projectName, port)`, replaces inline service objects
 - [ ] Template variable substitution applied to plugin templates via existing `copyTemplate`
 - [ ] Port allocation: plugins assigned ports sequentially starting at 8090
 
@@ -1085,7 +1085,7 @@ Rather than loading external React components (complex, fragile), plugins that e
 **Location:** `packages/cli/src/server/api.ts`, `packages/dashboard/src/App.tsx`
 
 ##### 6.7.7 SDK Documentation
-- [ ] `docs/plugin-sdk.md` — Plugin author guide covering: manifest spec, template variables, service definition, publishing to npm
+- [ ] `docs/plugin-sdk.md`, Plugin author guide covering: manifest spec, template variables, service definition, publishing to npm
 - [ ] Example plugin: `blissful-infra-plugin-example` (minimal working plugin for reference)
 - [ ] Update README Plugins section with SDK link
 
@@ -1105,7 +1105,7 @@ blissful-infra start my-app --plugins my-service
 
 #### 6.8 AI Data Platform Stack
 
-**Goal:** When the `ai-pipeline` plugin is enabled, automatically provision a production-grade AI/ML data stack alongside it — columnar storage, experiment tracking, and a visual pipeline orchestrator. Zero extra flags required.
+**Goal:** When the `ai-pipeline` plugin is enabled, automatically provision a production-grade AI/ML data stack alongside it, columnar storage, experiment tracking, and a visual pipeline orchestrator. Zero extra flags required.
 
 **Tools included:**
 
@@ -1147,15 +1147,15 @@ flowchart TD
 - [ ] Port: 6789
 
 **ai-pipeline template integration:**
-- [ ] `config.py` — add `MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT`, `CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, `CLICKHOUSE_DB` env vars
-- [ ] `requirements.txt` — add `mlflow-skinny`, `clickhouse-connect`
-- [ ] `app/mlflow_utils.py` — MLflow tracking helpers (best-effort, non-blocking)
-- [ ] `app/clickhouse_utils.py` — ClickHouse storage helpers (best-effort, non-blocking)
-- [ ] `app/main.py` — initialize data platform connections on startup, store predictions to ClickHouse, log training to MLflow
-- [ ] `app/model/classifier.py` — `get_training_metadata()` returns stats for MLflow logging
+- [ ] `config.py`, add `MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT`, `CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, `CLICKHOUSE_DB` env vars
+- [ ] `requirements.txt`, add `mlflow-skinny`, `clickhouse-connect`
+- [ ] `app/mlflow_utils.py`, MLflow tracking helpers (best-effort, non-blocking)
+- [ ] `app/clickhouse_utils.py`, ClickHouse storage helpers (best-effort, non-blocking)
+- [ ] `app/main.py`, initialize data platform connections on startup, store predictions to ClickHouse, log training to MLflow
+- [ ] `app/model/classifier.py`, `get_training_metadata()` returns stats for MLflow logging
 
 **Port allocation:**
-- [ ] `ports.ts` — check ClickHouse (8123), MLflow (5001), Mage (6789) when ai-pipeline plugin present
+- [ ] `ports.ts`, check ClickHouse (8123), MLflow (5001), Mage (6789) when ai-pipeline plugin present
 
 **Console output:**
 ```
@@ -1212,11 +1212,11 @@ redis-cache     1.0.0     npm       8091
 
 ### 6.9 KubeAI Integration
 
-**Goal:** Add KubeAI as a Kubernetes-native AI inference layer — run open-weight LLMs (Llama, Mistral, Gemma) locally on a Kind cluster with an OpenAI-compatible API, so the `agent-service` plugin can target local models instead of the Anthropic API.
+**Goal:** Add KubeAI as a Kubernetes-native AI inference layer, run open-weight LLMs (Llama, Mistral, Gemma) locally on a Kind cluster with an OpenAI-compatible API, so the `agent-service` plugin can target local models instead of the Anthropic API.
 
 #### Why KubeAI
 
-KubeAI is a Kubernetes operator that manages model servers as first-class resources. It exposes an OpenAI-compatible endpoint (`/v1/chat/completions`, `/v1/completions`) so no code changes are needed in existing agent services — just swap `AI_MODEL` and `OPENAI_BASE_URL` env vars. Fits directly into the Phase 6 cloud deployment story since the same manifests work on EKS/GKE/AKS.
+KubeAI is a Kubernetes operator that manages model servers as first-class resources. It exposes an OpenAI-compatible endpoint (`/v1/chat/completions`, `/v1/completions`) so no code changes are needed in existing agent services, just swap `AI_MODEL` and `OPENAI_BASE_URL` env vars. Fits directly into the Phase 6 cloud deployment story since the same manifests work on EKS/GKE/AKS.
 
 #### What Gets Added
 
@@ -1227,10 +1227,10 @@ blissful-infra start my-app --plugins agent-service --ai-runtime kubeai
 Gated on `deploy_target` being `kind` or higher (not `local-only`) since KubeAI requires a running K8s cluster.
 
 **Cluster template (`packages/cli/templates/cluster/kubeai/`):**
-- `operator.yaml` — KubeAI operator install (Helm or kustomize)
-- `models/llama3.yaml` — `Model` CR for Llama 3.2 3B (small enough for dev machines)
-- `models/mistral.yaml` — `Model` CR for Mistral 7B
-- `gateway.yaml` — Service + Ingress exposing `/v1` on port 8080
+- `operator.yaml`, KubeAI operator install (Helm or kustomize)
+- `models/llama3.yaml`, `Model` CR for Llama 3.2 3B (small enough for dev machines)
+- `models/mistral.yaml`, `Model` CR for Mistral 7B
+- `gateway.yaml`, Service + Ingress exposing `/v1` on port 8080
 
 **Agent service env patch:**
 When `--ai-runtime kubeai`, override agent service env:
@@ -1259,8 +1259,8 @@ blissful-infra models status      # show inference pod health + GPU/CPU mode
 | CREATE | `packages/cli/templates/cluster/kubeai/models/mistral.yaml` |
 | CREATE | `packages/cli/templates/cluster/kubeai/gateway.yaml` |
 | CREATE | `packages/cli/src/commands/models.ts` |
-| MODIFY | `packages/cli/src/commands/start.ts` — `--ai-runtime` flag + env patch |
-| MODIFY | `packages/cli/src/utils/ports.ts` — port 8080 for KubeAI gateway |
+| MODIFY | `packages/cli/src/commands/start.ts`, `--ai-runtime` flag + env patch |
+| MODIFY | `packages/cli/src/utils/ports.ts`, port 8080 for KubeAI gateway |
 
 #### Phase 6.9 Definition of Done
 ```
@@ -1276,7 +1276,7 @@ NAME              BACKEND   STATUS   READY
 llama-3.2-3b      CPU       Running  ✓
 mistral-7b        CPU       Pending  …
 
-# Agent service responds using local LLM — no Anthropic key required
+# Agent service responds using local LLM: no Anthropic key required
 $ curl http://localhost:8095/chat -d '{"message": "hello"}'
 {"reply": "Hi! I'm running on Llama 3.2 locally via KubeAI."}
 ```
@@ -1310,49 +1310,49 @@ Wrap external calls (Kafka publish, DB writes, downstream HTTP) with Resilience4
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `resilience4j-spring-boot3` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/EventPublisher.kt` — `@CircuitBreaker` + `@Retry` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — `@RateLimiter` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — Resilience4j instance config |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts`, add `resilience4j-spring-boot3` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/EventPublisher.kt`, `@CircuitBreaker` + `@Retry` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt`, `@RateLimiter` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml`, Resilience4j instance config |
 
 #### 6.10.2 WebClient (Spring WebFlux) with Example External Call
 Replace `RestTemplate` (deprecated) with reactive `WebClient` and wire in a real call to a free public REST API to demonstrate non-blocking HTTP, error handling, and OTEL trace propagation.
 
 - [ ] Add `spring-boot-starter-webflux` dependency to `build.gradle.kts`
-- [ ] Create `WebClientConfig.kt` — define a `WebClient` bean with base URL + timeout
-- [ ] Create `ExternalApiService.kt` — call a free public API (e.g. `https://catfact.ninja/fact`) returning a `Mono<T>`
+- [ ] Create `WebClientConfig.kt`, define a `WebClient` bean with base URL + timeout
+- [ ] Create `ExternalApiService.kt`, call a free public API (e.g. `https://catfact.ninja/fact`) returning a `Mono<T>`
 - [ ] Add `GET /external` endpoint in `HelloController` that calls `ExternalApiService`
 - [ ] Wrap `WebClient` call with Resilience4j `@CircuitBreaker` (ties 6.10.1 + 6.10.2 together)
-- [ ] OTEL Java agent automatically propagates trace context through `WebClient` — verify in Jaeger
+- [ ] OTEL Java agent automatically propagates trace context through `WebClient`, verify in Jaeger
 
 **Reference:** https://docs.spring.io/spring-framework/reference/web/webflux-webclient/client-retrieve.html
 
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `spring-boot-starter-webflux` |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts`, add `spring-boot-starter-webflux` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/WebClientConfig.kt` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/service/ExternalApiService.kt` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `GET /external` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt`, add `GET /external` |
 
 #### 6.10.3 Flyway Database Migrations
 Replace `spring.jpa.hibernate.ddl-auto=update` with version-controlled SQL migrations. Every schema change is a numbered script, applied automatically on startup and tracked in a `flyway_schema_history` table.
 
 - [ ] Add `flyway-core` dependency to `build.gradle.kts`
-- [ ] Create `src/main/resources/db/migration/V1__init.sql` — initial schema (greetings table)
+- [ ] Create `src/main/resources/db/migration/V1__init.sql`, initial schema (greetings table)
 - [ ] Set `spring.flyway.enabled=true`, `spring.jpa.hibernate.ddl-auto=validate` in `application.yaml`
 - [ ] Add `V2__add_greeting_index.sql` as an example of a follow-on migration
 
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `flyway-core` |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts`, add `flyway-core` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V1__init.sql` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V2__add_greeting_index.sql` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — flyway + ddl-auto=validate |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml`, flyway + ddl-auto=validate |
 
 #### 6.10.4 Global Exception Handler + RFC 7807 Problem Details
-Replace raw Spring 500 responses with a `@ControllerAdvice` that maps all exceptions to the RFC 7807 `application/problem+json` shape — a standard every API client can parse uniformly.
+Replace raw Spring 500 responses with a `@ControllerAdvice` that maps all exceptions to the RFC 7807 `application/problem+json` shape, a standard every API client can parse uniformly.
 
 - [ ] Create `GlobalExceptionHandler.kt` with `@ControllerAdvice`
 - [ ] Map `MethodArgumentNotValidException` → 400 with field-level error detail
@@ -1377,8 +1377,8 @@ Replace raw Spring 500 responses with a `@ControllerAdvice` that maps all except
 | Action | File |
 |--------|------|
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/exception/GlobalExceptionHandler.kt` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `@Valid` |
-| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — confirm `spring-boot-starter-validation` present |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt`, add `@Valid` |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts`, confirm `spring-boot-starter-validation` present |
 
 #### 6.10.5 Transactional Outbox Pattern
 The most common way to lose events: write to the DB, then the app crashes before Kafka publish. The outbox pattern writes the event to a DB table in the **same transaction** as the business write, then a separate publisher polls and sends to Kafka. Guarantees at-least-once delivery with no dual-write risk.
@@ -1399,7 +1399,7 @@ Outbox Publisher (scheduled)
 - [ ] Create `OutboxEvent` entity (`id`, `event_type`, `payload`, `processed_at`, `created_at`)
 - [ ] Create `OutboxRepository` (Spring Data JPA)
 - [ ] Modify `HelloController` to write greeting + outbox event in one `@Transactional` block
-- [ ] Create `OutboxPublisher` — `@Scheduled(fixedDelay = 1000)` polls unprocessed rows, publishes to Kafka, marks processed
+- [ ] Create `OutboxPublisher`, `@Scheduled(fixedDelay = 1000)` polls unprocessed rows, publishes to Kafka, marks processed
 - [ ] Wire `OutboxPublisher` to existing `EventPublisher`
 
 **Files:**
@@ -1408,26 +1408,26 @@ Outbox Publisher (scheduled)
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/entity/OutboxEvent.kt` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/repository/OutboxRepository.kt` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/OutboxPublisher.kt` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — `@Transactional` + outbox write |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt`, `@Transactional` + outbox write |
 | CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V3__add_outbox_table.sql` |
 
 #### 6.10.6 Kafka Dead Letter Queue (DLQ)
-When a consumer fails to process a message after N retries, it should land in a DLQ topic for inspection — not silently drop or crash the consumer. Spring Kafka's `@RetryableTopic` handles this automatically.
+When a consumer fails to process a message after N retries, it should land in a DLQ topic for inspection, not silently drop or crash the consumer. Spring Kafka's `@RetryableTopic` handles this automatically.
 
 - [ ] Annotate `EventConsumer` with `@RetryableTopic(attempts = 3, backoff = @Backoff(delay = 1000, multiplier = 2.0))`
 - [ ] This auto-creates `greetings-retry-0`, `greetings-retry-1`, `greetings-dlt` topics
-- [ ] Add `@DltHandler` method on `EventConsumer` — logs the failed message with full context
+- [ ] Add `@DltHandler` method on `EventConsumer`, logs the failed message with full context
 - [ ] Add DLQ message count metric via Micrometer
 
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/EventConsumer.kt` — `@RetryableTopic` + `@DltHandler` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/event/EventConsumer.kt`, `@RetryableTopic` + `@DltHandler` |
 
 #### 6.10.7 Correlation ID / MDC Propagation
 Every log line in a single HTTP request should share one `X-Request-ID`. Without this, tracing a request across log lines requires grepping for unrelated strings. The OTEL trace ID is already injected by the Java agent; this adds HTTP-level correlation for clients that send their own request IDs.
 
-- [ ] Create `CorrelationFilter` — servlet filter that reads `X-Request-ID` header (or generates a UUID), stores in MDC as `requestId`, forwards as response header
+- [ ] Create `CorrelationFilter`, servlet filter that reads `X-Request-ID` header (or generates a UUID), stores in MDC as `requestId`, forwards as response header
 - [ ] Update `logback-spring.xml` to include `requestId` in every log line's JSON output
 - [ ] Register filter as a `@Bean` in `WebConfig` or via `@Component`
 
@@ -1435,10 +1435,10 @@ Every log line in a single HTTP request should share one `X-Request-ID`. Without
 | Action | File |
 |--------|------|
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/filter/CorrelationFilter.kt` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/logback-spring.xml` — add `requestId` field |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/logback-spring.xml`, add `requestId` field |
 
 #### 6.10.8 OpenAPI / Swagger Docs
-Auto-generate interactive API docs from the existing controller code — zero annotations needed for basic coverage. `springdoc-openapi` scans `@RestController` methods and produces a spec at `/v3/api-docs` and a UI at `/swagger-ui.html`.
+Auto-generate interactive API docs from the existing controller code, zero annotations needed for basic coverage. `springdoc-openapi` scans `@RestController` methods and produces a spec at `/v3/api-docs` and a UI at `/swagger-ui.html`.
 
 - [ ] Add `springdoc-openapi-starter-webmvc-ui` dependency to `build.gradle.kts`
 - [ ] Add `@Operation` and `@ApiResponse` annotations to `HelloController` as examples
@@ -1448,33 +1448,33 @@ Auto-generate interactive API docs from the existing controller code — zero an
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add `springdoc-openapi-starter-webmvc-ui` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt` — add `@Operation` examples |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — springdoc paths |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts`, add `springdoc-openapi-starter-webmvc-ui` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt`, add `@Operation` examples |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml`, springdoc paths |
 
 #### 6.10.9 JWT / OAuth2 Resource Server
-Protect endpoints with Bearer token validation. Spring Security's OAuth2 resource server validates JWT signatures against a JWKS endpoint — no manual token parsing needed.
+Protect endpoints with Bearer token validation. Spring Security's OAuth2 resource server validates JWT signatures against a JWKS endpoint, no manual token parsing needed.
 
 - [ ] Add `spring-boot-starter-security` + `spring-security-oauth2-resource-server` to `build.gradle.kts`
-- [ ] Create `SecurityConfig.kt` — configure `httpSecurity.oauth2ResourceServer { jwt { } }`
+- [ ] Create `SecurityConfig.kt`, configure `httpSecurity.oauth2ResourceServer { jwt { } }`
 - [ ] Set `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` in `application.yaml` (points to local Keycloak or mock JWKS)
-- [ ] Protect `POST /echo` and `GET /greetings` — leave `GET /hello` and `/health` public
+- [ ] Protect `POST /echo` and `GET /greetings`, leave `GET /hello` and `/health` public
 - [ ] Add `@PreAuthorize("hasRole('USER')")` example on one endpoint
 - [ ] Add Keycloak dev container to docker-compose (optional, gated on `--auth` flag)
 
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts` — add security + oauth2 resource server |
+| MODIFY | `packages/cli/templates/spring-boot/build.gradle.kts`, add security + oauth2 resource server |
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/SecurityConfig.kt` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml` — jwt jwk-set-uri |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/resources/application.yaml`, jwt jwk-set-uri |
 
 #### 6.10.10 Audit Trail + Soft Deletes
-Track who created/modified each record and when, without application code changes — Spring Data JPA auditing handles it automatically. Soft deletes prevent accidental data loss and support compliance requirements.
+Track who created/modified each record and when, without application code changes. Spring Data JPA auditing handles it automatically. Soft deletes prevent accidental data loss and support compliance requirements.
 
 - [ ] Enable JPA auditing: `@EnableJpaAuditing` on `Application.kt`
 - [ ] Add `@CreatedDate`, `@LastModifiedDate`, `@CreatedBy`, `@LastModifiedBy` fields to `Greeting` entity
-- [ ] Create `AuditorAwareImpl` — returns current user from `SecurityContext` (or `"system"` fallback)
+- [ ] Create `AuditorAwareImpl`, returns current user from `SecurityContext` (or `"system"` fallback)
 - [ ] Add `deleted_at` column to `Greeting` + `@SQLRestriction("deleted_at IS NULL")` filter
 - [ ] Add `DELETE /greetings/{id}` endpoint that sets `deleted_at` instead of hard-deleting
 - [ ] Flyway migration `V4__add_audit_columns.sql`
@@ -1482,8 +1482,8 @@ Track who created/modified each record and when, without application code change
 **Files:**
 | Action | File |
 |--------|------|
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/Application.kt` — `@EnableJpaAuditing` |
-| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/entity/Greeting.kt` — audit fields + `deleted_at` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/Application.kt`, `@EnableJpaAuditing` |
+| MODIFY | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/entity/Greeting.kt`, audit fields + `deleted_at` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/AuditConfig.kt` |
 | CREATE | `packages/cli/templates/spring-boot/src/main/resources/db/migration/V4__add_audit_columns.sql` |
 
@@ -1512,7 +1512,7 @@ INFO  FlywayAutoConfiguration - Flyway migration has applied 4 migration(s) to s
 
 # Outbox guarantees no lost events even if Kafka is briefly down
 $ docker stop my-app-kafka && curl http://localhost:8080/hello && docker start my-app-kafka
-# Event appears in Kafka once broker is back — not lost
+# Event appears in Kafka once broker is back: not lost
 
 # Kafka consumer fails 3 times → message lands in DLT
 # greetings-dlt topic has 1 message; consumer is still healthy
@@ -1542,7 +1542,7 @@ $ SELECT * FROM greeting WHERE deleted_at IS NOT NULL;  # record still in DB
 
 ## Phase 7: Autonomy
 
-**Goal:** Close the loop. Phases 1-6 gave blissful-infra eyes (observability), reflexes (resilience), and a brain (intelligence). Phase 7 gives it a voice — LangGraph-powered virtual employees that analyze your codebase and suggest changes for human review.
+**Goal:** Close the loop. Phases 1-6 gave blissful-infra eyes (observability), reflexes (resilience), and a brain (intelligence). Phase 7 gives it a voice. LangGraph-powered virtual employees that analyze your codebase and suggest changes for human review.
 
 ### The Product Thesis
 
@@ -1552,19 +1552,19 @@ blissful-infra already knows things that most teams don't act on fast enough:
 - **Phase 4** knows the service can't survive a Kafka outage
 - **Phase 5** identifies the root cause as an unbounded cache in `GreetingService.kt:47` with 94% confidence
 
-But today, that insight sits in a terminal output until a human reads it, context-switches, and manually writes the fix. Phase 7 eliminates that gap. When the system detects a problem, a virtual employee analyzes the codebase, drafts a fix with full diffs, and presents it for human review. The human decides whether to apply it — not the agent.
+But today, that insight sits in a terminal output until a human reads it, context-switches, and manually writes the fix. Phase 7 eliminates that gap. When the system detects a problem, a virtual employee analyzes the codebase, drafts a fix with full diffs, and presents it for human review. The human decides whether to apply it, not the agent.
 
 This is the **suggest-first model**: agents think, humans decide.
 
 ### Why Suggest-First (Not Auto-PR)
 
-LLMs produce wrong code often enough that auto-committing and opening PRs creates noise, not value. A suggestion that's wrong costs nothing — a PR that's wrong wastes review time and erodes trust.
+LLMs produce wrong code often enough that auto-committing and opening PRs creates noise, not value. A suggestion that's wrong costs nothing, a PR that's wrong wastes review time and erodes trust.
 
 The suggest-first model:
-- **No risk** — agent never writes to disk until human says "accept"
-- **No trust levels needed** — the safety IS the suggestion model
-- **Iterative** — human can say "change X" and agent revises before applying
-- **Higher acceptance rate** — humans shape the output before it lands
+- **No risk**: agent never writes to disk until human says "accept"
+- **No trust levels needed**: the safety IS the suggestion model
+- **Iterative**: human can say "change X" and agent revises before applying
+- **Higher acceptance rate**: humans shape the output before it lands
 
 ### The Suggestion Lifecycle
 
@@ -1575,12 +1575,12 @@ assign → analyze → suggest → review → [revise]* → accept → apply + P
                                          (iterate until right)
 ```
 
-1. **Assign** — human gives agent a task
-2. **Analyze** — agent reads codebase (read-only: `list_files`, `read_file`, `search_in_files`)
-3. **Suggest** — agent produces a plan + proposed diffs (stored in memory, not on disk)
-4. **Review** — human sees the full suggestion with file-by-file diffs in CLI
-5. **Revise** — human requests changes, agent updates the suggestion
-6. **Accept** — human approves, agent writes files, creates branch, opens PR
+1. **Assign**: human gives agent a task
+2. **Analyze**: agent reads codebase (read-only: `list_files`, `read_file`, `search_in_files`)
+3. **Suggest**: agent produces a plan + proposed diffs (stored in memory, not on disk)
+4. **Review**: human sees the full suggestion with file-by-file diffs in CLI
+5. **Revise**: human requests changes, agent updates the suggestion
+6. **Accept**: human approves, agent writes files, creates branch, opens PR
 
 ### How Each Phase Feeds Suggestions
 
@@ -1618,7 +1618,7 @@ $ blissful-infra agent accept bob
 ```
 
 **2. Feature Scaffolding with Human Polish**
-Agent drafts the boilerplate — CRUD endpoints, data models, tests — and you refine before applying.
+Agent drafts the boilerplate. CRUD endpoints, data models, tests, and you refine before applying.
 
 ```
 $ blissful-infra agent assign alice "Add a /users endpoint with pagination"
@@ -1651,7 +1651,7 @@ $ blissful-infra agent accept sre
 ```
 
 **4. Knowledge Amplification**
-Every accepted suggestion feeds back into the knowledge base (Phase 5). Rejected suggestions are tracked too — the system learns what doesn't work.
+Every accepted suggestion feeds back into the knowledge base (Phase 5). Rejected suggestions are tracked too, the system learns what doesn't work.
 
 ### Architecture
 
@@ -1685,12 +1685,12 @@ flowchart TD
 ### 7.2 Suggestion Engine
 The core of the suggest-first model. Agent produces proposed changes without touching the filesystem.
 
-- [ ] **Suggestion state** — in-memory proposed diffs stored in agent state (plan text + file changes)
-- [ ] **`agent review <name>`** — CLI renders the suggestion: plan explanation + file-by-file unified diffs
-- [ ] **`agent revise <name> "<feedback>"`** — agent re-analyzes with human feedback, updates suggestion
-- [ ] **`agent accept <name>`** — writes proposed files to disk, creates branch, commits, opens PR
-- [ ] **`agent reject <name>`** — discards suggestion, resets agent to idle
-- [ ] **Revision history** — track each revision of a suggestion (v1 → v2 → v3)
+- [ ] **Suggestion state**: in-memory proposed diffs stored in agent state (plan text + file changes)
+- [ ] **`agent review <name>`**: CLI renders the suggestion: plan explanation + file-by-file unified diffs
+- [ ] **`agent revise <name> "<feedback>"`**: agent re-analyzes with human feedback, updates suggestion
+- [ ] **`agent accept <name>`**: writes proposed files to disk, creates branch, commits, opens PR
+- [ ] **`agent reject <name>`**: discards suggestion, resets agent to idle
+- [ ] **Revision history**: track each revision of a suggestion (v1 → v2 → v3)
 
 ### 7.3 Watchdog Mode (Human-in-the-Loop Debugging)
 The agent runs as a live debugging companion while your app is running. Instead of waiting for you to notice errors, the agent watches container logs and health checks, diagnoses issues automatically, and prompts you to investigate.
@@ -1707,11 +1707,11 @@ flowchart TD
 ```
 
 **User actions on alert:**
-- **Investigate** — opens the diagnosis + suggested fix diff (enters `review → revise → accept` flow)
-- **Silence** — mutes that error pattern. Options:
-  - `silence 10m` — mute for 10 minutes
-  - `silence this` — mute this specific error pattern permanently
-  - `silence all` — pause all watchdog alerts
+- **Investigate**: opens the diagnosis + suggested fix diff (enters `review → revise → accept` flow)
+- **Silence**: mutes that error pattern. Options:
+  - `silence 10m`, mute for 10 minutes
+  - `silence this`, mute this specific error pattern permanently
+  - `silence all`, pause all watchdog alerts
 
 **What gets detected:**
 - Container crashes / restarts (health check failures)
@@ -1725,15 +1725,15 @@ flowchart TD
 - Queries Phase 5 knowledge base for similar past incidents
 - Suggested fixes follow the same suggest-first model (no writes until accept)
 
-- [ ] Log watcher — stream container logs, detect error patterns (regex + LLM classification)
-- [ ] Health check watcher — tie into existing `api.ts` health polling
-- [ ] Auto-diagnosis — agent reads relevant source code when error detected
-- [ ] CLI notifications — prompt user with `[Investigate] [Silence]` choices
-- [ ] Silence system — per-pattern, timed, and global silence modes
-- [ ] `agent watch start` — enable watchdog mode for an agent
-- [ ] `agent watch stop` — disable watchdog mode
-- [ ] `agent watch silences` — list active silences
-- [ ] `agent watch clear-silence <id>` — remove a silence rule
+- [ ] Log watcher, stream container logs, detect error patterns (regex + LLM classification)
+- [ ] Health check watcher, tie into existing `api.ts` health polling
+- [ ] Auto-diagnosis, agent reads relevant source code when error detected
+- [ ] CLI notifications, prompt user with `[Investigate] [Silence]` choices
+- [ ] Silence system, per-pattern, timed, and global silence modes
+- [ ] `agent watch start`, enable watchdog mode for an agent
+- [ ] `agent watch stop`, disable watchdog mode
+- [ ] `agent watch silences`, list active silences
+- [ ] `agent watch clear-silence <id>`, remove a silence rule
 
 ### 7.4 Virtual Employee Roles
 Each role is a LangGraph StateGraph with a specialized system prompt and read-only tool set. Write tools only activate on accept.
@@ -1746,54 +1746,54 @@ Each role is a LangGraph StateGraph with a specialized system prompt and read-on
 | **Docs Writer** | Manual | Source code, existing docs | Doc updates |
 
 - [x] Feature Engineer (MVP)
-- [ ] Bug Fixer — reads Phase 5 alerts and knowledge base
-- [ ] SRE Bot — reads Phase 3 metrics and Phase 4 chaos results
-- [ ] Docs Writer — scans code for undocumented endpoints/models
+- [ ] Bug Fixer, reads Phase 5 alerts and knowledge base
+- [ ] SRE Bot, reads Phase 3 metrics and Phase 4 chaos results
+- [ ] Docs Writer, scans code for undocumented endpoints/models
 
 ### 7.5 Tool Graph
 Two phases of tools, separated by the human approval boundary.
 
 **Read tools (always available):**
-- [x] `read_file`, `list_files`, `search_in_files` — codebase analysis
-- [x] `git_status`, `git_diff` — current state awareness
-- [ ] `query_logs`, `query_metrics` — Phase 3 observability data
-- [ ] `query_prometheus` — PromQL queries against Prometheus (when monitoring=prometheus)
-- [ ] `search_incidents`, `get_fix_suggestions` — Phase 5 knowledge base
-- [ ] `read_chaos_results`, `read_perf_results` — Phase 4 data
+- [x] `read_file`, `list_files`, `search_in_files`, codebase analysis
+- [x] `git_status`, `git_diff`, current state awareness
+- [ ] `query_logs`, `query_metrics`, Phase 3 observability data
+- [ ] `query_prometheus`, PromQL queries against Prometheus (when monitoring=prometheus)
+- [ ] `search_incidents`, `get_fix_suggestions`, Phase 5 knowledge base
+- [ ] `read_chaos_results`, `read_perf_results`, Phase 4 data
 
 **Write tools (only after human accept):**
-- [x] `write_file` — apply proposed changes to disk
-- [x] `git_create_branch`, `git_add_and_commit` — create branch and commit
-- [ ] `create_pr` — open PR on GitHub
-- [ ] `run_tests` — verify changes after apply
+- [x] `write_file`, apply proposed changes to disk
+- [x] `git_create_branch`, `git_add_and_commit`, create branch and commit
+- [ ] `create_pr`, open PR on GitHub
+- [ ] `run_tests`, verify changes after apply
 
 ### 7.6 Dashboard Integration
-- [ ] Suggestion viewer — see proposed diffs in the browser with syntax highlighting
-- [ ] Accept/reject/revise buttons — one-click actions from dashboard
-- [ ] Agent activity feed — recent suggestions across all agents
-- [ ] Acceptance rate tracking — which agents produce useful suggestions
+- [ ] Suggestion viewer, see proposed diffs in the browser with syntax highlighting
+- [ ] Accept/reject/revise buttons, one-click actions from dashboard
+- [ ] Agent activity feed, recent suggestions across all agents
+- [ ] Acceptance rate tracking, which agents produce useful suggestions
 
 ### 7.7 CLI Commands
-- [x] `blissful-infra agent chat` — Interactive AI assistant (legacy, now a subcommand)
-- [x] `blissful-infra agent hire <role> --name <n>` — Spawn a virtual employee
-- [x] `blissful-infra agent fire <name>` — Stop a virtual employee
-- [x] `blissful-infra agent list` — Show active virtual employees
-- [x] `blissful-infra agent assign <name> <task>` — Assign a task
-- [x] `blissful-infra agent status <name>` — Show agent progress
-- [ ] `blissful-infra agent review <name>` — View suggestion with diffs
-- [ ] `blissful-infra agent revise <name> "<feedback>"` — Request changes to suggestion
-- [ ] `blissful-infra agent accept <name>` — Apply suggestion, create branch + PR
-- [ ] `blissful-infra agent reject <name>` — Discard suggestion
-- [ ] `blissful-infra agent watch start` — Enable watchdog mode (monitors logs + health)
-- [ ] `blissful-infra agent watch stop` — Disable watchdog mode
-- [ ] `blissful-infra agent watch silences` — List active silence rules
-- [ ] `blissful-infra agent watch clear-silence <id>` — Remove a silence rule
+- [x] `blissful-infra agent chat`, Interactive AI assistant (legacy, now a subcommand)
+- [x] `blissful-infra agent hire <role> --name <n>`, Spawn a virtual employee
+- [x] `blissful-infra agent fire <name>`, Stop a virtual employee
+- [x] `blissful-infra agent list`, Show active virtual employees
+- [x] `blissful-infra agent assign <name> <task>`, Assign a task
+- [x] `blissful-infra agent status <name>`, Show agent progress
+- [ ] `blissful-infra agent review <name>`, View suggestion with diffs
+- [ ] `blissful-infra agent revise <name> "<feedback>"`, Request changes to suggestion
+- [ ] `blissful-infra agent accept <name>`, Apply suggestion, create branch + PR
+- [ ] `blissful-infra agent reject <name>`, Discard suggestion
+- [ ] `blissful-infra agent watch start`, Enable watchdog mode (monitors logs + health)
+- [ ] `blissful-infra agent watch stop`, Disable watchdog mode
+- [ ] `blissful-infra agent watch silences`, List active silence rules
+- [ ] `blissful-infra agent watch clear-silence <id>`, Remove a silence rule
 
 **Location:** `packages/cli/templates/agent-service/`, `packages/cli/src/commands/agent.ts`
 
 ### Competitive Differentiation
 
-Most AI coding tools (Copilot, Cursor, Devin) either autocomplete at the cursor or autonomously write code and hope it's right. blissful-infra takes a different approach: **suggest, don't commit.** The agent has deep infrastructure context (metrics, chaos results, incident history, deployment pipeline) that editor-level tools can never have — and it presents that context as reviewable suggestions rather than fait accompli PRs.
+Most AI coding tools (Copilot, Cursor, Devin) either autocomplete at the cursor or autonomously write code and hope it's right. blissful-infra takes a different approach: **suggest, don't commit.** The agent has deep infrastructure context (metrics, chaos results, incident history, deployment pipeline) that editor-level tools can never have, and it presents that context as reviewable suggestions rather than fait accompli PRs.
 
 This is the difference between "AI that writes code and hopes for the best" and "AI that drafts informed suggestions for humans to approve."
 
@@ -1859,7 +1859,7 @@ $ blissful-infra agent accept alice
 
 # Watchdog: live debugging while app is running
 $ blissful-infra agent watch start
-✓ Watchdog enabled — monitoring container logs and health checks
+✓ Watchdog enabled: monitoring container logs and health checks
 
 # ... developer is working, app throws an error ...
 
@@ -1926,7 +1926,7 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - Phase 4 requires both Pipeline and Observability
 - Phase 5 builds on all previous phases
 - Phase 6 is additive and can be done incrementally
-- Phase 7 is the capstone — it consumes every previous phase:
+- Phase 7 is the capstone, it consumes every previous phase:
   - Phase 1: agents follow project conventions when writing code
   - Phase 2: agents trigger builds and verify tests
   - Phase 3: SRE Bot watches metrics, Bug Fixer reads logs

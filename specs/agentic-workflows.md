@@ -2,12 +2,12 @@
 
 ## Overview
 
-Agentic workflows are the Phase 7 evolution of blissful-infra: purpose-built AI agents that participate in the software development lifecycle as first-class collaborators. Rather than a single general-purpose assistant, the system decomposes development work into specialized agents — each with a narrow focus, a defined tool set, and a clear output contract.
+Agentic workflows are the Phase 7 evolution of blissful-infra: purpose-built AI agents that participate in the software development lifecycle as first-class collaborators. Rather than a single general-purpose assistant, the system decomposes development work into specialized agents, each with a narrow focus, a defined tool set, and a clear output contract.
 
 These agents operate at two levels:
 
-- **Meta-level** — agents that build and improve blissful-infra itself (generating new templates, writing tests, monitoring the platform)
-- **User-level** — agents embedded in user projects that accelerate their application development workflows
+- **Meta-level**: agents that build and improve blissful-infra itself (generating new templates, writing tests, monitoring the platform)
+- **User-level**: agents embedded in user projects that accelerate their application development workflows
 
 Both levels share the same agent architecture and tool protocol (MCP). A user running `blissful-infra agent:feature` gets the same quality of agent work that drives platform development internally.
 
@@ -17,13 +17,13 @@ Both levels share the same agent architecture and tool protocol (MCP). A user ru
 
 **Narrow scope, clear contracts.** Each agent does one thing well and produces a typed output (a PR, a test report, a research document, a template directory). Agents that try to do everything produce outputs that are hard to review and validate.
 
-**Human in the loop by default.** Agents propose — humans approve. Agents should produce reviewable artifacts (PRs, diffs, reports) rather than making irreversible changes autonomously. The exception is the Monitor agent, which acts autonomously on well-defined runbooks.
+**Human in the loop by default.** Agents propose, humans approve. Agents should produce reviewable artifacts (PRs, diffs, reports) rather than making irreversible changes autonomously. The exception is the Monitor agent, which acts autonomously on well-defined runbooks.
 
 **Sandbox-first.** All agent work happens in the local blissful-infra sandbox before touching any shared environment. An agent that breaks a unit test never gets to push.
 
 **Composable pipelines.** Agents can be chained: the Research agent feeds findings to the Feature agent, which triggers the Test agent, whose report gates the PR. The orchestration layer (LangGraph or equivalent) wires these pipelines together.
 
-**Observable.** Every agent action — tool calls, LLM completions, decisions — is logged and visible in the dashboard under an "Agent Activity" tab. This is both a debugging aid and a trust-building mechanism.
+**Observable.** Every agent action, tool calls, LLM completions, decisions, is logged and visible in the dashboard under an "Agent Activity" tab. This is both a debugging aid and a trust-building mechanism.
 
 ---
 
@@ -42,11 +42,11 @@ Both levels share the same agent architecture and tool protocol (MCP). A user ru
 - `blissful-infra.yaml` for stack context
 
 **Toolset:**
-- `read_file`, `write_file`, `list_directory` — code navigation and editing
-- `run_tests` — execute unit/integration tests and return results
-- `run_build` — compile/lint the project
-- `git_diff`, `git_commit`, `create_pr` — version control operations
-- `search_codebase` — semantic search across the project
+- `read_file`, `write_file`, `list_directory`, code navigation and editing
+- `run_tests`, execute unit/integration tests and return results
+- `run_build`, compile/lint the project
+- `git_diff`, `git_commit`, `create_pr`, version control operations
+- `search_codebase`, semantic search across the project
 
 **Workflow:**
 ```mermaid
@@ -99,11 +99,11 @@ flowchart TD
 - Plugin system contracts (`@blissful-infra/shared` schemas)
 
 **Toolset:**
-- `read_file`, `write_file` — template authoring
-- `scaffold_project` — invoke the CLI's own scaffolding to test the template
-- `run_docker_compose` — boot the scaffolded project to verify it starts
-- `http_check` — hit `/health` and `/ready` to confirm endpoints respond
-- `run_tests` — run the generated project's tests
+- `read_file`, `write_file`, template authoring
+- `scaffold_project`, invoke the CLI's own scaffolding to test the template
+- `run_docker_compose`, boot the scaffolded project to verify it starts
+- `http_check`, hit `/health` and `/ready` to confirm endpoints respond
+- `run_tests`, run the generated project's tests
 
 **Workflow:**
 ```mermaid
@@ -132,7 +132,7 @@ flowchart TD
 **Purpose:** Analyzes the current codebase for test coverage gaps and writes tests to fill them. Also serves as the automated QA gate in the feature agent pipeline.
 
 **Trigger:**
-- `blissful-infra agent:test` — analyze and fill coverage gaps in the current project
+- `blissful-infra agent:test`, analyze and fill coverage gaps in the current project
 - Called automatically after the Feature agent commits changes
 
 **Inputs:**
@@ -142,10 +142,10 @@ flowchart TD
 - Test framework conventions from the project's stack
 
 **Toolset:**
-- `read_file`, `write_file` — test authoring
-- `run_tests` — execute tests with coverage output
-- `read_coverage_report` — parse LCOV/JUnit output
-- `list_untested_files` — identify files with no corresponding test
+- `read_file`, `write_file`, test authoring
+- `run_tests`, execute tests with coverage output
+- `read_coverage_report`, parse LCOV/JUnit output
+- `list_untested_files`, identify files with no corresponding test
 
 **Workflow:**
 ```mermaid
@@ -163,7 +163,7 @@ flowchart TD
     C -->|no| Cancel
 ```
 
-**Coverage targets** (starting baselines — adjust per project):
+**Coverage targets** (starting baselines, adjust per project):
 - Unit test coverage: ≥ 80% line coverage
 - All public API endpoints: ≥ 1 happy path + ≥ 1 error path test
 - All Zod schemas in `@blissful-infra/shared`: parse valid + reject invalid inputs
@@ -177,20 +177,20 @@ flowchart TD
 **Trigger:** Started automatically alongside `blissful-infra up`. Also available as `blissful-infra agent:monitor --project <name>`.
 
 **Inputs (continuous):**
-- Prometheus metrics (CPU, memory, p95 latency, error rate) — polled every 30s
-- Loki/Docker logs — tailed in real time
-- Jaeger traces — sampled on high-latency requests
+- Prometheus metrics (CPU, memory, p95 latency, error rate), polled every 30s
+- Loki/Docker logs, tailed in real time
+- Jaeger traces, sampled on high-latency requests
 - Deployment events from the deployment tracking API
 - Alert thresholds from `@blissful-infra/shared` AlertsConfig
 
 **Toolset:**
-- `query_prometheus` — run PromQL queries
-- `query_logs` — search Loki/JSONL logs
-- `get_traces` — fetch Jaeger traces by service and time window
-- `get_deployment_history` — recent deployments and their latency deltas
-- `run_health_checks` — hit all service health endpoints
-- `restart_service` — `docker compose restart <service>` (runbook action)
-- `notify` — post to dashboard alerts + (optionally) Slack webhook
+- `query_prometheus`, run PromQL queries
+- `query_logs`, search Loki/JSONL logs
+- `get_traces`, fetch Jaeger traces by service and time window
+- `get_deployment_history`, recent deployments and their latency deltas
+- `run_health_checks`, hit all service health endpoints
+- `restart_service`, `docker compose restart <service>` (runbook action)
+- `notify`, post to dashboard alerts + (optionally) Slack webhook
 
 **Incident classification:**
 
@@ -236,10 +236,10 @@ actions:
 - Optional: existing ADRs or spec files to inform the research direction
 
 **Toolset:**
-- `web_search` — search for documentation, benchmarks, GitHub repos, blog posts
-- `fetch_url` — read specific pages (docs, papers, changelogs)
-- `read_file` — read existing specs and code for context
-- `write_file` — write the research output document
+- `web_search`, search for documentation, benchmarks, GitHub repos, blog posts
+- `fetch_url`, read specific pages (docs, papers, changelogs)
+- `read_file`, read existing specs and code for context
+- `write_file`, write the research output document
 
 **Workflow:**
 ```
@@ -338,19 +338,19 @@ The existing `blissful-infra mcp` command evolves into a multi-group MCP server 
 
 ## Implementation Phases
 
-### Phase 7a — Foundation
+### Phase 7a. Foundation
 - Monitor agent (always-on, watches running stack, alerts to dashboard)
 - Research agent (web search + ADR generation)
 - Agent Activity feed in dashboard
 
-### Phase 7b — Code Generation
+### Phase 7b. Code Generation
 - Feature agent (code changes + tests + PRs)
 - Test agent (coverage gap analysis + test authoring)
 
-### Phase 7c — Template Automation
+### Phase 7c. Template Automation
 - Template agent (scaffold + validate new templates)
 - Pipeline composition (multi-agent workflows via YAML DSL)
 
-### Phase 7d — Full Autonomy
+### Phase 7d. Full Autonomy
 - Self-improving platform: monitor agent detects recurring failures → triggers research → research informs feature → feature ships fix → test agent validates
-- User-facing: `blissful-infra agent:autopilot` — run the full pipeline unattended for a defined issue list
+- User-facing: `blissful-infra agent:autopilot`, run the full pipeline unattended for a defined issue list

@@ -4,8 +4,8 @@
 
 Tests in blissful-infra serve two distinct purposes that require different approaches:
 
-1. **Platform tests** — tests for the CLI, API server, dashboard, and shared schemas (the `packages/` code we own and ship)
-2. **Template tests** — tests that verify each scaffold template produces a working, correct application
+1. **Platform tests**: tests for the CLI, API server, dashboard, and shared schemas (the `packages/` code we own and ship)
+2. **Template tests**: tests that verify each scaffold template produces a working, correct application
 
 The platform is TypeScript running on Node. The templates generate applications in Kotlin, Python, Go, and TypeScript. These require entirely different test tooling and strategies.
 
@@ -26,7 +26,7 @@ flowchart TD
     Unit --> Integration --> Contract --> Smoke --> E2E
 ```
 
-More unit tests than integration tests, more integration than E2E. Template smoke tests are a separate lane — they run less frequently and require more infrastructure.
+More unit tests than integration tests, more integration than E2E. Template smoke tests are a separate lane, they run less frequently and require more infrastructure.
 
 ---
 
@@ -37,7 +37,7 @@ More unit tests than integration tests, more integration than E2E. Template smok
 **Coverage tool:** `@vitest/coverage-v8`
 **Coverage target:** ≥ 80% line coverage on `packages/cli/src/utils/` and `packages/shared/src/`
 
-### packages/shared — Schema Tests
+### packages/shared. Schema Tests
 
 Every Zod schema should have tests that verify:
 - Valid inputs parse correctly (`safeParse` returns `success: true`)
@@ -71,7 +71,7 @@ describe("DeploymentRecordSchema", () => {
 
 Priority order for schema tests: `deployments` > `config` > `api` > `metrics` > `alerts`
 
-### packages/cli — Utils Tests
+### packages/cli. Utils Tests
 
 Highest-value targets in `packages/cli/src/utils/`:
 
@@ -84,9 +84,9 @@ Highest-value targets in `packages/cli/src/utils/`:
 | `alerts.ts` | Alert threshold evaluation logic (is value > threshold?) |
 | `metrics-storage.ts` | JSONL round-trip, time-range filtering |
 
-These are pure-ish functions with file I/O — use a temp directory (`os.tmpdir()` + unique suffix) for tests that write files. No Docker required.
+These are pure-ish functions with file I/O, use a temp directory (`os.tmpdir()` + unique suffix) for tests that write files. No Docker required.
 
-### packages/dashboard — Component Tests
+### packages/dashboard. Component Tests
 
 Vitest + `@testing-library/react`. Test the data transformation and display logic, not the full render tree.
 
@@ -116,7 +116,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Always clean up — bring down containers, delete temp dir
+  // Always clean up: bring down containers, delete temp dir
   await execa("blissful-infra", ["down"], { cwd: path.join(tempDir, projectName) });
   await fs.rm(tempDir, { recursive: true, force: true });
 });
@@ -153,7 +153,7 @@ describe("blissful-infra logs", () => {
 
 ### API Server Tests
 
-Test the Express API server (`packages/cli/src/server/api.ts`) in isolation — start the server against a test project directory, make real HTTP requests, assert responses match `@blissful-infra/shared` schemas.
+Test the Express API server (`packages/cli/src/server/api.ts`) in isolation, start the server against a test project directory, make real HTTP requests, assert responses match `@blissful-infra/shared` schemas.
 
 ```ts
 describe("GET /api/projects", () => {
@@ -186,14 +186,14 @@ describe("POST /api/projects/:name/deployments", () => {
 });
 ```
 
-**Contract testing principle:** Every API response must parse against its corresponding schema from `@blissful-infra/shared`. If it doesn't, both the test and the schema should be updated together — they are the contract.
+**Contract testing principle:** Every API response must parse against its corresponding schema from `@blissful-infra/shared`. If it doesn't, both the test and the schema should be updated together, they are the contract.
 
 ---
 
 ## Layer 3: Template Smoke Tests
 
 **Location:** `packages/cli/src/__tests__/templates/`
-**Runner:** Vitest with long timeouts (`testTimeout: 300_000` — 5 minutes)
+**Runner:** Vitest with long timeouts (`testTimeout: 300_000`, 5 minutes)
 **CI:** Run nightly or on PR to `main`, not on every commit (too slow)
 
 ### What a smoke test verifies
@@ -217,7 +217,7 @@ For each shipped template (`spring-boot`, `lambda-python`, `react-vite`):
 | `lambda-python` | `lambda invoke` round-trips | `pytest` |
 | `react-vite` | nginx `/` → 200 | Vitest |
 
-The internal test runner step (`./gradlew test`, `pytest`, etc.) is optional in smoke tests — it's covered more thoroughly in each template's own CI pipeline. Smoke tests focus on "does it boot and respond correctly."
+The internal test runner step (`./gradlew test`, `pytest`, etc.) is optional in smoke tests, it's covered more thoroughly in each template's own CI pipeline. Smoke tests focus on "does it boot and respond correctly."
 
 ### Database variant matrix
 
@@ -235,13 +235,13 @@ The `postgres-redis` variant is tested less frequently (weekly) due to resource 
 
 **When to run:** On every commit that touches `packages/cli/src/server/api.ts` or `packages/shared/src/schemas/api.ts`.
 
-**Strategy:** The TypeScript compiler catches most drift at compile time (since `api.ts` now imports shared types). Contract tests add a runtime layer — the actual JSON serialized and deserialized over HTTP must match.
+**Strategy:** The TypeScript compiler catches most drift at compile time (since `api.ts` now imports shared types). Contract tests add a runtime layer, the actual JSON serialized and deserialized over HTTP must match.
 
 Approach: Record → Assert
 1. Start the API server against a fixture project
 2. Call each endpoint
 3. Assert `Schema.safeParse(responseBody).success === true` for every route
-4. Any schema violation fails the test — update the schema or the endpoint, never the test
+4. Any schema violation fails the test, update the schema or the endpoint, never the test
 
 ---
 
@@ -358,16 +358,16 @@ This keeps the unit test suite runnable in any environment (including CI runners
 
 Following the principle of maximum impact first:
 
-1. **`packages/shared` schema tests** — no infrastructure required, immediately validates the contract layer
-2. **`packages/cli/src/utils/template.ts` unit tests** — pure function, critical path for all scaffolding
-3. **`packages/cli/src/utils/config.ts` unit tests** — YAML parsing, used by every command
-4. **`packages/cli/src/utils/deployment-storage.ts` unit tests** — file I/O with temp dir
-5. **API contract tests** — start server, assert schema compliance for every route
-6. **`start` command integration test** — scaffold a project, verify directory structure (no Docker needed)
-7. **Template smoke tests: spring-boot** — first template, proves the smoke test pattern works
-8. **Template smoke tests: remaining templates** — fill out the matrix
-9. **Dashboard component tests** — Vitest + testing-library for critical rendering logic
-10. **E2E tests** — pre-release gate, after everything else is in place
+1. **`packages/shared` schema tests**: no infrastructure required, immediately validates the contract layer
+2. **`packages/cli/src/utils/template.ts` unit tests**: pure function, critical path for all scaffolding
+3. **`packages/cli/src/utils/config.ts` unit tests**: YAML parsing, used by every command
+4. **`packages/cli/src/utils/deployment-storage.ts` unit tests**: file I/O with temp dir
+5. **API contract tests**: start server, assert schema compliance for every route
+6. **`start` command integration test**: scaffold a project, verify directory structure (no Docker needed)
+7. **Template smoke tests: spring-boot**: first template, proves the smoke test pattern works
+8. **Template smoke tests: remaining templates**: fill out the matrix
+9. **Dashboard component tests**: Vitest + testing-library for critical rendering logic
+10. **E2E tests**: pre-release gate, after everything else is in place
 
 ---
 
@@ -375,12 +375,12 @@ Following the principle of maximum impact first:
 
 **Do:**
 - Test behavior, not implementation. Test that `loadDeployments` returns records newest-first, not that it calls `sort`.
-- Use `safeParse` assertions in API tests — they produce readable failure messages that identify which field is wrong.
+- Use `safeParse` assertions in API tests, they produce readable failure messages that identify which field is wrong.
 - Clean up after yourself. Any test that creates files, starts containers, or binds ports must clean them up in `afterAll`, even on failure.
-- Test the unhappy path. The Jenkinsfile sends malformed JSON — test that the API handles it gracefully.
+- Test the unhappy path. The Jenkinsfile sends malformed JSON, test that the API handles it gracefully.
 
 **Don't:**
 - Mock Docker, `execa`, or the API server in integration tests. The whole point of an integration test is to catch the wiring.
 - Write tests for generated template code (that's what the template smoke tests cover).
-- Assert on specific log message strings — they change too often. Assert on structure and status codes.
-- Leave test projects running if a test fails — use `afterAll` with `try/finally`.
+- Assert on specific log message strings, they change too often. Assert on structure and status codes.
+- Leave test projects running if a test fails, use `afterAll` with `try/finally`.

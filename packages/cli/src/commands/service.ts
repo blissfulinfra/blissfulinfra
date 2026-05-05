@@ -113,7 +113,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       chalk.dim("\n  Tip: ") +
       `${PROMOTED_TO_CLIENT_LEVEL.join(", ")} are now ` +
       chalk.bold("client-level") +
-      chalk.dim(" — enable on `client create`, not here.\n"),
+      chalk.dim(": enable on `client create`, not here.\n"),
     );
     promptQs.push({
       type: "checkbox",
@@ -142,7 +142,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
   const plugins = rawPlugins.filter(p => {
     if (PROMOTED_TO_CLIENT_LEVEL_PLUGINS.has(p.type)) {
       console.log(chalk.dim(
-        `  ${p.type} is now client-level — skipping as a per-service plugin (enable on \`client create\`).`
+        `  ${p.type} is now client-level. Skipping as a per-service plugin (enable on \`client create\`).`
       ));
       return false;
     }
@@ -175,7 +175,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     console.log();
     console.log(chalk.yellow("This service needs client-level components that aren't enabled:"));
     for (const dep of depsDiff.missingRequired) {
-      console.log(`  • ${chalk.bold(dep.component)} — ${dep.reason}`);
+      console.log(`  • ${chalk.bold(dep.component)}: ${dep.reason}`);
     }
 
     if (!useDefaults) {
@@ -186,7 +186,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
         default: true,
       }] as never)) as { confirm: boolean };
       if (!confirm) {
-        console.error(chalk.red("Cannot scaffold — required infrastructure is missing. Aborting."));
+        console.error(chalk.red("Cannot scaffold. Required infrastructure is missing. Aborting."));
         process.exit(1);
       }
     } else {
@@ -208,7 +208,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       name: "selected",
       message: "Enable any now? (Space to toggle, Enter to skip)",
       choices: depsDiff.missingOptional.map(d => ({
-        name: `${d.component} — ${d.reason}`,
+        name: `${d.component}: ${d.reason}`,
         value: d.component,
         checked: false,
       })),
@@ -219,6 +219,18 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       console.log(chalk.green(`  ✓ Enabled ${c} in ${clientName}`));
     }
   }
+
+  // Re-read client infra after the deps check (which may have toggled flags)
+  // so the template substitution sees the *post-prompt* state.
+  const clientYamlAfterDeps = await fs.readFile(clientYamlPath, "utf-8").catch(() => "");
+  const { infrastructure: clientInfraNow } = parseClientConfigYaml(clientYamlAfterDeps);
+  const clientInfraVars = {
+    keycloak:   clientInfraNow?.keycloak === true,
+    localstack: clientInfraNow?.localstack === true,
+    clickhouse: clientInfraNow?.clickhouse === true,
+    mlflow:     clientInfraNow?.mlflow === true,
+    mage:       clientInfraNow?.mage === true,
+  };
 
   // Scaffold service directory
   const spinner = ora(`Scaffolding ${serviceName}...`).start();
@@ -237,6 +249,8 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       database: "none",
       deployTarget: "local-only",
       plugins: plugins.map(p => p.type),
+      clientInfra: clientInfraVars,
+      clientName,
     });
     // Ensure deploy.sh stays executable (Node fs.copyFile may strip the bit)
     try {
@@ -249,6 +263,8 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       database: "postgres",
       deployTarget: "local-only",
       plugins: plugins.map(p => p.type),
+      clientInfra: clientInfraVars,
+      clientName,
     });
   }
 
@@ -260,6 +276,8 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       database: "postgres",
       deployTarget: "local-only",
       plugins: plugins.map(p => p.type),
+      clientInfra: clientInfraVars,
+      clientName,
     });
   }
 
@@ -313,7 +331,7 @@ backend: ${backend}${frontendLine}${pluginLine}
   // sidecar registers handler with LocalStack on `service up`).
   const serviceCompose = isServerlessBackend(backend)
     ? generateLambdaServiceCompose(clientName, serviceName, servicePorts)
-    : generateServiceCompose(clientName, serviceName, backend, frontend, plugins, servicePorts);
+    : generateServiceCompose(clientName, serviceName, backend, frontend, plugins, servicePorts, clientInfraVars);
   await fs.writeFile(path.join(serviceDir, "docker-compose.yaml"), serviceCompose);
 
   configSpinner.succeed("Service config written");
@@ -372,11 +390,12 @@ export interface ServicePorts {
   backend: number;
   frontend: number;
   localstack: number;
+  aiPipeline: number;
 }
 
 export function computeServicePorts(blockIndex: number, serviceIndex: number): ServicePorts {
   const base = 13000 + blockIndex * 100 + serviceIndex * 4;
-  return { backend: base, frontend: base + 1, localstack: base + 2 };
+  return { backend: base, frontend: base + 1, localstack: base + 2, aiPipeline: base + 3 };
 }
 
 function printServiceUrls(
@@ -498,15 +517,31 @@ async function serviceLogsAction(clientName: string, serviceName: string): Promi
 }
 
 // Generate a service docker-compose.yaml that joins the client's infra network
-function generateServiceCompose(
+interface ClientInfraVars {
+  keycloak?: boolean;
+  localstack?: boolean;
+  clickhouse?: boolean;
+  mlflow?: boolean;
+  mage?: boolean;
+}
+
+export function generateServiceCompose(
   clientName: string,
   serviceName: string,
   _backend: string,
   frontend: string | undefined,
   plugins: { type: string; instance: string }[],
   ports: ServicePorts,
+  clientInfra: ClientInfraVars = {},
 ): string {
-  const hasLocalStack = plugins.some(p => p.type === "localstack");
+  // The "has X" booleans are the union of per-service plugin (legacy) and
+  // client-level infra (post ADR-0008/0009). Either path makes the spring-
+  // boot template's IF_LOCALSTACK / IF_KEYCLOAK guards fire, so the env vars
+  // and depends_on must follow suit.
+  const perServiceLocalStack = plugins.some(p => p.type === "localstack");
+  const hasLocalStack = perServiceLocalStack || clientInfra.localstack === true;
+  const hasClientKeycloak = clientInfra.keycloak === true;
+  const hasAiPipeline = plugins.some(p => p.type === "ai-pipeline");
   const dbUser = clientName.replace(/-/g, "_");
 
   // This file is included by the client's docker-compose.infra.yaml via
@@ -559,12 +594,27 @@ services:
       DB_PASSWORD: localdev`;
 
   if (hasLocalStack) {
+    // For per-service localstack the public URL maps to the per-service host
+    // port; for client-level localstack the in-network endpoint is the only
+    // reliable URL (presigned-S3 browser access from outside the network is
+    // a known limitation — set AWS_PUBLIC_ENDPOINT_URL manually if needed).
+    const publicUrl = perServiceLocalStack
+      ? `http://localhost:${ports.localstack}`
+      : "http://localstack:4566";
     yaml += `
       AWS_ENDPOINT_URL: "http://localstack:4566"
-      AWS_PUBLIC_ENDPOINT_URL: "http://localhost:${ports.localstack}"
+      AWS_PUBLIC_ENDPOINT_URL: "${publicUrl}"
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1`;
+  }
+
+  if (hasClientKeycloak) {
+    // Realm is named after the client (see generateKeycloakRealm). The
+    // backend validates JWTs against the in-network Keycloak hostname; the
+    // frontend hits the host-mapped port via VITE_KEYCLOAK_URL.
+    yaml += `
+      KEYCLOAK_ISSUER_URI: "http://keycloak:8080/realms/${clientName}"`;
   }
 
   // depends_on works across all services in the same Compose project — that
@@ -577,9 +627,19 @@ services:
       postgres:
         condition: service_healthy`;
 
-  if (hasLocalStack) {
+  if (perServiceLocalStack) {
     yaml += `
       ${localstackKey}:
+        condition: service_healthy`;
+  } else if (clientInfra.localstack) {
+    yaml += `
+      localstack:
+        condition: service_healthy`;
+  }
+
+  if (hasClientKeycloak) {
+    yaml += `
+      keycloak:
         condition: service_healthy`;
   }
 
@@ -615,9 +675,11 @@ services:
       start_period: 30s`;
   }
 
-  if (hasLocalStack) {
-    // Find the localstack plugin instance — the init script lives at
-    // <service>/<instance>/init relative to the service compose file.
+  if (perServiceLocalStack) {
+    // Per-service LocalStack container (legacy/explicit). Only emit when the
+    // user explicitly listed `localstack` as a service-level plugin — the
+    // recommended path is to enable LocalStack at the client level instead,
+    // which doesn't generate a per-service container at all.
     const localstackInstance = plugins.find(p => p.type === "localstack")?.instance ?? "localstack";
 
     yaml += `
@@ -647,6 +709,49 @@ services:
       timeout: 3s
       retries: 15
       start_period: 20s`;
+  }
+
+  // ai-pipeline service. After ADR-0010 it consumes the *client-level*
+  // ClickHouse + MLflow instead of co-deploying its own. The deps check in
+  // `service add` requires those at the client level before scaffolding,
+  // so we can rely on `clickhouse` / `mlflow` resolving on the infra net.
+  if (hasAiPipeline) {
+    const aiInstance = plugins.find(p => p.type === "ai-pipeline")?.instance ?? "ai-pipeline";
+    const aiKey = `${serviceName}-${aiInstance}`;
+    yaml += `
+
+  ${aiKey}:
+    build:
+      context: ./${aiInstance}
+      dockerfile: Dockerfile
+    container_name: ${clientName}-${serviceName}-${aiInstance}
+    networks:
+      - infra
+    ports:
+      - "${ports.aiPipeline}:${ports.aiPipeline}"
+    environment:
+      PROJECT_NAME: ${serviceName}
+      INSTANCE_NAME: ${aiInstance}
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9094"
+      PIPELINE_MODE: streaming
+      API_PORT: "${ports.aiPipeline}"
+      EVENTS_TOPIC: events
+      PREDICTIONS_TOPIC: predictions
+      # Client-level services (ADR-0010) — names resolve on the shared
+      # infra network. CLICKHOUSE_DB matches the warehouse database
+      # created by the client-level ClickHouse init script.
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      MLFLOW_EXPERIMENT: "${clientName}-${serviceName}-pipeline"
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_DB: warehouse
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy`;
   }
 
   yaml += "\n";
