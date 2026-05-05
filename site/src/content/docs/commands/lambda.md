@@ -1,12 +1,12 @@
 ---
 title: blissful-infra lambda
-description: Manage AWS Lambda functions running locally on LocalStack — deploy, invoke, tail logs.
+description: Manage AWS Lambda functions running locally on LocalStack, deploy, invoke, tail logs.
 ---
 
 `blissful-infra lambda` manages AWS Lambda functions inside services that
 were scaffolded with the `lambda-python` backend (see
 [the lambda-python template](/templates/lambda-python)). Functions run in
-LocalStack's emulated AWS Lambda runtime — the same Docker images real AWS
+LocalStack's emulated AWS Lambda runtime, the same Docker images real AWS
 Lambda uses.
 
 :::caution[Local only]
@@ -122,4 +122,4 @@ what the function printed.
 
 - [Lambda Python template](/templates/lambda-python)
 - [Why LocalStack for AWS local dev](/blog/localstack-aws-locally)
-- [ADR-0007 — Lambda backend template + LocalStack runtime](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0007-aws-lambda-local-via-localstack.md)
+- [ADR-0007, Lambda backend template + LocalStack runtime](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0007-aws-lambda-local-via-localstack.md)

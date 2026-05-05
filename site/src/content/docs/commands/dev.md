@@ -9,7 +9,7 @@ and provides fast feedback loops while iterating on a scaffolded application.
 :::caution[Mode availability]
 The `dev` command currently targets **flat-model projects** (created with
 `blissful-infra start`). It does not yet support the
-[client model](/guides/client-model) — porting it is on the roadmap. For
+[client model](/guides/client-model), porting it is on the roadmap. For
 client-model projects, use `client up` and rebuild containers manually until
 hot-reload is wired in.
 :::
@@ -21,7 +21,7 @@ hot-reload is wired in.
 cd my-app
 blissful-infra dev
 
-# Local mode — run the app process outside Docker (requires matching JDK)
+# Local mode: run the app process outside Docker (requires matching JDK)
 blissful-infra dev --local
 ```
 
@@ -50,7 +50,7 @@ blissful-infra dev
 ## Spring Boot (local)
 
 With `--local`, the CLI starts the incremental compiler and `bootRun` directly
-on your machine — no Docker involved for the app process:
+on your machine, no Docker involved for the app process:
 
 ```bash
 cd my-app/backend

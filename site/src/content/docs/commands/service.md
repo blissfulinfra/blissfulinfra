@@ -71,7 +71,7 @@ blissful-infra service add dev app
 > react-vite
   none
 
-  Tip: localstack, keycloak, clickhouse, mlflow, mage are now client-level — enable on `client create`, not here.
+  Tip: localstack, keycloak, clickhouse, mlflow, mage are now client-level. Enable on `client create`, not here.
 
 ? Service-scoped plugins (space to toggle)
 > ◯ ai-pipeline
@@ -98,27 +98,27 @@ Before scaffolding, `service add` looks up an infra-deps manifest for the
 chosen backend, frontend, and plugins, then diffs that against the client's
 current `infrastructure:` config. Two outcomes:
 
-- **Required components missing** — for example, `lambda-python` needs
+- **Required components missing**: for example, `lambda-python` needs
   `localstack` at the client level. The CLI prompts to enable it. With
   `--yes`, it auto-enables and prints what it did.
-- **Optional components missing** — for example, `spring-boot` *can* use
+- **Optional components missing**: for example, `spring-boot` *can* use
   `localstack` for S3 uploads. The CLI shows them as a checkbox prompt and
   enables only what you select. With `--yes`, optional components are
   skipped entirely.
 
 ```text
 This service needs client-level components that aren't enabled:
-  • postgres — JPA persistence + Flyway migrations
+  • postgres: JPA persistence + Flyway migrations
 ? Enable postgres on 'dev' now? (Y/n) y
   ✓ Enabled postgres in dev
 
 This service can use these optional client-level components:
 ? Enable any now? (Space to toggle, Enter to skip)
-> ◯ localstack — S3 file uploads via /api/files endpoint
-  ◯ keycloak — JWT auth on protected routes
+> ◯ localstack: S3 file uploads via /api/files endpoint
+  ◯ keycloak: JWT auth on protected routes
 ```
 
-Toggling a flag only updates `blissful-infra.yaml` — run
+Toggling a flag only updates `blissful-infra.yaml`, run
 [`blissful-infra client up <client>`](/commands/client) to regenerate the
 Compose file and start the new container(s).
 
@@ -158,7 +158,7 @@ blissful-infra service down <client> <service>
 
 Stops and removes the service's containers (backend, frontend, localstack
 if any). Other services in the client and the client's infra continue
-running. The service config and source files stay on disk — you can re-up
+running. The service config and source files stay on disk, you can re-up
 with `service up`.
 
 ## `service logs`

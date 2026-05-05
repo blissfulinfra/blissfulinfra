@@ -1,6 +1,6 @@
 # 0001. Use a per-client Caddy proxy for browser-friendly local URLs
 
-- **Status:** Deferred (2026-04-30) — design accepted, implementation queued behind hot-reload + analytics work. Revive when the platform UX gap (`localhost:14101` URLs) becomes the next priority.
+- **Status:** Deferred (2026-04-30), design accepted, implementation queued behind hot-reload + analytics work. Revive when the platform UX gap (`localhost:14101` URLs) becomes the next priority.
 - **Date:** 2026-04-30
 - **Deciders:** @cavanpage
 
@@ -17,8 +17,8 @@ ways that bite developers:
   `localhost:13000` and `localhost:13001` is treated as same-origin in some
   browsers and not others.
 - **No TLS.** Real frontends run on `https://`. Mixed-content warnings,
-  HSTS, secure cookies — all only testable on https.
-- **No CDN-like behavior.** `Cache-Control` headers, `Vary`, ETags — these
+  HSTS, secure cookies, all only testable on https.
+- **No CDN-like behavior.** `Cache-Control` headers, `Vary`, ETags, these
   only matter when something is in front of the origin actually applying
   them. Without an edge layer, devs ship cache bugs to production.
 - **Ugly URLs.** `localhost:14101` is forgettable. `https://app.dev.localhost`
@@ -50,7 +50,7 @@ https://jaeger.<client>.localhost:<httpsPort>           # client jaeger
 ```
 
 Browsers (Chrome, Firefox, Safari) resolve `*.localhost` to `127.0.0.1`
-automatically per RFC 6761 — **zero `/etc/hosts` edits, zero DNS setup**.
+automatically per RFC 6761, **zero `/etc/hosts` edits, zero DNS setup**.
 
 ### Topology
 
@@ -74,7 +74,7 @@ flowchart LR
    `caddy:2` service to the parent infra compose. Caddy listens on the
    allocated host ports.
 3. `service add` regenerates the Caddyfile when a service is added/removed
-   and runs `caddy reload` against the running container — no restart.
+   and runs `caddy reload` against the running container, no restart.
 4. New CLI command `blissful-infra trust` runs `docker exec <client>-caddy
    caddy trust` to install Caddy's root CA into the host keychain. One-time
    per workstation; eliminates browser cert warnings.
@@ -85,7 +85,7 @@ flowchart LR
 
 ### What does NOT change
 
-- Existing `localhost:14101`-style URLs continue to work — Caddy is added
+- Existing `localhost:14101`-style URLs continue to work. Caddy is added
   alongside the direct port mappings, not in place of them.
 - The dashboard's `/api/v1/links` endpoint gains the new `https://` URLs
   as a parallel set; the existing port-based URLs stay for the developer
@@ -129,7 +129,7 @@ flowchart LR
   `blissful-infra-router` container at port 443 doing host-based routing
   across all clients.
 - **Performance overhead.** Caddy adds ~1 ms latency per request. Not a
-  concern for dev work; would matter for perf testing — flag in docs.
+  concern for dev work; would matter for perf testing, flag in docs.
 - **Subdomain naming convention is a one-way decision.** Once docs and
   user habits anchor on `<service>.<client>.localhost`, changing it later
   breaks bookmarks. Get it right the first time.
@@ -158,8 +158,8 @@ flowchart LR
 
 - Conversation log discussion (2026-04-30): "what about an integrated chrome
   browser that uses proxies for the addresses?"
-- [client-model.md](../../specs/client-model.md) — per-client isolation
+- [client-model.md](../../specs/client-model.md), per-client isolation
   established the boundary that Caddy fits into
 - [Caddy v2 documentation](https://caddyserver.com/docs/)
-- [RFC 6761 — Special-Use Domain Names](https://datatracker.ietf.org/doc/html/rfc6761)
+- [RFC 6761, Special-Use Domain Names](https://datatracker.ietf.org/doc/html/rfc6761)
   (the `localhost` reservation that gives us free DNS)

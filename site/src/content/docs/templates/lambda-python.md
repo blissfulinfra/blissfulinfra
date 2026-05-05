@@ -1,12 +1,12 @@
 ---
 title: Lambda (Python) template
-description: A serverless backend template — one Lambda function, runs on LocalStack locally, ships unchanged to AWS Lambda when the deploy adapter lands.
+description: A serverless backend template, one Lambda function, runs on LocalStack locally, ships unchanged to AWS Lambda when the deploy adapter lands.
 ---
 
 The `lambda-python` backend template scaffolds a single AWS Lambda function
 written in Python. It runs in a real AWS Lambda Python runtime container
-locally via [LocalStack](/blog/localstack-aws-locally) — same image as
-production AWS Lambda — so the code that runs locally is the code that runs
+locally via [LocalStack](/blog/localstack-aws-locally), same image as
+production AWS Lambda, so the code that runs locally is the code that runs
 in AWS.
 
 ## When to pick this template
@@ -22,7 +22,7 @@ For a long-running HTTP backend, pick `spring-boot` instead.
 
 ```bash
 blissful-infra service add <client> <service> --backend lambda-python
-# LocalStack is auto-included as the runtime — no need to add it as a plugin.
+# LocalStack is auto-included as the runtime: no need to add it as a plugin.
 ```
 
 Resulting layout at `~/.blissful-infra/clients/<client>/<service>/`:
@@ -34,7 +34,7 @@ Resulting layout at `~/.blissful-infra/clients/<client>/<service>/`:
 ├── lambda.yaml                   # function manifest
 ├── deploy.sh                     # deployer logic (zips + registers with LocalStack)
 ├── lambda/
-│   ├── handler.py                # the entry point — your code
+│   ├── handler.py                # the entry point: your code
 │   └── requirements.txt          # Python dependencies
 └── README.md
 ```
@@ -103,7 +103,7 @@ Add to `lambda/requirements.txt`, then redeploy:
 ```text
 # lambda/requirements.txt
 requests==2.31.0
-boto3                  # NOT REQUIRED — included in the AWS Lambda runtime
+boto3                  # NOT REQUIRED: included in the AWS Lambda runtime
 ```
 
 The deployer pip-installs into a temp dir and zips alongside your handler
@@ -117,7 +117,7 @@ structure as you'd write any Python module:
 
 ```
 lambda/
-├── handler.py           # entry — calls into the rest
+├── handler.py           # entry: calls into the rest
 ├── domain/
 │   ├── __init__.py
 │   └── greeting.py
@@ -142,11 +142,11 @@ for the planned cloud-deploy story.
 
 ## Limitations vs real Lambda
 
-- **No API Gateway routing locally** — invoke via CLI only
-- **No event source mappings auto-wired** — S3/SQS/DDB triggers need manual `awslocal` setup
-- **Cold-start times are faster locally** than on real AWS — don't optimize for local timings
-- **IAM enforcement is off** in LocalStack free tier — permission bugs that fail in production may pass locally
-- **No file-watch auto-redeploy** — manual `lambda deploy` after edits
+- **No API Gateway routing locally**: invoke via CLI only
+- **No event source mappings auto-wired**: S3/SQS/DDB triggers need manual `awslocal` setup
+- **Cold-start times are faster locally** than on real AWS, don't optimize for local timings
+- **IAM enforcement is off** in LocalStack free tier, permission bugs that fail in production may pass locally
+- **No file-watch auto-redeploy**: manual `lambda deploy` after edits
 
 ## See also
 

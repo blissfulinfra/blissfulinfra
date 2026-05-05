@@ -1,18 +1,20 @@
-# blissful-infra — Monorepo Root
+# blissful-infra. Monorepo Root
 
 ## TODOs
-- Client model (Phase 6A) is implemented — `blissful-infra client create/list/up/down/status/remove` and `blissful-infra service add/up/down/logs`. Both Jenkins and observability are per-client (fully isolated). Phase 6B (dynamic Prometheus scrape updates, Jenkins job scoping) is next.
-- User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab) — designed in [specs/analytics.md](specs/analytics.md). Slice A (plumbing) is the next build chunk.
-- **dev-app is now a client-model service** — lives at `~/.blissful-infra/clients/dev/app/` (client `dev`, service `app`). The old `dev-app/` directory at the repo root has been removed. `dev.sh` rebuilt to use `blissful-infra client up dev`. Eat-your-own-dogfood is now the client model. The legacy `blissful-infra start` flat-model path still works for users who want it, but is no longer used internally.
-- **Template hot-reload (`blissful-infra dev --templates <project>`) needs porting** to client-model paths — currently expects a project dir under cwd, would need to accept a client-model service path like `~/.blissful-infra/clients/dev/app`. Niche template-developer feature; defer until needed.
-- **AWS Lambda backend template (`lambda-python`)** is shipped — runs on LocalStack locally, has its own `blissful-infra lambda deploy/invoke/logs` CLI. Cloud deploy adapter for real AWS Lambda is intentionally deferred (see [docs/adr/0007-aws-lambda-local-via-localstack.md](docs/adr/0007-aws-lambda-local-via-localstack.md)). Future runtimes (`lambda-node`, `lambda-go`) follow the same pattern.
-- **Client-level platform services (ADR-0008/0009/0010)** — ClickHouse, LocalStack, Keycloak, MLflow, Mage are all promotable to client-level infrastructure. All opt-in (default off) via `infrastructure.{name}: true` in the client config. **Template wiring is live** (2026-05-04): the spring-boot service compose adds `KEYCLOAK_ISSUER_URI` + `AWS_ENDPOINT_URL` + `depends_on` when client-level keycloak/localstack are enabled, and `{{#IF_KEYCLOAK}} / {{#IF_LOCALSTACK}}` template guards in spring-boot/react-vite fire from the client-level state too. Lambda services use the client-level LocalStack. **ai-pipeline (ADR-0010)** now connects to the client-level ClickHouse + MLflow on the shared infra net in client-mode `service add` — co-deployed instances are gone for client model. Flat-model `blissful-infra start --plugins ai-pipeline` still bundles them for backwards compat (flat model is deprecated).
-- **Service infra-dependency manifest** (`packages/cli/src/utils/infra-deps.ts`) — every backend / frontend / plugin can declare required + optional client-level infra. `service add` diffs against the client config and prompts (or auto-enables with `--yes`) before scaffolding. New `client infra add/remove <client> <component>` toggles a flag on an existing client.
-- **Local Kubernetes story (future)** — bring k8s back as a *local* runtime option (kind/minikube) with **ArgoCD as the GitOps layer**, bootstrapped via **Terraform** (cluster provisioning + Helm-based ArgoCD install). Distinct from cloud deploy: cloud stays Cloudflare/Vercel/AWS-first per [specs/cloud-deploy.md](specs/cloud-deploy.md), and ArgoCD does **not** return to the cloud path. Terraform is **scoped to this work only** — not the lambda template, not the AWS cloud-deploy target. Deferred until the cloud-deploy dispatcher rewrite (which removes the legacy ArgoCD/kubectl code from `deploy.ts`) lands.
+- Client model (Phase 6A) is implemented, `blissful-infra client create/list/up/down/status/remove` and `blissful-infra service add/up/down/logs`. Both Jenkins and observability are per-client (fully isolated). Phase 6B (dynamic Prometheus scrape updates, Jenkins job scoping) is next.
+- User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab), designed in [specs/analytics.md](specs/analytics.md). Slice A (plumbing) is the next build chunk.
+- **dev-app is now a client-model service**: lives at `~/.blissful-infra/clients/dev/app/` (client `dev`, service `app`). The old `dev-app/` directory at the repo root has been removed. `dev.sh` rebuilt to use `blissful-infra client up dev`. Eat-your-own-dogfood is now the client model. The legacy `blissful-infra start` flat-model path still works for users who want it, but is no longer used internally.
+- **Template hot-reload (`blissful-infra dev --templates <project>`) needs porting** to client-model paths, currently expects a project dir under cwd, would need to accept a client-model service path like `~/.blissful-infra/clients/dev/app`. Niche template-developer feature; defer until needed.
+- **AWS Lambda backend template (`lambda-python`)** is shipped, runs on LocalStack locally, has its own `blissful-infra lambda deploy/invoke/logs` CLI. Cloud deploy adapter for real AWS Lambda is intentionally deferred (see [docs/adr/0007-aws-lambda-local-via-localstack.md](docs/adr/0007-aws-lambda-local-via-localstack.md)). Future runtimes (`lambda-node`, `lambda-go`) follow the same pattern.
+- **Client-level platform services (ADR-0008/0009/0010)**: ClickHouse, LocalStack, Keycloak, MLflow, Mage are all promotable to client-level infrastructure. All opt-in (default off) via `infrastructure.{name}: true` in the client config. **Template wiring is live** (2026-05-04): the spring-boot service compose adds `KEYCLOAK_ISSUER_URI` + `AWS_ENDPOINT_URL` + `depends_on` when client-level keycloak/localstack are enabled, and `{{#IF_KEYCLOAK}} / {{#IF_LOCALSTACK}}` template guards in spring-boot/react-vite fire from the client-level state too. Lambda services use the client-level LocalStack. **ai-pipeline (ADR-0010)** now connects to the client-level ClickHouse + MLflow on the shared infra net in client-mode `service add`, co-deployed instances are gone for client model. Flat-model `blissful-infra start --plugins ai-pipeline` still bundles them for backwards compat (flat model is deprecated).
+- **Service infra-dependency manifest** (`packages/cli/src/utils/infra-deps.ts`), every backend / frontend / plugin can declare required + optional client-level infra. `service add` diffs against the client config and prompts (or auto-enables with `--yes`) before scaffolding. New `client infra add/remove <client> <component>` toggles a flag on an existing client.
+- **Compliance-grade audit logging (ADR-0011)**: proposed: client-level infra `infrastructure.audit: true` adding **immudb** as the integrity-anchored source of truth, with Kafka `audit.events` topic fan-out and a ClickHouse query mirror. CloudEvents-shaped schema, `blissful-infra audit verify/export <client>` CLI, default 7-year retention. Audit payloads are **pseudonymous-only** (subject IDs, never raw PII) so right-to-erasure stays compatible. Distinct from the Spring Boot app-level audit trail (timeline §6.10.10), that's domain history, this is regulatory integrity. See [docs/adr/0011-compliance-grade-audit-logging.md](docs/adr/0011-compliance-grade-audit-logging.md).
+- **Data governance + DSAR enforcement (ADR-0012)**: proposed: every template ships a `data-classification.yaml` declaring fields, classification (pii/sensitive/pseudonymous/public), legal basis, retention, residency, erasure mode. Client-level **identity vault** (Postgres schema) holds the only `subject_id ↔ PII` mapping; tombstoning severs the link without violating ADR-0011's immutability. New `blissful-infra gdpr inventory/export/erase <client>` commands walk the manifest across every backend (Postgres, Redis, Kafka, ClickHouse, Loki, S3, immudb). Retention enforcer is a scheduled job driven by the same manifest. Hard-coupled to ADR-0011, both must ship together. See [docs/adr/0012-data-governance-and-dsar-enforcement.md](docs/adr/0012-data-governance-and-dsar-enforcement.md).
+- **Local Kubernetes story (future)**: bring k8s back as a *local* runtime option (kind/minikube) with **ArgoCD as the GitOps layer**, bootstrapped via **Terraform** (cluster provisioning + Helm-based ArgoCD install). Distinct from cloud deploy: cloud stays Cloudflare/Vercel/AWS-first per [specs/cloud-deploy.md](specs/cloud-deploy.md), and ArgoCD does **not** return to the cloud path. Terraform is **scoped to this work only**: not the lambda template, not the AWS cloud-deploy target. Deferred until the cloud-deploy dispatcher rewrite (which removes the legacy ArgoCD/kubectl code from `deploy.ts`) lands.
 
 ## What this repo is
 
-blissful-infra is a CLI tool that spins up a production-grade local sandbox in one command: backend, frontend, databases, message bus, tracing, metrics, CI/CD pipeline, and a web dashboard — all running in Docker on the developer's laptop. No cloud required.
+blissful-infra is a CLI tool that spins up a production-grade local sandbox in one command: backend, frontend, databases, message bus, tracing, metrics, CI/CD pipeline, and a web dashboard, all running in Docker on the developer's laptop. No cloud required.
 
 Published as `@blissful-infra/cli` on npm. Homepage: https://blissful-infra.com
 
@@ -23,14 +25,14 @@ Published as `@blissful-infra/cli` on npm. Homepage: https://blissful-infra.com
 ```
 blissful-infra/
 ├── packages/
-│   ├── cli/          # @blissful-infra/cli — the published npm package (Node.js CLI + API server)
+│   ├── cli/          # @blissful-infra/cli: the published npm package (Node.js CLI + API server)
 │   └── dashboard/    # React web dashboard (served by the CLI's API server)
 ├── examples/         # Example apps scaffolded by the CLI (copied into CLI dist at build)
 ├── site/             # Astro + Starlight docs site → blissful-infra.com (Cloudflare Pages)
 ├── docs/             # Learning guides and internal documentation
 ├── specs/            # Product vision, agent architecture, timeline specs
-├── package.json      # Root workspace — workspaces: ["packages/*"]
-└── wrangler.toml     # Cloudflare config (root-level, mostly unused — site/ has its own)
+├── package.json      # Root workspace: workspaces: ["packages/*"]
+└── wrangler.toml     # Cloudflare config (root-level, mostly unused: site/ has its own)
 ```
 
 ---
@@ -38,9 +40,9 @@ blissful-infra/
 ## npm workspaces
 
 The root `package.json` declares `"workspaces": ["packages/*"]`. Three packages:
-- `packages/shared` — Private TypeScript schema library. The contract layer between all other packages.
-- `packages/cli` — TypeScript, compiled to `dist/`, published to npm. Depends on `@blissful-infra/shared`.
-- `packages/dashboard` — Vite/React, compiled to `dist/`, bundled into CLI's served static assets. Depends on `@blissful-infra/shared`.
+- `packages/shared`, Private TypeScript schema library. The contract layer between all other packages.
+- `packages/cli`, TypeScript, compiled to `dist/`, published to npm. Depends on `@blissful-infra/shared`.
+- `packages/dashboard`, Vite/React, compiled to `dist/`, bundled into CLI's served static assets. Depends on `@blissful-infra/shared`.
 
 **Always run `npm install` from the repo root.** Do not run it inside a package directory unless you have a specific reason.
 
@@ -81,7 +83,7 @@ convention. Write a new ADR whenever a decision is hard to reverse,
 cross-cutting, surprising, or comes up repeatedly. Skip them for routine
 implementation details.
 
-## Key specs — read before working on these areas
+## Key specs, read before working on these areas
 
 | You want to work on… | Read |
 |---|---|
@@ -98,7 +100,7 @@ implementation details.
 
 ---
 
-## Domain map — which CLAUDE.md to consult
+## Domain map, which CLAUDE.md to consult
 
 | You want to work on… | Read |
 |---|---|
@@ -113,12 +115,12 @@ implementation details.
 
 ## Preferences
 
-- **Self-documenting code** — write code that reads clearly without comments. Only add a comment when the logic is genuinely non-obvious and cannot be made clearer by renaming or restructuring.
-- **Error handling** — use typed exceptions (custom exception classes) rather than throwing generic `Error`. Catch at boundaries, not throughout.
-- **Commits and PRs** — semantic commit messages (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`). PR titles follow the same convention.
-- **Naming** — camelCase for variables and functions throughout. Match whatever convention the surrounding file uses for everything else.
-- **Unit tests** — preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
-- **Test plans** — for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
+- **Self-documenting code**: write code that reads clearly without comments. Only add a comment when the logic is genuinely non-obvious and cannot be made clearer by renaming or restructuring.
+- **Error handling**: use typed exceptions (custom exception classes) rather than throwing generic `Error`. Catch at boundaries, not throughout.
+- **Commits and PRs**: semantic commit messages (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`). PR titles follow the same convention.
+- **Naming**: camelCase for variables and functions throughout. Match whatever convention the surrounding file uses for everything else.
+- **Unit tests**: preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
+- **Test plans**: for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
 - **Documentation** - make sure to keep documentation up to date with each feature added
 - **Code Quality** - Codex will review your output once you are done
 ---
@@ -127,8 +129,8 @@ implementation details.
 
 - **Language:** TypeScript throughout (`"type": "module"` ESM everywhere). No CommonJS.
 - **Node version:** `>=20.0.0` (root engines field). Cloudflare Pages uses Node 22.
-- **Testing:** Vitest, three layers — see [Testing convention](#testing-convention) below.
-- **No backwards-compat shims** — delete unused code rather than commenting it out.
+- **Testing:** Vitest, three layers, see [Testing convention](#testing-convention) below.
+- **No backwards-compat shims**: delete unused code rather than commenting it out.
 - **Formatting:** No formatter configured. Match surrounding style.
 - **Secrets:** Never commit `.env` files or API keys. The CLI reads `ANTHROPIC_API_KEY` from the user's environment.
 - **Diagrams:** Use Mermaid.js for all diagrams in specs and documentation.
@@ -141,7 +143,7 @@ These patterns appear across multiple packages and should stay consistent:
 
 **Docker Compose** is the runtime unit. Two models coexist:
 - **Flat model** (legacy): `blissful-infra start <name>` creates a single `docker-compose.yaml` with all services and infra in one file.
-- **Client model** (Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network as an external network. Clients are fully isolated — no shared resources between them. Config and data live under `~/.blissful-infra/clients/`.
+- **Client model** (Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network as an external network. Clients are fully isolated, no shared resources between them. Config and data live under `~/.blissful-infra/clients/`.
 
 **API server** (`packages/cli/src/server/api.ts`) runs on **port 3002** and is the single integration point between the CLI, the dashboard, and Jenkins pipelines. The dashboard talks to it over `http://localhost:3002`. Jenkins pipelines reach it via `http://host.docker.internal:3002`.
 
@@ -164,19 +166,19 @@ needed). Run L3 before pushing or when changing code that touches Docker.
 
 **Root scripts:**
 ```bash
-npm test              # L1 + L2 — fast, run on every save / before commit
+npm test              # L1 + L2: fast, run on every save / before commit
 npm run test:watch    # vitest watch mode in packages/cli
-npm run test:integration   # L3 — real Docker, slow, before push
+npm run test:integration   # L3: real Docker, slow, before push
 npm run test:all      # everything
 ```
 
 **Conventions:**
 - Tests colocate with the code: `src/utils/foo.ts` → `src/utils/__tests__/foo.test.ts`
-- Integration tests live under `src/__tests__/integration/` — excluded from default `npm test` and from the production build via tsconfig
+- Integration tests live under `src/__tests__/integration/`, excluded from default `npm test` and from the production build via tsconfig
 - Each integration test gets a unique `BLISSFUL_HOME` (via `mkdtemp`) so it doesn't pollute the user's real registry. The CLI honors this env var when set
 - Each integration test uses a unique client name (timestamp + random suffix) so parallel CI runs don't collide
-- No mocks — tests hit real services (Vitest runs in node, `execa` invokes real `docker`)
-- Cleanup is `afterAll` and best-effort — even on failure, do `client remove`
+- No mocks, tests hit real services (Vitest runs in node, `execa` invokes real `docker`)
+- Cleanup is `afterAll` and best-effort, even on failure, do `client remove`
 
 **When to add what:**
 - Changed a schema or pure function → add an L1 test

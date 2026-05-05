@@ -1,6 +1,6 @@
 # Template System
 
-Templates are raw scaffold files shipped inside the `@blissful-infra/cli` npm package under `templates/`. They are **not** TypeScript — they are Dockerfiles, Kotlin source, YAML, shell scripts, and config files with placeholder syntax processed at scaffold time.
+Templates are raw scaffold files shipped inside the `@blissful-infra/cli` npm package under `templates/`. They are **not** TypeScript, they are Dockerfiles, Kotlin source, YAML, shell scripts, and config files with placeholder syntax processed at scaffold time.
 
 See [packages/cli/CLAUDE.md](../../CLAUDE.md) for CLI context. The substitution logic lives in `src/utils/template.ts`.
 
@@ -16,7 +16,7 @@ templates/
 │   ├── Dockerfile        # Multi-stage build with OpenTelemetry Java agent
 │   ├── Dockerfile.dev    # Dev image (no multi-stage, faster rebuild)
 │   ├── Jenkinsfile       # CI/CD pipeline (deploys via blissful-infra API)
-│   ├── build.gradle.kts  # Gradle build — Kotlin, Spring Boot, Kafka, JPA
+│   ├── build.gradle.kts  # Gradle build: Kotlin, Spring Boot, Kafka, JPA
 │   ├── k8s/              # Kubernetes manifests (base + staging/ephemeral overlays)
 │   └── k6/               # k6 load test scripts
 ├── react-vite/           # React + Vite + TypeScript + TailwindCSS frontend
@@ -57,7 +57,7 @@ At scaffold time, `src/utils/template.ts` walks every template file and applies 
 {{REGISTRY_URL}}     →  Docker registry URL (default: localhost:5050)
 ```
 
-Variables use double curly braces. Substitution is string-replace — no escaping mechanism.
+Variables use double curly braces. Substitution is string-replace, no escaping mechanism.
 
 ### Conditional blocks
 
@@ -107,7 +107,7 @@ ai-pipeline:
 - **Framework:** Spring Boot 3.x with Spring Web, Spring Data JPA, Spring Kafka, WebSocket support
 - **Build:** Gradle (Kotlin DSL). Run with `./gradlew build -x test` in CI.
 - **Observability:** OpenTelemetry Java agent bundled in the Dockerfile (`COPY otel-javaagent.jar`). OTLP traces exported to Jaeger. Metrics exposed at `/actuator/prometheus`.
-- **Health:** `/actuator/health` — used by the Jenkinsfile deploy stage to confirm the service is up.
+- **Health:** `/actuator/health`, used by the Jenkinsfile deploy stage to confirm the service is up.
 - **Database migrations:** Flyway (when postgres is enabled). Migration files go in `src/main/resources/db/migration/`.
 
 ### Jenkinsfile

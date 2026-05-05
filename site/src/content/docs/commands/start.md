@@ -20,10 +20,10 @@ blissful-infra start <name> [options]
 | `--backend <backend>` | `-b` | `spring-boot` | Backend framework template |
 | `--frontend <frontend>` | `-f` | `react-vite` | Frontend framework template |
 | `--database <database>` | `-d` | `postgres` | Database option |
-| `--plugins <plugins>` | `-p` | — | Comma-separated plugin list |
-| `--no-monitoring` | — | monitoring on | Disable Prometheus + Grafana |
-| `--deploy-target <target>` | — | `local-only` | Cloud deploy target: `cloudflare`, `vercel`, or `aws` |
-| `--link` | `-l` | — | Template dev mode: skip copying, link to template sources |
+| `--plugins <plugins>` | `-p` | - | Comma-separated plugin list |
+| `--no-monitoring` | - | monitoring on | Disable Prometheus + Grafana |
+| `--deploy-target <target>` | - | `local-only` | Cloud deploy target: `cloudflare`, `vercel`, or `aws` |
+| `--link` | `-l` | - | Template dev mode: skip copying, link to template sources |
 
 ## Examples
 
@@ -78,7 +78,7 @@ Required ports (default stack):
 
 ### 2. Jenkins
 
-If the shared Jenkins server is not already running, `start` boots it automatically. Jenkins is a shared service — it persists across projects and lives in `~/.blissful-infra/jenkins/`.
+If the shared Jenkins server is not already running, `start` boots it automatically. Jenkins is a shared service, it persists across projects and lives in `~/.blissful-infra/jenkins/`.
 
 ### 3. Scaffold
 
@@ -86,13 +86,13 @@ The CLI creates the project directory and copies template files. `{{PROJECT_NAME
 
 For the default `spring-boot` + `react-vite` + `postgres` stack, this creates:
 
-- `backend/` — compiled Kotlin source, Gradle wrapper, Dockerfile, Jenkinsfile, Flyway migrations, JPA entities
-- `frontend/` — React + Vite + TypeScript source, TailwindCSS config, Dockerfile
-- `loki/` — Loki and Promtail configuration files
-- `prometheus/` — Prometheus scrape config targeting `backend:8080/actuator/prometheus`
-- `grafana/` — Datasource provisioning (Prometheus + Loki) and three pre-built dashboards
-- `nginx.conf` — Reverse proxy routing `/api/` and `/ws/` to the backend, everything else to the frontend
-- `blissful-infra.yaml` — Project configuration file
+- `backend/`, compiled Kotlin source, Gradle wrapper, Dockerfile, Jenkinsfile, Flyway migrations, JPA entities
+- `frontend/`, React + Vite + TypeScript source, TailwindCSS config, Dockerfile
+- `loki/`, Loki and Promtail configuration files
+- `prometheus/`, Prometheus scrape config targeting `backend:8080/actuator/prometheus`
+- `grafana/`, Datasource provisioning (Prometheus + Loki) and three pre-built dashboards
+- `nginx.conf`, Reverse proxy routing `/api/` and `/ws/` to the backend, everything else to the frontend
+- `blissful-infra.yaml`, Project configuration file
 - `.gitignore`
 
 ### 4. docker-compose.yaml generation

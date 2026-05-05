@@ -15,7 +15,7 @@ This doesn't match how authentication works in the real world. Production
 deployments overwhelmingly run **one identity provider per organization**
 with realms or OIDC clients per app. SSO across an org's services is the
 default. Per-service Keycloak instances would mean every service's users
-are in their own silo — not what anyone actually does.
+are in their own silo, not what anyone actually does.
 
 The pattern carries over to local dev: when a client has multiple services
 that need auth, you want a single sign-on experience locally too. Login
@@ -58,7 +58,7 @@ register as OIDC clients within that realm. This gives:
 
 Services that want their own realm can opt out and use the per-service
 plugin. The plugin contract for declaring realm requirements is deferred
-to a future ADR (likely the same one that defines plugin data contracts —
+to a future ADR (likely the same one that defines plugin data contracts
 see ADR-0008's "Risks" section).
 
 ### What's intentionally NOT in scope
@@ -81,7 +81,7 @@ see ADR-0008's "Risks" section).
 ### Positive
 
 - **SSO across a client's services for free.** Real-world auth pattern.
-- **One admin console** per client — manage users, realms, clients in
+- **One admin console** per client, manage users, realms, clients in
   one place.
 - **Less RAM** when a client has multiple auth-needing services (one
   Keycloak vs N).
@@ -104,7 +104,7 @@ see ADR-0008's "Risks" section).
 - **Auto-registration of services as OIDC clients.** When `service add`
   runs, the new service should auto-register itself as a client in the
   client's Keycloak realm (with auto-generated client_id/secret).
-  Punted to follow-up — for v1, manual registration via admin console.
+  Punted to follow-up, for v1, manual registration via admin console.
 - **Migration of existing per-service Keycloak instances.** Any client
   that currently has the plugin keeps it (backward-compatible). New
   clients use the client-level one by default.
@@ -115,7 +115,7 @@ see ADR-0008's "Risks" section).
 ## Alternatives considered
 
 - **Keep per-service Keycloak as default.** Simpler isolation. **Rejected**
-  because it forces every service to manage its own user database — a
+  because it forces every service to manage its own user database, a
   fundamental mismatch with how production auth works.
 - **One Keycloak per service, one shared realm.** Hybrid. **Rejected** as
   the worst of both worlds: Keycloak's strength is realm-as-tenant; one
@@ -124,14 +124,14 @@ see ADR-0008's "Risks" section).
 - **Skip Keycloak entirely, recommend external IdPs.** Auth0, Clerk,
   etc. **Rejected** because it breaks blissful-infra's promise of
   zero-cloud local dev.
-- **Use a lighter IdP** (Authentik, Ory Hydra). **Deferred** — Keycloak
+- **Use a lighter IdP** (Authentik, Ory Hydra). **Deferred**: Keycloak
   is the most familiar to enterprise teams, who are blissful-infra's
   primary audience. Lighter alternatives are interesting but not
   compelling enough to switch from the dominant choice.
 
 ## References
 
-- ADR-0002 (per-client isolation) — the boundary Keycloak fits inside
-- ADR-0008 (ClickHouse + LocalStack at client level) — sets the pattern
+- ADR-0002 (per-client isolation), the boundary Keycloak fits inside
+- ADR-0008 (ClickHouse + LocalStack at client level), sets the pattern
   this ADR follows
 - [Keycloak quick start](https://www.keycloak.org/getting-started/getting-started-docker)

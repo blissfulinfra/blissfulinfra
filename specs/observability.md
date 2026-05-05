@@ -1,10 +1,10 @@
-# Blissful Infra — Observability & Metric Regression Tracking Specification
+# Blissful Infra. Observability & Metric Regression Tracking Specification
 
 ## Vision
 
-Enterprise-grade observability on your laptop. Every blissful-infra project ships with a full local observability stack that mirrors what engineering teams run in production — Prometheus, Grafana, Jaeger and Loki, pre-wired and provisioned with zero configuration.
+Enterprise-grade observability on your laptop. Every blissful-infra project ships with a full local observability stack that mirrors what engineering teams run in production. Prometheus, Grafana, Jaeger and Loki, pre-wired and provisioned with zero configuration.
 
-For teams that use enterprise APM tools (Wavefront, Datadog, Honeycomb, Dynatrace), blissful-infra provides an optional Kafka-based export path that pipes metrics to any backend without changing application code. The local Prometheus/Grafana stack is always primary — the enterprise export is additive, never a replacement.
+For teams that use enterprise APM tools (Wavefront, Datadog, Honeycomb, Dynatrace), blissful-infra provides an optional Kafka-based export path that pipes metrics to any backend without changing application code. The local Prometheus/Grafana stack is always primary, the enterprise export is additive, never a replacement.
 
 ---
 
@@ -19,7 +19,7 @@ All containers → Promtail → Loki (logs)
 Deployment tracking → P95 latency delta captured on every deploy
 ```
 
-Grafana has pre-provisioned dashboards for JVM heap, HTTP request rate, error rate and latency percentiles. Jaeger receives traces from every HTTP request and Kafka message automatically via the OTel agent — no instrumentation code required.
+Grafana has pre-provisioned dashboards for JVM heap, HTTP request rate, error rate and latency percentiles. Jaeger receives traces from every HTTP request and Kafka message automatically via the OTel agent, no instrumentation code required.
 
 ---
 
@@ -47,7 +47,7 @@ flowchart TD
     SB -->|"OTel"| OTel
 ```
 
-If Kafka goes down, the primary observability path is unaffected. The export path degrades gracefully — metrics buffer in the OTel collector and flush when Kafka recovers, up to a configurable retention limit.
+If Kafka goes down, the primary observability path is unaffected. The export path degrades gracefully, metrics buffer in the OTel collector and flush when Kafka recovers, up to a configurable retention limit.
 
 ---
 
@@ -59,7 +59,7 @@ Prometheus and Grafana show you what metrics look like right now. They don't tel
 
 ### Design
 
-Every deployment creates a **metric snapshot** — a point-in-time capture of key metrics tagged with the git SHA, branch and timestamp. The regression engine compares the current snapshot against the previous N snapshots and flags regressions.
+Every deployment creates a **metric snapshot**: a point-in-time capture of key metrics tagged with the git SHA, branch and timestamp. The regression engine compares the current snapshot against the previous N snapshots and flags regressions.
 
 #### Metric snapshot schema
 
@@ -69,7 +69,7 @@ Every deployment creates a **metric snapshot** — a point-in-time capture of ke
   gitSha: string             // commit that triggered the deploy
   branch: string
   timestamp: string          // ISO 8601
-  domain: string             // e.g. "auth", "payments", "api" — derived from span tags
+  domain: string             // e.g. "auth", "payments", "api": derived from span tags
   metrics: {
     p50LatencyMs: number
     p95LatencyMs: number
@@ -113,13 +113,13 @@ Regressions are:
 - Logged to the deployment record (visible via `blissful-infra status`)
 - Optionally fail the Jenkins CI gate (configurable per project in `blissful-infra.yaml`)
 
-Improvements (metrics better than baseline by the same thresholds) are surfaced as green badges — the system tracks wins as well as regressions.
+Improvements (metrics better than baseline by the same thresholds) are surfaced as green badges, the system tracks wins as well as regressions.
 
 ---
 
 ## Pluggable Observability Backend
 
-For teams using enterprise APM tools, the Kafka export path acts as an adapter layer. The application emits OTel spans — the backend consumer is swappable without touching application code.
+For teams using enterprise APM tools, the Kafka export path acts as an adapter layer. The application emits OTel spans, the backend consumer is swappable without touching application code.
 
 ### Configuration in blissful-infra.yaml
 
@@ -172,35 +172,35 @@ The existing dashboard at `localhost:3002` gains two new views:
 - Time-series graph of P95 latency and error rate across the last N deployments
 - Vertical markers at each deployment, labeled with git SHA (short) and branch
 - Click a marker to see the full deployment record and regression report
-- Domain selector — filter to a specific domain (auth, payments, etc.)
+- Domain selector, filter to a specific domain (auth, payments, etc.)
 
 ### Regression report
 - Per-deployment comparison table: metric before, metric after, delta, threshold status
-- Domain breakdown — which domains regressed, which improved
+- Domain breakdown, which domains regressed, which improved
 - Link to the Jaeger trace that best illustrates the regression (highest latency span in the window)
 
 ---
 
 ## Implementation Phases
 
-### Phase 8a — Metric snapshots (no Kafka required)
+### Phase 8a. Metric snapshots (no Kafka required)
 - Capture metric snapshot from Prometheus at deploy time (post-deploy hook in Jenkins pipeline)
 - Store snapshots as JSONL alongside deployment records
 - Regression detection against rolling baseline
 - Dashboard: deployment history badges (red/green) + basic regression report
 
-### Phase 8b — Domain attribution
+### Phase 8b. Domain attribution
 - OTel span tag convention for domain labeling
 - Update Spring Boot template to auto-tag by controller package
 - Regression report broken down by domain
 
-### Phase 8c — Kafka export path
+### Phase 8c. Kafka export path
 - OTel Collector added as optional Docker service
 - `o11y.metrics` and `o11y.spans` Kafka topics
 - Prometheus consumer (regression tracking backend)
 - Dashboard metric timeline view with deployment markers
 
-### Phase 8d — Pluggable backends
+### Phase 8d. Pluggable backends
 - Wavefront consumer (first enterprise target)
 - `observability.export` config in `blissful-infra.yaml`
 - Documentation: porting from Prometheus/Grafana to Wavefront
@@ -209,8 +209,8 @@ The existing dashboard at `localhost:3002` gains two new views:
 
 ## Key Design Decisions
 
-- **Prometheus/Grafana is never a dependency of Kafka** — local observability works regardless of Kafka health
-- **OTel as the instrumentation standard** — backend-agnostic by design, no vendor lock-in in application code
-- **Kafka as transport, not storage** — short retention on metric topics, long retention only on snapshots
-- **Regression tracking before pluggable backends** — Phase 8a delivers value immediately without any new infrastructure
-- **Domain attribution is opt-in** — auto-tagging from package structure works for most projects, explicit tags for teams with complex domain boundaries
+- **Prometheus/Grafana is never a dependency of Kafka**: local observability works regardless of Kafka health
+- **OTel as the instrumentation standard**: backend-agnostic by design, no vendor lock-in in application code
+- **Kafka as transport, not storage**: short retention on metric topics, long retention only on snapshots
+- **Regression tracking before pluggable backends**: Phase 8a delivers value immediately without any new infrastructure
+- **Domain attribution is opt-in**: auto-tagging from package structure works for most projects, explicit tags for teams with complex domain boundaries

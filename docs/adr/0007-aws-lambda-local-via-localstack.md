@@ -6,7 +6,7 @@
 
 ## Context
 
-blissful-infra ships a `spring-boot` backend template — a long-running
+blissful-infra ships a `spring-boot` backend template, a long-running
 container shape. That doesn't match the serverless / function-shape (`(event)
 → response`) that AWS Lambda + Cloudflare Workers + Vercel Functions all use.
 
@@ -16,11 +16,11 @@ provisioning, no Dockerfile, no Spring Boot autoconfig dance. The user
 asked for an on-ramp.
 
 We have LocalStack already in the stack as a service-level plugin. Its
-free tier supports Lambda emulation in a real AWS Lambda Docker runtime —
+free tier supports Lambda emulation in a real AWS Lambda Docker runtime
 the same image as production. So we have most of the pieces; we need to
 glue them into a first-class backend choice.
 
-A complementary question — local now, cloud later? — was answered in the
+A complementary question, local now, cloud later?, was answered in the
 conversation: focus on local dev first. The cloud-deploy adapter for AWS
 Lambda is documented as future work but **not implemented in this scope**.
 The reasoning is honest: the existing deploy adapters (`packages/cli/src/deploy/`)
@@ -31,7 +31,7 @@ mislead users into thinking it works.
 
 Add `lambda-python` as a new **backend template choice**, peer to
 `spring-boot` etc. Local execution runs on LocalStack inside the service's
-unified Compose project. Deploy to real AWS is **deferred** — documented
+unified Compose project. Deploy to real AWS is **deferred**: documented
 as future work in this ADR's "Risks / follow-ups" section.
 
 ### Service-add flow
@@ -46,14 +46,14 @@ Scaffolds at `~/.blissful-infra/clients/dev/hello/`:
 hello/
 ├── blissful-infra.yaml          # service config (type: service, backend: lambda-python)
 ├── docker-compose.yaml           # joins client infra; pulls in LocalStack as required dep
-├── lambda.yaml                   # the manifest — function name, runtime, handler entry, env, role
+├── lambda.yaml                   # the manifest: function name, runtime, handler entry, env, role
 └── lambda/
     ├── handler.py
     ├── requirements.txt
     └── README.md
 ```
 
-`lambda-python` is **not a normal backend** — there's no long-running
+`lambda-python` is **not a normal backend**: there's no long-running
 container running the user's code. Instead, the service compose includes
 LocalStack (as a required component, not a plugin) plus a one-shot
 "deployer" sidecar that registers the function with LocalStack on
@@ -94,7 +94,7 @@ blissful-infra lambda logs <client> <service> [--last]
 
 1. LocalStack container starts (per-service, on the service's `internal`
    network).
-2. Init scripts run — buckets, queues, etc. (existing LocalStack plugin
+2. Init scripts run, buckets, queues, etc. (existing LocalStack plugin
    behavior).
 3. Deployer sidecar waits for LocalStack `_localstack/health` to report
    ready.
@@ -131,7 +131,7 @@ blissful-infra lambda logs <client> <service> [--last]
 - **Manifest-driven.** `lambda.yaml` is the single source of truth for
   function configuration. Same file feeds local and (future) cloud deploy.
 - **Fits the existing client model.** A `lambda-python` service is just a
-  service with a different backend choice — same client-level
+  service with a different backend choice, same client-level
   infrastructure (Postgres, Kafka, observability) is available.
 - **Free.** No AWS account needed to start.
 
@@ -178,7 +178,7 @@ blissful-infra lambda logs <client> <service> [--last]
   integrate with our client-model unified Compose project.
 - **Run the handler as a long-running Python container.** Wrap the
   handler in FastAPI/Flask, never use a real Lambda runtime locally.
-  **Rejected** because the whole point is to *be* serverless — different
+  **Rejected** because the whole point is to *be* serverless, different
   cold-start behavior, different event shapes, different deploy story.
   This would be a fake.
 - **Skip LocalStack, hand-roll Lambda emulation.** Use AWS's
@@ -187,7 +187,7 @@ blissful-infra lambda logs <client> <service> [--last]
   gives us the rest of AWS for free.
 - **Make `lambda-python` a plugin instead of a backend.** A service with
   no backend, plus a "lambda" plugin. **Rejected** because backend type
-  is the right axis — it's what determines the runtime shape, deploy
+  is the right axis, it's what determines the runtime shape, deploy
   target, and template scaffolding.
 - **Multiple lambdas in one service.** A `lambda-python` service holding
   N functions. **Deferred.** Start with one-function-per-service. If
@@ -197,9 +197,9 @@ blissful-infra lambda logs <client> <service> [--last]
 ## References
 
 - [LocalStack Lambda docs](https://docs.localstack.cloud/user-guide/aws/lambda/)
-- ADR-0002 (per-client isolation) — clients still own the network
-- ADR-0003 (unified compose project) — service compose merges into client compose
-- [specs/cloud-deploy.md](../../specs/cloud-deploy.md) — broader cloud-deploy strategy
+- ADR-0002 (per-client isolation), clients still own the network
+- ADR-0003 (unified compose project), service compose merges into client compose
+- [specs/cloud-deploy.md](../../specs/cloud-deploy.md), broader cloud-deploy strategy
   (this ADR is a slice of it focused on Lambda local; cloud lambda deploy is
   the next slice)
 - Conversation log 2026-05-02: "is there a way to simulate lambda locally?"

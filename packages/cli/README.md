@@ -1,8 +1,8 @@
 # @blissful-infra/cli
 
-**[blissful-infra.com](https://blissful-infra.com)** — full docs and guides
+**[blissful-infra.com](https://blissful-infra.com)**: full docs and guides
 
-One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required.
+One command creates and runs a full-stack app with CI/CD, observability, and an AI agent, no cloud required.
 
 ```bash
 npm install -g @blissful-infra/cli
@@ -11,14 +11,14 @@ blissful-infra start my-app
 
 ## What you get
 
-- **Backend** — Kotlin/Spring Boot, Python/FastAPI, Node/Express, or Go/Chi
-- **Frontend** — React + Vite or Next.js, both with TypeScript and Tailwind
-- **Database** — Postgres with Flyway migrations, Redis caching, or both
-- **Kafka** — event bus wired between backend and frontend via WebSockets + SSE
-- **Observability** — Prometheus, Grafana, Loki, and Jaeger provisioned automatically
-- **CI/CD** — Jenkins pipeline with a generated Jenkinsfile, Docker registry included
-- **AI agent** — Ask Claude or Ollama to diagnose errors, analyze logs, and explain metrics
-- **MCP server** — Let Claude orchestrate your entire local platform via natural language
+- **Backend**: Kotlin/Spring Boot or Python serverless on LocalStack (`lambda-python`)
+- **Frontend**: React + Vite with TypeScript and Tailwind
+- **Database**: Postgres with Flyway migrations, Redis caching, or both
+- **Kafka**: event bus wired between backend and frontend via WebSockets + SSE
+- **Observability**: Prometheus, Grafana, Loki, and Jaeger provisioned automatically
+- **CI/CD**: Jenkins pipeline with a generated Jenkinsfile, Docker registry included
+- **AI agent**: Ask Claude or Ollama to diagnose errors, analyze logs, and explain metrics
+- **MCP server**: Let Claude orchestrate your entire local platform via natural language
 
 ## Quickstart
 

@@ -1,4 +1,4 @@
-# packages/cli — @blissful-infra/cli
+# packages/cli, @blissful-infra/cli
 
 The published CLI package. Handles everything: command parsing, project scaffolding, Docker Compose orchestration, the local API server, MCP server, and AI agent.
 
@@ -14,7 +14,7 @@ See root [CLAUDE.md](../../CLAUDE.md) for monorepo conventions.
 
 ```
 src/
-├── index.ts              # CLI entry point — registers all commands with Commander.js
+├── index.ts              # CLI entry point: registers all commands with Commander.js
 ├── commands/             # One file per command (20 commands)
 ├── server/
 │   ├── api.ts            # Express REST API server (port 3002)
@@ -24,16 +24,16 @@ src/
 │   └── __tests__/        # Co-located unit + L2 tests (vitest)
 └── __tests__/integration/ # L3 integration tests (real Docker, slow)
 
-templates/                # Scaffold templates (NOT under src/ — shipped as-is in npm package)
+templates/                # Scaffold templates (NOT under src/: shipped as-is in npm package)
 examples/                 # Example projects (copied to dist/examples at build time)
 ```
 
 ## Tests
 
 Three-layer strategy (see root [CLAUDE.md](../../CLAUDE.md#testing-convention)):
-- **L1** — pure functions (port math, validators) under `src/utils/__tests__/*.test.ts`
-- **L2** — compose generation (validates real YAML with `docker compose config --quiet`) under same dir
-- **L3** — full client/service lifecycle (real Docker) under `src/__tests__/integration/`
+- **L1**: pure functions (port math, validators) under `src/utils/__tests__/*.test.ts`
+- **L2**: compose generation (validates real YAML with `docker compose config --quiet`) under same dir
+- **L3**: full client/service lifecycle (real Docker) under `src/__tests__/integration/`
 
 ```bash
 npm test                      # L1 + L2 (fast, ~250ms total)
@@ -85,11 +85,11 @@ Registered in `src/index.ts` using Commander.js. Grouped by feature phase:
 | `lambda logs <client> <svc>` | `lambda.ts` | Tail Lambda logs (CloudWatch emulated by LocalStack) |
 
 Lambda services are created via `service add <c> <s> --backend lambda-python`.
-Compose generation branches on `isServerlessBackend(backend)` —
+Compose generation branches on `isServerlessBackend(backend)`
 `generateLambdaServiceCompose` produces the `localstack + deployer` sidecar
 shape instead of a long-running backend container.
 
-Cloud deploy adapter for real AWS Lambda is intentionally deferred — see
+Cloud deploy adapter for real AWS Lambda is intentionally deferred, see
 [docs/adr/0007-aws-lambda-local-via-localstack.md](../../docs/adr/0007-aws-lambda-local-via-localstack.md).
 
 ### CI/CD (Phase 2)
@@ -126,7 +126,7 @@ Each util is a focused module. Key ones:
 
 | File | Purpose |
 |---|---|
-| `claude.ts` | Anthropic SDK wrapper — creates AI completions, tool calls |
+| `claude.ts` | Anthropic SDK wrapper, creates AI completions, tool calls |
 | `ai-provider.ts` | Abstraction over AI providers (currently just Claude) |
 | `knowledge-base.ts` | Per-project contextual knowledge stored as JSON |
 | `analyzer.ts` | Analyzes logs/metrics to surface anomalies |
@@ -167,7 +167,7 @@ GET  /api/v1/links                                 Tool URLs (Jaeger/Grafana/etc
 
 `/api/v1/...` is the only accepted public path. The server returns 404 with a
 clear migration hint for any `/api/...` request that is not `/api/v1/`. All
-internal callers — the dashboard, MCP server, and the Jenkinsfile template —
+internal callers, the dashboard, MCP server, and the Jenkinsfile template
 use the versioned form.
 
 To introduce v2 (breaking change), add new route handlers using `/api/v2/...`
@@ -176,7 +176,7 @@ delete it. The dashboard centralizes the version in a single `API_BASE`
 constant in [App.tsx](../dashboard/src/App.tsx).
 
 Note: `${jenkins}/api/json` and `${grafana}/api/health` are *external* APIs
-(Jenkins, Grafana) — they are unrelated to this versioning and stay as-is.
+(Jenkins, Grafana), they are unrelated to this versioning and stay as-is.
 
 The dashboard (`packages/dashboard`) fetches from this server at `http://localhost:3002`.
 Jenkins pipelines reach it at `http://host.docker.internal:3002` (from inside Docker).
@@ -185,7 +185,7 @@ Jenkins pipelines reach it at `http://host.docker.internal:3002` (from inside Do
 
 ## MCP server (`src/server/mcp.ts`)
 
-Implements the Model Context Protocol over **stdio** transport — designed
+Implements the Model Context Protocol over **stdio** transport, designed
 to be spawned as a subprocess by Claude Desktop / Claude Code / Cursor, not
 exposed over a network port. Internally it's a thin shim: each MCP tool
 proxies to a `/api/v1/...` endpoint on the dashboard's API server. ~19
@@ -198,13 +198,13 @@ plugins.
 Two ways to point the MCP server at the right API:
 
 ```bash
-# Auto-discover from the registry — recommended
+# Auto-discover from the registry: recommended
 blissful-infra mcp --client dev
 
-# Explicit URL — overrides --client when both are passed
+# Explicit URL: overrides --client when both are passed
 blissful-infra mcp --api http://localhost:3013
 
-# Default (legacy flat-model dashboard) — only works if something is on :3002
+# Default (legacy flat-model dashboard): only works if something is on :3002
 blissful-infra mcp
 ```
 
@@ -258,7 +258,7 @@ mcp.ts.
 
 ## Template system
 
-Templates live in `templates/` (shipped in the npm package). They are **not** TypeScript — they are raw files (Dockerfiles, Jenkinsfiles, `docker-compose.yaml`, etc.) with `{{VAR}}` placeholders substituted at scaffold time.
+Templates live in `templates/` (shipped in the npm package). They are **not** TypeScript, they are raw files (Dockerfiles, Jenkinsfiles, `docker-compose.yaml`, etc.) with `{{VAR}}` placeholders substituted at scaffold time.
 
 See [src/templates/CLAUDE.md](src/templates/CLAUDE.md) for the full template system reference.
 

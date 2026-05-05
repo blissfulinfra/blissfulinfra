@@ -1,11 +1,11 @@
 ---
 title: The client model
-description: How to manage multiple isolated environments — each its own Kafka, Postgres, Jenkins, and observability stack.
+description: How to manage multiple isolated environments, each its own Kafka, Postgres, Jenkins, and observability stack.
 ---
 
 The **client model** is blissful-infra's way of running multiple isolated
 environments on one machine. Each *client* is a fully self-contained stack
-with its own Kafka, Postgres, Jenkins, and observability — running on its
+with its own Kafka, Postgres, Jenkins, and observability, running on its
 own Docker network, with its own port block.
 
 Within a client, multiple **services** share that client's infrastructure.
@@ -32,12 +32,12 @@ The two models coexist.
 ```text
 Client: acme-corp
 ├── Infrastructure (shared across this client's services)
-│   ├── Jenkins         — CI/CD for all acme-corp services
-│   ├── Kafka           — shared message bus
-│   ├── Postgres        — shared instance, per-service schemas
-│   ├── Prometheus      — scrapes all acme-corp services
-│   ├── Grafana         — dashboards for all acme-corp services
-│   └── Jaeger / Loki   — traces and logs
+│   ├── Jenkins        : CI/CD for all acme-corp services
+│   ├── Kafka          : shared message bus
+│   ├── Postgres       : shared instance, per-service schemas
+│   ├── Prometheus     : scrapes all acme-corp services
+│   ├── Grafana        : dashboards for all acme-corp services
+│   └── Jaeger / Loki  : traces and logs
 │
 ├── Service: payment-service   (Spring Boot)
 ├── Service: storefront        (React + Spring Boot)
@@ -55,7 +55,7 @@ Client: globex-inc
 
 **No resources are shared across clients.** `acme-corp`'s Kafka and
 `globex-inc`'s Kafka are entirely separate containers on entirely separate
-Docker networks. Cross-client traffic is impossible — Docker enforces this
+Docker networks. Cross-client traffic is impossible. Docker enforces this
 at the OS level.
 
 ## Quick start
@@ -71,17 +71,17 @@ blissful-infra service add acme-corp api --backend spring-boot --frontend react-
 blissful-infra client up acme-corp     # bring everything up
 blissful-infra client status acme-corp # see what's running
 blissful-infra client down acme-corp   # stop everything
-blissful-infra client remove acme-corp # destructive — full teardown
+blissful-infra client remove acme-corp # destructive: full teardown
 ```
 
 See [`client`](/commands/client) and [`service`](/commands/service) for full
 command references.
 
-## Topology — one Compose project per client
+## Topology, one Compose project per client
 
 All of a client's containers (infra + every service) live under **one
 Docker Compose project**, named after the client. The CLI achieves this
-via the Compose `include:` directive — service-specific Compose files are
+via the Compose `include:` directive, service-specific Compose files are
 merged into the client's parent Compose file at runtime.
 
 ```text
@@ -93,7 +93,7 @@ docker-compose.infra.yaml  (name: acme-corp)
 │   └── ./notifications/docker-compose.yaml
 ```
 
-Run `docker compose ls` and you see one row per client — not one per
+Run `docker compose ls` and you see one row per client, not one per
 service. Run `docker compose ps` from the client directory and you see all
 containers (infra + services) together. This is the single-namespace
 property that makes the client model practical day-to-day.
@@ -166,12 +166,12 @@ strain at 3+. For lightweight experimentation use
 
 ## Limitations / open work
 
-- **`blissful-infra dev`** (template hot-reload) is still flat-model only —
+- **`blissful-infra dev`** (template hot-reload) is still flat-model only
   the client model uses production-style Dockerfiles. Hot reload via
   Spring DevTools volume mounts is queued as a `--dev` flag.
 - **Client-aware dashboard**: the dashboard has been partially taught the
   client model (URLs, port discovery via `/api/v1/links`, service listing
-  via `CLIENT_NAME` env). A multi-client selector is not yet shipped — you
+  via `CLIENT_NAME` env). A multi-client selector is not yet shipped, you
   see one client per dashboard instance.
 - **Multi-environment per client** (e.g. `acme/staging` vs `acme/prod`): not
   built yet. Today, run them as separate clients (`acme-staging`,
@@ -179,8 +179,8 @@ strain at 3+. For lightweight experimentation use
 
 ## Related
 
-- [ADR-0002 — Per-client isolation model](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0002-per-client-isolation-model.md)
-- [ADR-0003 — Unified Compose project per client](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0003-unified-compose-project-per-client.md)
-- [Spec — Client model](https://github.com/cavanpage/blissful-infra/blob/main/specs/client-model.md)
-- [Command reference — `client`](/commands/client)
-- [Command reference — `service`](/commands/service)
+- [ADR-0002, Per-client isolation model](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0002-per-client-isolation-model.md)
+- [ADR-0003, Unified Compose project per client](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0003-unified-compose-project-per-client.md)
+- [Spec. Client model](https://github.com/cavanpage/blissful-infra/blob/main/specs/client-model.md)
+- [Command reference, `client`](/commands/client)
+- [Command reference, `service`](/commands/service)

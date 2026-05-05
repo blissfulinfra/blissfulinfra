@@ -3,7 +3,7 @@ title: blissful-infra deploy
 description: Deploy your local project to Cloudflare, Vercel, or AWS with one command.
 ---
 
-`blissful-infra deploy` takes the app you built locally and ships it to a real cloud environment. Set `deploy.target` in your `blissful-infra.yaml` to choose the platform — then run the same command every time.
+`blissful-infra deploy` takes the app you built locally and ships it to a real cloud environment. Set `deploy.target` in your `blissful-infra.yaml` to choose the platform, then run the same command every time.
 
 ## Usage
 
@@ -58,7 +58,7 @@ wrangler login
 | Postgres database | Cloudflare D1 (SQLite) |
 | Redis cache | Cloudflare KV |
 
-The CLI calls `wrangler` for each step — you don't need to know the wrangler commands yourself. A `wrangler.toml` is generated in `frontend/` and `backend/` at scaffold time if you used `--deploy-target cloudflare`. If you're deploying an existing project, the CLI generates them on first deploy.
+The CLI calls `wrangler` for each step, you don't need to know the wrangler commands yourself. A `wrangler.toml` is generated in `frontend/` and `backend/` at scaffold time if you used `--deploy-target cloudflare`. If you're deploying an existing project, the CLI generates them on first deploy.
 
 **Config block (optional):**
 

@@ -11,11 +11,11 @@ The `spring-boot` template generates a production-ready Kotlin + Spring Boot 3 b
 |-----------|---------|---------|
 | Kotlin | 1.9+ | Application language |
 | Spring Boot | 3.x | Web framework, dependency injection |
-| Spring Kafka | — | Kafka producer and consumer |
-| Spring Data JPA | — | Database access via Hibernate ORM |
-| Spring WebSocket | — | Real-time bidirectional communication |
-| Spring Cache | — | `@Cacheable` Redis integration |
-| Flyway | — | Database schema migrations |
+| Spring Kafka | - | Kafka producer and consumer |
+| Spring Data JPA | - | Database access via Hibernate ORM |
+| Spring WebSocket | - | Real-time bidirectional communication |
+| Spring Cache | - | `@Cacheable` Redis integration |
+| Flyway | - | Database schema migrations |
 | Gradle | 8.x | Build tool with Kotlin DSL |
 | OpenTelemetry Java agent | 2.x | Auto-instrumentation for traces |
 
@@ -153,10 +153,10 @@ For the fastest inner loop when editing backend code, use Spring Boot DevTools m
 ```bash
 cd my-app
 blissful-infra dev
-# Starts Spring Boot DevTools — saves trigger JVM restart in ~2-3 seconds
+# Starts Spring Boot DevTools: saves trigger JVM restart in ~2-3 seconds
 ```
 
 Template development (editing the template source itself) is currently
-supported via the repo's `dev.sh` script — see the [Contributing
+supported via the repo's `dev.sh` script, see the [Contributing
 section](https://github.com/cavanpage/blissful-infra#contributing) of the
 README for the current workflow.

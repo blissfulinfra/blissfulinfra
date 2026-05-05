@@ -11,8 +11,8 @@ ADR-0002 established that each client gets its own isolated stack
 implementation made each service its own separate Compose project on top
 of that:
 
-- `<client>` Compose project — owns the infra (kafka, postgres, jenkins, ...)
-- `<client>-<service>` Compose project — owns the service (backend,
+- `<client>` Compose project, owns the infra (kafka, postgres, jenkins, ...)
+- `<client>-<service>` Compose project, owns the service (backend,
   frontend, localstack), joins `<client>_infra` as an *external* network
 
 This worked but caused a string of related problems:
@@ -36,7 +36,7 @@ This worked but caused a string of related problems:
   `backend`/`frontend`. Two services in the same client would collide.
 
 The pivotal user observation: *"it still is creating 2 namespaces/images
-in docker"* — they wanted everything under one umbrella.
+in docker"*, they wanted everything under one umbrella.
 
 ## Decision
 
@@ -63,14 +63,14 @@ flowchart TD
 
 - Parent compose file declares `name: <clientName>` and `include:` is
   populated with the relative path to each service's docker-compose.yaml.
-- Service compose files are *merged into the parent project* — they no
+- Service compose files are *merged into the parent project*, they no
   longer declare `name:` of their own.
 - Service keys are **prefixed** to avoid collisions in the merged service
   map: `<service>-backend`, `<service>-frontend`, `<service>-localstack`.
 - Container names use the same scheme: `<client>-<service>-<role>`.
 - The `infra` network is owned by the parent (`infra: { name: <client>_infra
   }`). Service compose files **do not** declare it as `external: true` (see
-  ADR-0001 for why that bites — `external: true` bleeds through include
+  ADR-0001 for why that bites, `external: true` bleeds through include
   merge and breaks the create-network-on-first-up flow).
 - Each service still gets its own per-service local network
   (`<service>-internal`) for frontend↔backend↔localstack DNS, with the
@@ -78,7 +78,7 @@ flowchart TD
   config (`proxy_pass http://backend:8080/`) keeps working unmodified.
 - `service add` regenerates the parent compose's `include:` list and runs
   one `docker compose -f docker-compose.infra.yaml up -d --build`.
-- `client up`/`down`/`status`/`remove` operate on the parent compose only —
+- `client up`/`down`/`status`/`remove` operate on the parent compose only
   no per-service iteration.
 - `service up`/`down`/`logs` operate on the parent compose with prefixed
   service-key arguments (`docker compose ... up -d <service>-backend
@@ -91,13 +91,13 @@ flowchart TD
 - **One namespace.** `docker compose ls` shows one row per client.
   `docker compose ps` shows infra + all services together.
 - **Cross-service `depends_on` works.** A service backend can
-  `depends_on: kafka: condition: service_healthy` — they're in the same
+  `depends_on: kafka: condition: service_healthy`, they're in the same
   project. Faster, more deterministic startup.
 - **Single-call lifecycle.** `client up` is one command, not "infra up
   then iterate services."
 - **Less code.** Removed the per-service iteration loops in `clientUpAction`,
   `clientDownAction`, `clientRemoveAction`.
-- **Service files stay self-contained on disk** — they're still per-service
+- **Service files stay self-contained on disk**: they're still per-service
   yaml files at `<client-dir>/<service>/docker-compose.yaml`, just merged
   at runtime. Easy to read, edit, version-control.
 
@@ -141,7 +141,7 @@ flowchart TD
   and using a single `-f` flag thereafter is cleaner. Rejected.
 - **Profiles instead of separate files** (`profiles: [service-a]` on
   service blocks in one giant compose file). Compose profiles toggle
-  services on/off but don't help with file layout — we'd still need a
+  services on/off but don't help with file layout, we'd still need a
   way to add/remove service definitions, and editing one giant file is
   worse for human ergonomics. Rejected.
 - **Keep the two-project layout, fix bugs as they come.** This is what
@@ -155,10 +155,10 @@ flowchart TD
 
 ## References
 
-- ADR-0002 (per-client isolation) — the prerequisite
-- ADR-0001 (Caddy edge proxy) — sits inside this same parent project
-- [packages/cli/src/utils/infra-compose.ts](../../packages/cli/src/utils/infra-compose.ts) —
+- ADR-0002 (per-client isolation), the prerequisite
+- ADR-0001 (Caddy edge proxy), sits inside this same parent project
+- [packages/cli/src/utils/infra-compose.ts](../../packages/cli/src/utils/infra-compose.ts)
   generation
-- [packages/cli/src/commands/service.ts](../../packages/cli/src/commands/service.ts) —
+- [packages/cli/src/commands/service.ts](../../packages/cli/src/commands/service.ts)
   service compose generation, container-name prefixing
 - [Compose Specification: include](https://github.com/compose-spec/compose-spec/blob/main/14-include.md)

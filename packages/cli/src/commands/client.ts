@@ -97,11 +97,11 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
           { name: "Jaeger (tracing)", value: "jaeger", checked: flagObs },
           { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
           // Promoted to client-level platform services — opt-in (ADR-0008/0009/0010)
-          { name: "ClickHouse (warehouse — ADR-0008)", value: "clickhouse", checked: flagClickhouse },
-          { name: "LocalStack (AWS-emulation — ADR-0008)", value: "localstack", checked: flagLocalstack },
-          { name: "Keycloak (IAM — ADR-0009)", value: "keycloak", checked: flagKeycloak },
-          { name: "MLflow (model registry — ADR-0010)", value: "mlflow", checked: flagMlflow },
-          { name: "Mage (workflow orchestrator — ADR-0010)", value: "mage", checked: flagMage },
+          { name: "ClickHouse warehouse (ADR-0008)", value: "clickhouse", checked: flagClickhouse },
+          { name: "LocalStack AWS emulation (ADR-0008)", value: "localstack", checked: flagLocalstack },
+          { name: "Keycloak IAM (ADR-0009)", value: "keycloak", checked: flagKeycloak },
+          { name: "MLflow model registry (ADR-0010)", value: "mlflow", checked: flagMlflow },
+          { name: "Mage workflow orchestrator (ADR-0010)", value: "mage", checked: flagMage },
         ],
       },
     ] as never) as { components: string[] };
@@ -456,7 +456,7 @@ async function clientInfraAction(
   }
 
   if (!changed) {
-    spinner.info(`${component} is already ${enabled ? "enabled" : "disabled"} — no changes`);
+    spinner.info(`${component} is already ${enabled ? "enabled" : "disabled"} (no changes)`);
     return;
   }
 

@@ -1,6 +1,6 @@
 # 0010. Decompose the `ai-pipeline` plugin into client-level platform services
 
-- **Status:** Accepted — implemented in client-model `service add` 2026-05-04
+- **Status:** Accepted, implemented in client-model `service add` 2026-05-04
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 
@@ -10,7 +10,7 @@
 > shared infra network. Co-deployed ClickHouse / MLflow inside the plugin
 > compose are gone for the client model. The legacy flat-model
 > `blissful-infra start --plugins ai-pipeline` still bundles them for
-> backwards compat — flat model is deprecated and will be removed in a
+> backwards compat, flat model is deprecated and will be removed in a
 > future ADR.
 
 ## Context
@@ -18,7 +18,7 @@
 The current `ai-pipeline` plugin is a kitchen-sink bundle. When a service
 opts into `--plugins ai-pipeline`, blissful-infra scaffolds:
 
-1. **A Python FastAPI service** (the actual pipeline — Kafka consumer,
+1. **A Python FastAPI service** (the actual pipeline. Kafka consumer,
    scikit-learn classifier, REST API)
 2. **ClickHouse** (per-plugin instance for prediction storage)
 3. **MLflow** (per-plugin model registry + experiment tracking)
@@ -27,12 +27,12 @@ opts into `--plugins ai-pipeline`, blissful-infra scaffolds:
 Four things, one plugin. As we built out forecasting, analytics, anomaly
 detection, etc., the same problems kept appearing:
 
-- Every analytical plugin wants ClickHouse — should be shared (ADR-0008)
-- Every plugin that produces models wants a model registry — should be
+- Every analytical plugin wants ClickHouse, should be shared (ADR-0008)
+- Every plugin that produces models wants a model registry, should be
   shared (this ADR)
 - Workflow orchestration is a "jobs" concern, not an "ai-pipeline"
   concern (the discussion that led to first-class jobs)
-- The FastAPI service itself is *one specific application* — not platform infra
+- The FastAPI service itself is *one specific application*, not platform infra
 
 After ADR-0008 promoted ClickHouse to client-level, the `ai-pipeline`
 plugin's bundling becomes actively misleading. A future analytics plugin
@@ -121,16 +121,16 @@ classifier).**
 
 - **Promote MLflow + Mage but keep them inside the ai-pipeline plugin
   template.** Hybrid. **Rejected** because the whole point of this ADR
-  is that MLflow and Mage are not specific to ai-pipeline — other
+  is that MLflow and Mage are not specific to ai-pipeline, other
   plugins want them too.
 - **Promote only MLflow, keep Mage inside ai-pipeline.** Lighter scope.
   **Considered, rejected** because Mage is precisely the workflow
   orchestrator that any "jobs" or "scheduled compute" concept will lean
   on. Lift now, consolidate with jobs later.
 - **Replace MLflow with a simpler registry** (DVC, custom). **Rejected**
-  for now — MLflow is industry-standard and most users coming to
+  for now. MLflow is industry-standard and most users coming to
   blissful-infra for ML expect it.
-- **Replace Mage with Airflow / Dagster / Prefect.** **Deferred** — Mage
+- **Replace Mage with Airflow / Dagster / Prefect.** **Deferred**: Mage
   is in our existing stack; switching to a different orchestrator is a
   separate decision.
 - **Keep the kitchen-sink plugin.** **Rejected** because the lessons of
@@ -150,7 +150,7 @@ Users with `--plugins ai-pipeline` services today:
 
 ## References
 
-- ADR-0008 (ClickHouse + LocalStack at client level) — sets the pattern
-- ADR-0009 (Keycloak at client level) — same pattern
-- [packages/cli/templates/plugins/ai-pipeline/](../../packages/cli/templates/plugins/ai-pipeline/) — current shape
+- ADR-0008 (ClickHouse + LocalStack at client level), sets the pattern
+- ADR-0009 (Keycloak at client level), same pattern
+- [packages/cli/templates/plugins/ai-pipeline/](../../packages/cli/templates/plugins/ai-pipeline/), current shape
 - Conversation log 2026-05-02 (plugin promotion discussion)

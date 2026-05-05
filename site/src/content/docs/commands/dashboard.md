@@ -16,8 +16,8 @@ blissful-infra dashboard [options]
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--port <port>` | `-p` | `3002` | Port for the dashboard API server |
-| `--no-open` | — | opens browser | Skip automatic browser open |
-| `--no-jenkins` | — | starts Jenkins | Do not start Jenkins CI server |
+| `--no-open` | - | opens browser | Skip automatic browser open |
+| `--no-jenkins` | - | starts Jenkins | Do not start Jenkins CI server |
 | `--dir <directory>` | `-d` | `cwd` | Working directory to scan for projects |
 
 ## What the dashboard provides
@@ -31,7 +31,7 @@ The dashboard is a React application backed by a local API server that connects 
 | **Logs** | Real-time log streaming from all containers via WebSocket. Filter by service, log level, or search text. Loki-backed for historical search. |
 | **Metrics** | Live CPU, memory, HTTP request rates, latency percentiles (p50/p95/p99), and error rates. Sourced from Prometheus. |
 | **Agent** | Chat interface to the AI debugging agent. Ask about errors, request root cause analysis, or get recommendations. The agent has read access to logs, metrics, and container state. |
-| **Pipeline** | Jenkins CI/CD pipeline status — current stage, last build result, build history. Trigger new builds from the UI. |
+| **Pipeline** | Jenkins CI/CD pipeline status, current stage, last build result, build history. Trigger new builds from the UI. |
 | **Environments** | Deploy and rollback across environments (local, staging, production via Argo CD). |
 | **Settings** | Configure alert thresholds, log retention, and notification preferences. |
 
@@ -39,8 +39,8 @@ The dashboard is a React application backed by a local API server that connects 
 
 Running `blissful-infra dashboard` starts two things:
 
-1. **The API server** on `--port` (default `3002`) — a Node.js HTTP + WebSocket server that proxies Docker, Prometheus, Loki, and Jenkins APIs
-2. **The Jenkins CI server** — starts the shared `blissful-jenkins` Docker container if it is not already running. Jenkins persists at `~/.blissful-infra/jenkins/` so it retains all jobs, build history, and configuration between restarts
+1. **The API server** on `--port` (default `3002`), a Node.js HTTP + WebSocket server that proxies Docker, Prometheus, Loki, and Jenkins APIs
+2. **The Jenkins CI server**: starts the shared `blissful-jenkins` Docker container if it is not already running. Jenkins persists at `~/.blissful-infra/jenkins/` so it retains all jobs, build history, and configuration between restarts
 
 The Vite dev server for the dashboard UI starts after both are ready and the browser opens automatically.
 

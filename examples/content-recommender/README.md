@@ -1,4 +1,4 @@
-# Content Recommender — Reference Example
+# Content Recommender. Reference Example
 
 A real-time personalized content recommendation system built with blissful-infra.
 
@@ -8,11 +8,11 @@ A streaming platform has a catalog of movies and shows. As users browse, watch, 
 
 1. **Capture engagement signals** in real time (view starts, completions, ratings, searches)
 2. **Generate personalized recommendations** for each user, updating as their history grows
-3. **Handle cold start gracefully** — new users with no history still get relevant suggestions
+3. **Handle cold start gracefully**: new users with no history still get relevant suggestions
 4. **Track model performance** across versions as the user base grows
 5. **Retrain automatically** when enough new behavioral data accumulates
 
-This is one of the core engineering challenges at companies like Netflix, Spotify, and YouTube. It requires event streaming, ML serving, columnar storage for analytics, and experiment tracking — all working together in real time.
+This is one of the core engineering challenges at companies like Netflix, Spotify, and YouTube. It requires event streaming, ML serving, columnar storage for analytics, and experiment tracking, all working together in real time.
 
 ## How blissful-infra Solves It
 
@@ -110,7 +110,7 @@ user watches: Inception (sci-fi, mind-bending, heist)
 TF-IDF vector → cosine similarity → Interstellar, Arrival, Ex Machina
 ```
 
-### 2. Collaborative Filtering — ALS (warm start)
+### 2. Collaborative Filtering. ALS (warm start)
 Once a user has enough interactions (configurable `MIN_INTERACTIONS_FOR_COLLAB`), we switch to **Alternating Least Squares** via the `implicit` library. ALS learns latent factors for users and items from a sparse user-item confidence matrix, capturing "users like you also watched" patterns across the full user base.
 
 ### 3. Hybrid Blend
@@ -242,12 +242,12 @@ content-recommender/
 
 ## Extending This Example
 
-**Add more content types** — extend `catalog.py` with podcasts, articles, or playlists. The model works on any item with genre/tag features.
+**Add more content types**: extend `catalog.py` with podcasts, articles, or playlists. The model works on any item with genre/tag features.
 
-**A/B test model variants** — change `COLLAB_WEIGHT` per experiment, log to separate MLflow runs, compare precision@K across runs.
+**A/B test model variants**: change `COLLAB_WEIGHT` per experiment, log to separate MLflow runs, compare precision@K across runs.
 
-**Scheduled retraining** — open Mage at http://localhost:6789 and create a `retrain_pipeline` that calls `GET /model/status`, loads all events from ClickHouse, and triggers `recommender.train()` nightly.
+**Scheduled retraining**: open Mage at http://localhost:6789 and create a `retrain_pipeline` that calls `GET /model/status`, loads all events from ClickHouse, and triggers `recommender.train()` nightly.
 
-**Implicit feedback weighting** — modify `_EVENT_WEIGHTS` in `recommender.py` to experiment with different confidence scores per event type (e.g., weight completions higher than starts).
+**Implicit feedback weighting**: modify `_EVENT_WEIGHTS` in `recommender.py` to experiment with different confidence scores per event type (e.g., weight completions higher than starts).
 
-**Real Kafka consumer** — wire `kafka_utils.py` from the base ai-pipeline template to consume `content-events` from Kafka automatically, rather than waiting for direct API calls.
+**Real Kafka consumer**: wire `kafka_utils.py` from the base ai-pipeline template to consume `content-events` from Kafka automatically, rather than waiting for direct API calls.

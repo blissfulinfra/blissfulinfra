@@ -113,7 +113,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       chalk.dim("\n  Tip: ") +
       `${PROMOTED_TO_CLIENT_LEVEL.join(", ")} are now ` +
       chalk.bold("client-level") +
-      chalk.dim(" — enable on `client create`, not here.\n"),
+      chalk.dim(": enable on `client create`, not here.\n"),
     );
     promptQs.push({
       type: "checkbox",
@@ -142,7 +142,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
   const plugins = rawPlugins.filter(p => {
     if (PROMOTED_TO_CLIENT_LEVEL_PLUGINS.has(p.type)) {
       console.log(chalk.dim(
-        `  ${p.type} is now client-level — skipping as a per-service plugin (enable on \`client create\`).`
+        `  ${p.type} is now client-level. Skipping as a per-service plugin (enable on \`client create\`).`
       ));
       return false;
     }
@@ -175,7 +175,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
     console.log();
     console.log(chalk.yellow("This service needs client-level components that aren't enabled:"));
     for (const dep of depsDiff.missingRequired) {
-      console.log(`  • ${chalk.bold(dep.component)} — ${dep.reason}`);
+      console.log(`  • ${chalk.bold(dep.component)}: ${dep.reason}`);
     }
 
     if (!useDefaults) {
@@ -186,7 +186,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
         default: true,
       }] as never)) as { confirm: boolean };
       if (!confirm) {
-        console.error(chalk.red("Cannot scaffold — required infrastructure is missing. Aborting."));
+        console.error(chalk.red("Cannot scaffold. Required infrastructure is missing. Aborting."));
         process.exit(1);
       }
     } else {
@@ -208,7 +208,7 @@ export async function serviceAddAction(clientName: string, serviceName: string, 
       name: "selected",
       message: "Enable any now? (Space to toggle, Enter to skip)",
       choices: depsDiff.missingOptional.map(d => ({
-        name: `${d.component} — ${d.reason}`,
+        name: `${d.component}: ${d.reason}`,
         value: d.component,
         checked: false,
       })),

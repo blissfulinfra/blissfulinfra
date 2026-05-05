@@ -1,4 +1,4 @@
-# Cloud Deploy — Design Spec
+# Cloud Deploy. Design Spec
 
 Local prototype → cloud deploy in one command. No Terraform, no DevOps team required.
 
@@ -9,7 +9,7 @@ Local prototype → cloud deploy in one command. No Terraform, no DevOps team re
 - Solo developer deploys an app to real infrastructure as easily as they ran it locally
 - Cloudflare Workers + Pages ships first; Vercel and AWS follow
 - Each platform maps local modules to its native equivalents automatically
-- The config schema is the contract — platform differences are adapter concerns, not user concerns
+- The config schema is the contract, platform differences are adapter concerns, not user concerns
 
 ---
 
@@ -44,7 +44,7 @@ deploy:
 ```
 
 The `deploy.target` field drives all deployment behaviour. Platform-specific blocks
-(`cloudflare`, `vercel`, `aws`) are optional — the CLI can prompt for missing values
+(`cloudflare`, `vercel`, `aws`) are optional, the CLI can prompt for missing values
 on first deploy and write them back to the file.
 
 ---
@@ -62,11 +62,11 @@ Each module type has a local Docker implementation and a cloud adapter per platf
 | Frontend   | nginx container    | CF Pages       | Vercel               | S3+CloudFront  |
 
 The module system is defined in `ModulesSchema` in `config.ts`. `cache` and `queue`
-modules are not yet in the schema — add them as they become relevant.
+modules are not yet in the schema, add them as they become relevant.
 
 ---
 
-## `deploy.ts` — dispatcher design
+## `deploy.ts`, dispatcher design
 
 The current `deploy.ts` is Kubernetes/ArgoCD only. Replace it with a target dispatcher:
 
@@ -93,7 +93,7 @@ src/deploy/
 
 ---
 
-## Cloudflare adapter — `deploy-cloudflare.ts`
+## Cloudflare adapter, `deploy-cloudflare.ts`
 
 ### Prerequisites check
 - `wrangler` CLI is installed (`wrangler --version`)
@@ -103,7 +103,7 @@ src/deploy/
 ### Worker deploy (backend)
 
 CF Workers requires a Workers-compatible runtime (Node-compatible isolate or
-Python). The currently shipped backend templates do not target Workers —
+Python). The currently shipped backend templates do not target Workers
 `spring-boot` runs on the JVM and `lambda-python` already targets a serverless
 runtime via LocalStack. The Workers backend deploy adapter will land alongside
 a Workers-compatible template (Express or Hono). Until then, warn and exit if
@@ -163,7 +163,7 @@ wrangler pages project create <pagesProject>
 
 ---
 
-## `registry.ts` — guard for non-Docker targets
+## `registry.ts`, guard for non-Docker targets
 
 `getRegistryUrl`, `loginToRegistry`, and `pushImage` are Docker-image operations that
 have no meaning for Cloudflare or Vercel deploys. Add an early return:
@@ -174,18 +174,18 @@ if (config.deploy?.target === 'cloudflare' || config.deploy?.target === 'vercel'
 }
 ```
 
-`getImageName` should also reflect this — return `null` or throw for non-Docker targets
+`getImageName` should also reflect this, return `null` or throw for non-Docker targets
 rather than defaulting to the local registry URL.
 
 ---
 
-## `config.ts` util — migration
+## `config.ts` util, migration
 
 The CLI config util reads/writes `blissful-infra.yaml`. It needs to handle:
 
-1. **Old flat field** — `deployTarget: "local-only"` was the previous shape. On read,
+1. **Old flat field**: `deployTarget: "local-only"` was the previous shape. On read,
    migrate to `deploy: { target: "local-only" }` transparently.
-2. **New nested shape** — `deploy.target` + optional platform block.
+2. **New nested shape**: `deploy.target` + optional platform block.
 
 Do this migration at parse time in `loadConfig()` so the rest of the codebase only
 sees the new shape.
@@ -210,25 +210,25 @@ and start wrangler dev instead of the Docker container.
 
 ## Implementation order
 
-### Phase A — shipped
+### Phase A, shipped
 
-1. ✅ **`src/deploy/errors.ts`** — `DeployTargetError`, `PrereqMissingError`, `DeployFailedError`
-2. ✅ **`src/deploy/index.ts`** — target dispatcher (`deployProject` function)
-3. ✅ **`src/deploy/cloudflare.ts`** — wrangler wrapper: worker + D1 + Pages + KV
-4. ✅ **`src/deploy/vercel.ts`** — vercel CLI wrapper (build + deploy --prebuilt)
-5. ✅ **`src/deploy/aws.ts`** — CDK deploy wrapper
-6. ✅ **`src/commands/deploy.ts`** — rewritten to use dispatcher; ArgoCD/kubectl removed
-7. ✅ **`src/commands/start.ts`** — `--deploy-target` flag; generates `wrangler.toml` for CF projects
-8. ✅ **`packages/shared/src/schemas/config.ts`** — added `"gcp"` to `DeployTargetSchema`
+1. ✅ **`src/deploy/errors.ts`**: `DeployTargetError`, `PrereqMissingError`, `DeployFailedError`
+2. ✅ **`src/deploy/index.ts`**: target dispatcher (`deployProject` function)
+3. ✅ **`src/deploy/cloudflare.ts`**: wrangler wrapper: worker + D1 + Pages + KV
+4. ✅ **`src/deploy/vercel.ts`**: vercel CLI wrapper (build + deploy --prebuilt)
+5. ✅ **`src/deploy/aws.ts`**: CDK deploy wrapper
+6. ✅ **`src/commands/deploy.ts`**: rewritten to use dispatcher; ArgoCD/kubectl removed
+7. ✅ **`src/commands/start.ts`**: `--deploy-target` flag; generates `wrangler.toml` for CF projects
+8. ✅ **`packages/shared/src/schemas/config.ts`**: added `"gcp"` to `DeployTargetSchema`
 
-### Phase B — next
+### Phase B, next
 
-1. **`registry.ts` guard** — CF/Vercel targets skip Docker image operations
-2. **`config.ts` migration** — old flat `deploy_target` field → new nested `deploy.target` at read time
-3. **Scaffold: SQLite migration template** — `backend/migrations/0001_init.sql` for D1
-4. **`dev` command CF mode** — detect CF target, run `wrangler dev` instead of Docker
+1. **`registry.ts` guard**: CF/Vercel targets skip Docker image operations
+2. **`config.ts` migration**: old flat `deploy_target` field → new nested `deploy.target` at read time
+3. **Scaffold: SQLite migration template**: `backend/migrations/0001_init.sql` for D1
+4. **`dev` command CF mode**: detect CF target, run `wrangler dev` instead of Docker
 
-Vercel and AWS adapters follow the same pattern. The Vercel adapter is already stubbed — it needs
+Vercel and AWS adapters follow the same pattern. The Vercel adapter is already stubbed, it needs
 `vercel env` provisioning for Postgres/Upstash once the basic deploy flow is validated.
 
 ---
@@ -243,6 +243,6 @@ Vercel and AWS adapters follow the same pattern. The Vercel adapter is already s
   Confirm migration files apply correctly in local mode before shipping.
 
 - **Mixed targets**: A project may want CF Pages for the frontend but keep a Docker
-  backend (e.g. FastAPI). The module system supports this in principle — the frontend
+  backend (e.g. FastAPI). The module system supports this in principle, the frontend
   module could have a different target than the backend. Defer this until the single-target
   path is solid.

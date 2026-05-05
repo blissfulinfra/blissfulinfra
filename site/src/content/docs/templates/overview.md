@@ -60,7 +60,7 @@ Binary files (images, compiled assets, JARs) are copied as-is without substituti
 | `spring-boot` | Kotlin | Spring Boot 3 | Kafka producer/consumer, WebSockets, JPA, Flyway, Actuator, OpenTelemetry |
 | `lambda-python` | Python | AWS Lambda (LocalStack) | Serverless function, deploy + invoke locally |
 
-Other stacks (FastAPI, Express, Go) are deliberately out of scope for now — they will land when there is a real, working template behind them rather than a placeholder. See the [Philosophy](/philosophy) page.
+Other stacks (FastAPI, Express, Go) are deliberately out of scope for now, they will land when there is a real, working template behind them rather than a placeholder. See the [Philosophy](/philosophy) page.
 
 ### Frontend templates
 
@@ -89,17 +89,17 @@ All backend templates generate a working chat application to demonstrate the sta
 5. Persisted to Postgres (with `postgres` or `postgres-redis`)
 6. Served from the Redis cache on subsequent page loads (with `postgres-redis`)
 
-This means you can observe Kafka message flow, cache hit/miss patterns in Grafana, and distributed traces in Jaeger — all from a working app — before writing any code.
+This means you can observe Kafka message flow, cache hit/miss patterns in Grafana, and distributed traces in Jaeger, all from a working app, before writing any code.
 
 ## Extending templates
 
 You can modify the template files directly if you are working on blissful-infra itself (see [blissful-infra dev --templates](/commands/dev)).
 
-For project-specific customisation, edit the generated files in your project directory. They are real files you own — blissful-infra does not re-generate or overwrite them after `start`.
+For project-specific customisation, edit the generated files in your project directory. They are real files you own, blissful-infra does not re-generate or overwrite them after `start`.
 
 ## Plugins
 
-Plugins extend the generated project with additional services. Unlike templates, plugins are additive — they add new containers to `docker-compose.yaml` and new directories to your project.
+Plugins extend the generated project with additional services. Unlike templates, plugins are additive, they add new containers to `docker-compose.yaml` and new directories to your project.
 
 | Plugin | What it adds |
 |--------|-------------|

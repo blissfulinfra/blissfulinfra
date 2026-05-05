@@ -4,7 +4,7 @@
 
 ## Vision
 
-Give software engineers a complete enterprise development environment running locally on their laptop. Learn, experiment, and develop with the same infrastructure patterns used at scale — without cloud accounts, without touching shared environments, without surprise bills.
+Give software engineers a complete enterprise development environment running locally on their laptop. Learn, experiment, and develop with the same infrastructure patterns used at scale, without cloud accounts, without touching shared environments, without surprise bills.
 
 ## Problem
 
@@ -12,8 +12,8 @@ Enterprise infrastructure is complex and inaccessible:
 
 **For engineers joining companies:**
 - CI/CD pipelines, Kubernetes, GitOps, canary deployments are hard to understand without hands-on experience
-- Shared environments are fragile — experimentation risks breaking things for others
-- Cloud resources are expensive — spinning up a test EKS cluster costs real money
+- Shared environments are fragile, experimentation risks breaking things for others
+- Cloud resources are expensive, spinning up a test EKS cluster costs real money
 
 **For teams building production services:**
 - Testing deployment strategies (canary, blue-green) requires infrastructure that doesn't exist locally
@@ -29,14 +29,14 @@ Enterprise infrastructure is complex and inaccessible:
 
 A local sandbox that simulates enterprise infrastructure:
 
-- **CI/CD Pipeline** — Jenkins with build, test, scan, deploy stages
-- **Container Registry** — Local Docker registry for images
-- **Kubernetes Manifests** — Deployment, Service, ConfigMap with Kustomize overlays
-- **GitOps** — Argo CD application manifests for declarative deployments
-- **Observability** — Metrics, logs, health monitoring, and dashboard
-- **Canary Deployments** — Progressive rollouts with automated analysis and rollback
-- **Chaos Testing** — FMEA scenarios to validate service resilience
-- **AI Agent** — Local LLM that analyzes failures and suggests fixes
+- **CI/CD Pipeline**: Jenkins with build, test, scan, deploy stages
+- **Container Registry**: Local Docker registry for images
+- **Kubernetes Manifests**: Deployment, Service, ConfigMap with Kustomize overlays
+- **GitOps**: Argo CD application manifests for declarative deployments
+- **Observability**: Metrics, logs, health monitoring, and dashboard
+- **Canary Deployments**: Progressive rollouts with automated analysis and rollback
+- **Chaos Testing**: FMEA scenarios to validate service resilience
+- **AI Agent**: Local LLM that analyzes failures and suggests fixes
 
 All running locally. No cloud account required. Same patterns as production.
 
@@ -54,9 +54,9 @@ The core value proposition: **iterate in seconds, not hours**.
 | Try canary deployment | Requires prod-like traffic | **Simulate locally** |
 
 **Why this matters:**
-- Learning happens through experimentation — fast feedback = more experiments = faster learning
-- Confidence comes from practice — test rollbacks 100 times locally before doing it once in production
-- Innovation requires safety — try wild ideas without fear of breaking shared environments
+- Learning happens through experimentation, fast feedback = more experiments = faster learning
+- Confidence comes from practice, test rollbacks 100 times locally before doing it once in production
+- Innovation requires safety, try wild ideas without fear of breaking shared environments
 
 ## Functional Requirements
 
@@ -134,7 +134,7 @@ Each template includes:
 | `spring-boot` | Kotlin + Spring Boot + Kafka + WebSockets | JUnit 5 + MockK + WebTestClient + TestContainers |
 | `lambda-python` | Python serverless function on LocalStack | pytest |
 
-Other backend stacks (FastAPI, Express, Go) are not currently shipped — they
+Other backend stacks (FastAPI, Express, Go) are not currently shipped, they
 will land when they are real working templates rather than placeholders. See
 the [Philosophy page](https://blissful-infra.com/philosophy).
 

@@ -1,4 +1,4 @@
-# packages/shared — @blissful-infra/shared
+# packages/shared, @blissful-infra/shared
 
 The schema contract layer for the blissful-infra monorepo. Private (never published to npm). Both `packages/cli` and `packages/dashboard` import from here.
 
@@ -10,7 +10,7 @@ See root [CLAUDE.md](../../CLAUDE.md) for monorepo conventions.
 
 ## Why this package exists
 
-The CLI API server and the dashboard were previously out of sync — 25 interface definitions in `App.tsx` shadowed types in `api.ts` with subtle field differences. This package eliminates that class of bug by making the schema the contract.
+The CLI API server and the dashboard were previously out of sync, 25 interface definitions in `App.tsx` shadowed types in `api.ts` with subtle field differences. This package eliminates that class of bug by making the schema the contract.
 
 **Rule:** If data crosses a boundary (HTTP, JSONL storage, YAML config), its shape belongs here.
 
@@ -20,7 +20,7 @@ The CLI API server and the dashboard were previously out of sync — 25 interfac
 
 ```
 src/
-├── index.ts          # Re-exports everything — the only import path consumers use
+├── index.ts          # Re-exports everything: the only import path consumers use
 └── schemas/
     ├── api.ts        # HTTP request/response shapes (ProjectStatus, Service, HealthResponse, etc.)
     ├── alerts.ts     # AlertThreshold, TriggeredAlert, AlertsConfig
@@ -35,13 +35,13 @@ src/
 
 ## Schema conventions
 
-All schemas use **Zod** as the definition layer. TypeScript types are always **inferred** from schemas — never written by hand.
+All schemas use **Zod** as the definition layer. TypeScript types are always **inferred** from schemas, never written by hand.
 
 ```ts
 // Define the schema
 export const FooSchema = z.object({ id: z.string(), value: z.number() });
 
-// Infer the type — never write `interface Foo { id: string; value: number }`
+// Infer the type: never write `interface Foo { id: string; value: number }`
 export type Foo = z.infer<typeof FooSchema>;
 ```
 
@@ -73,7 +73,7 @@ npm run build:shared
 
 ## Tests
 
-Schema validation tests live in `src/schemas/__tests__/*.test.ts` — Layer 1 of
+Schema validation tests live in `src/schemas/__tests__/*.test.ts`, Layer 1 of
 the three-layer testing strategy (see root [CLAUDE.md](../../CLAUDE.md#testing-convention)).
 Every Zod schema gets accept/reject tests for at least the happy path and
 2-3 representative invalid shapes.
@@ -91,7 +91,7 @@ npm run test:watch # vitest watch
 2. Export the schema and its inferred type.
 3. Re-export from `src/index.ts` if you created a new file.
 4. Run `npm run build:shared` to compile.
-5. Import in the consumer — no other setup needed.
+5. Import in the consumer, no other setup needed.
 
 Do not add schemas for types that are only used internally within one package. Those stay local.
 

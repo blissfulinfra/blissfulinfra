@@ -1,4 +1,4 @@
-# site/ — Documentation Website
+# site/, Documentation Website
 
 The public documentation site deployed to **https://blissful-infra.com** via Cloudflare Pages.
 
@@ -8,12 +8,12 @@ See root [CLAUDE.md](../CLAUDE.md) for monorepo conventions.
 
 ## Stack
 
-- **Astro 6** with `output: 'static'` — generates a fully static site at build time
-- **Starlight 0.38.2** — Astro integration for documentation sites (sidebar, search, theming)
-- **@astrojs/sitemap** — auto-generates `sitemap-index.xml`
+- **Astro 6** with `output: 'static'`, generates a fully static site at build time
+- **Starlight 0.38.2**: Astro integration for documentation sites (sidebar, search, theming)
+- **@astrojs/sitemap**: auto-generates `sitemap-index.xml`
 - **Deployment:** Cloudflare Pages (via GitHub Actions on push to `main`)
 
-**Node requirement:** >=22.12.0 (Astro 6 requirement). Cloudflare Pages uses Node 22 by default — do not add a `.nvmrc` file.
+**Node requirement:** >=22.12.0 (Astro 6 requirement). Cloudflare Pages uses Node 22 by default, do not add a `.nvmrc` file.
 
 ---
 
@@ -61,7 +61,7 @@ description: One sentence  # used for SEO meta description
 
 ## Sidebar configuration
 
-The sidebar is defined in `astro.config.mjs` under `starlight({ sidebar: [...] })`. It does **not** auto-generate from the file system — every new page must be manually added to the sidebar array.
+The sidebar is defined in `astro.config.mjs` under `starlight({ sidebar: [...] })`. It does **not** auto-generate from the file system, every new page must be manually added to the sidebar array.
 
 ```js
 sidebar: [
@@ -85,7 +85,7 @@ Custom CSS is in `src/styles/custom.css`. The theme uses a navy dark palette:
 - Text: `#f0f4ff`
 - Muted text: `#8899b4`
 
-Starlight CSS variables are overridden using `--sl-color-*` custom properties. Do not use inline styles in content files — use custom CSS classes instead.
+Starlight CSS variables are overridden using `--sl-color-*` custom properties. Do not use inline styles in content files, use custom CSS classes instead.
 
 ---
 

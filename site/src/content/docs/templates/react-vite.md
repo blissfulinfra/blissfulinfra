@@ -82,8 +82,8 @@ In production (Docker), nginx handles the same routing via `nginx.conf`.
 
 The Dockerfile uses a two-stage build:
 
-1. **Build stage** — Node.js image, runs `npm ci && npm run build`, produces a `dist/` directory
-2. **Serve stage** — nginx alpine image, copies `dist/` to `/usr/share/nginx/html`
+1. **Build stage**: Node.js image, runs `npm ci && npm run build`, produces a `dist/` directory
+2. **Serve stage**: nginx alpine image, copies `dist/` to `/usr/share/nginx/html`
 
 The result is a minimal image (typically 25–40 MB) containing only nginx and the built static files.
 
@@ -102,7 +102,7 @@ This means the frontend and backend are available on the same origin (`http://lo
 The template ships with TailwindCSS 3 configured with:
 
 - `content` pointing at `./src/**/*.{ts,tsx}`
-- No custom theme overrides — add your own in `tailwind.config.js`
+- No custom theme overrides, add your own in `tailwind.config.js`
 - `@tailwind base`, `@tailwind components`, `@tailwind utilities` in `index.css`
 
 ## Development workflow
@@ -123,7 +123,7 @@ In this mode, Vite proxies API requests to the backend at `localhost:8080`. Both
 For the most seamless experience with full Vite HMR:
 
 ```bash
-# From repo root — syncs template edits live into the running project
+# From repo root: syncs template edits live into the running project
 blissful-infra dev --templates my-app
 ```
 
