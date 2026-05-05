@@ -9,10 +9,10 @@ Identity and Access Management (IAM) is one of those topics that every developer
 
 These two get conflated constantly. They're different things:
 
-**Authentication** (authn) — *Who are you?*
+**Authentication** (authn) is about *who are you?*
 Verifying the identity of the user or system making a request. Logging in with a username/password, presenting a token, using a certificate.
 
-**Authorization** (authz) — *What are you allowed to do?*
+**Authorization** (authz) is about *what are you allowed to do?*
 Given that we know who you are, what resources and actions are you permitted to access?
 
 You authenticate once per session. You authorize on every request.
@@ -33,12 +33,12 @@ JSON Web Tokens (JWT, pronounced "jot") are the standard way to pass identity in
 header.payload.signature
 ```
 
-**Header** — token type and signing algorithm:
+**Header**: token type and signing algorithm.
 ```json
 { "alg": "RS256", "typ": "JWT" }
 ```
 
-**Payload** — the claims (who the user is, what they're allowed to do):
+**Payload**: the claims (who the user is, what they're allowed to do).
 ```json
 {
   "sub": "user-123",
@@ -49,9 +49,9 @@ header.payload.signature
 }
 ```
 
-**Signature** — cryptographic proof the token wasn't tampered with. With RS256, the auth server signs with its private key; your backend verifies with the public key.
+**Signature**: cryptographic proof the token wasn't tampered with. With RS256, the auth server signs with its private key; your backend verifies with the public key.
 
-The important property: **JWTs are stateless**. Your backend doesn't need to hit a database or call an auth server to verify a token — it just checks the signature and expiry. This makes them very fast at scale.
+The important property: **JWTs are stateless**. Your backend doesn't need to hit a database or call an auth server to verify a token. It just checks the signature and expiry. This makes them very fast at scale.
 
 The trade-off: **JWTs can't be revoked before expiry**. If you need instant revocation (e.g., user account suspended), you need either short expiry + refresh tokens, or a token blacklist.
 
@@ -77,7 +77,7 @@ Three tokens you'll encounter:
 
 | Token | Purpose | Lifetime |
 |---|---|---|
-| **Access token** | Proves identity to APIs | Short (5–15 min) |
+| **Access token** | Proves identity to APIs | Short (5 to 15 min) |
 | **ID token** | User profile data for the app | Same as access |
 | **Refresh token** | Gets new access tokens without re-login | Long (hours/days) |
 
@@ -136,7 +136,7 @@ Keycloak is the de facto open source IAM solution. It handles everything:
 
 In production, Keycloak runs in front of all your services. For local development, you run it in Docker.
 
-A Keycloak **realm** is an isolated namespace — one realm per application (or per environment). A realm has users, clients, and roles.
+A Keycloak **realm** is an isolated namespace, one per application (or per environment). A realm has users, clients, and roles.
 
 A **client** represents an application that uses Keycloak for auth. Your Spring Boot API is a confidential client. Your React frontend is a public client (can't keep secrets).
 
@@ -165,7 +165,7 @@ Services after adding the plugin:
 | Backend API | `http://localhost:8080` | Spring Boot (validates JWTs) |
 | Frontend | `http://localhost:3000` | React (acquires tokens) |
 
-The admin console is at `http://localhost:8001/admin` — username `admin`, password `admin`. This is where you manage users, roles, and clients in a visual UI.
+The admin console is at `http://localhost:8001/admin`. Username `admin`, password `admin`. This is where you manage users, roles, and clients in a visual UI.
 
 ---
 
@@ -200,7 +200,7 @@ class SecurityConfig {
                     jwt.jwtAuthenticationConverter(keycloakJwtConverter())
                 }
             }
-            .csrf { it.disable() }  // stateless API — no CSRF needed
+            .csrf { it.disable() }  // stateless API; no CSRF needed
         return http.build()
     }
 
@@ -228,7 +228,7 @@ spring:
           issuer-uri: http://localhost:8001/realms/my-app
 ```
 
-Spring Security fetches Keycloak's public keys from the JWKS endpoint automatically and caches them. Every incoming request gets validated against those keys — no database call, no round trip to Keycloak.
+Spring Security fetches Keycloak's public keys from the JWKS endpoint automatically and caches them. Every incoming request gets validated against those keys. No database call, no round trip to Keycloak.
 
 ---
 
@@ -350,15 +350,15 @@ function AdminPanel() {
 
 ## Common IAM mistakes
 
-**Trusting the frontend for authorization decisions** — The frontend can hide a button, but the backend must enforce the permission. Always validate roles on the server.
+**Trusting the frontend for authorization decisions.** The frontend can hide a button, but the backend must enforce the permission. Always validate roles on the server.
 
-**Storing tokens in localStorage** — Vulnerable to XSS. Use `httpOnly` cookies for refresh tokens, or the Keycloak JS adapter's silent SSO flow which keeps tokens in memory.
+**Storing tokens in localStorage.** Vulnerable to XSS. Use `httpOnly` cookies for refresh tokens, or the Keycloak JS adapter's silent SSO flow which keeps tokens in memory.
 
-**Long-lived access tokens** — 15 minutes is a good default. Use refresh tokens to maintain sessions. Short expiry limits blast radius if a token is leaked.
+**Long-lived access tokens.** 15 minutes is a good default. Use refresh tokens to maintain sessions. Short expiry limits blast radius if a token is leaked.
 
-**Skipping HTTPS in staging** — Tokens in plaintext are trivially stolen. Enable TLS even for internal staging environments.
+**Skipping HTTPS in staging.** Tokens in plaintext are trivially stolen. Enable TLS even for internal staging environments.
 
-**Conflating authentication and session management** — JWT auth is stateless. If you need server-side sessions (e.g., for instant revocation), add Redis and track session IDs separately from the JWT.
+**Conflating authentication and session management.** JWT auth is stateless. If you need server-side sessions (e.g., for instant revocation), add Redis and track session IDs separately from the JWT.
 
 ---
 
@@ -366,16 +366,16 @@ function AdminPanel() {
 
 Once you have authentication and basic RBAC working, the next problems to solve are:
 
-- **Attribute-Based Access Control (ABAC)** — policies based on resource attributes, not just roles (e.g., "editors can only publish their own articles")
-- **Audit logging** — who accessed what, and when
-- **Token introspection** — for cases where you need to check revocation status in real time
-- **Service-to-service auth** — the OAuth2 Client Credentials flow for backend-to-backend calls without a user in the loop
+- **Attribute-Based Access Control (ABAC)**: policies based on resource attributes, not just roles (e.g., "editors can only publish their own articles")
+- **Audit logging**: who accessed what, and when
+- **Token introspection**: for cases where you need to check revocation status in real time
+- **Service-to-service auth**: the OAuth2 Client Credentials flow for backend-to-backend calls without a user in the loop
 
 Most teams don't need all of this on day one. Get authentication and RBAC right first. The patterns are the same whether you're running locally in Docker or deploying to production.
 
 ---
 
-To run a full auth stack locally — Keycloak, Spring Boot resource server, and React frontend — with everything pre-wired:
+To run a full auth stack locally (Keycloak, Spring Boot resource server, React frontend) with everything pre-wired:
 
 ```bash
 npm install -g @blissful-infra/cli
@@ -384,4 +384,4 @@ blissful-infra start my-app --plugins keycloak
 
 Admin console is at `http://localhost:8001/admin`. The Spring Boot backend validates tokens automatically. Test users for each role are pre-created.
 
-[Get started →](/getting-started) or [view all plugins →](/getting-started#choosing-your-stack)
+[Get started](/getting-started) or [view all plugins](/getting-started#choosing-your-stack)

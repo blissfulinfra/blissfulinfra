@@ -1,9 +1,9 @@
 ---
 title: "Stop Paying for Cloud Dev Environments: Run Your Entire Stack Locally"
-description: How to run Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and distributed tracing on your laptop — for free — with one command.
+description: How to run Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and distributed tracing on your laptop, for free, with one command.
 ---
 
-Cloud development environments have become the default for teams building modern applications. Gitpod, GitHub Codespaces, and cloud-hosted staging environments make it easy to get started — but they come with a cost that compounds quickly: per-hour billing, slow feedback loops because your code has to travel to a data center and back, and a shared environment that breaks when a teammate pushes something bad.
+Cloud development environments have become the default for teams building modern applications. Gitpod, GitHub Codespaces, and cloud-hosted staging environments make it easy to get started, but they come with a cost that compounds quickly: per-hour billing, slow feedback loops because your code has to travel to a data center and back, and a shared environment that breaks when a teammate pushes something bad.
 
 There's a better way. Everything your production stack needs can run on your laptop, and the feedback loop goes from minutes to seconds.
 
@@ -11,13 +11,13 @@ There's a better way. Everything your production stack needs can run on your lap
 
 A modern production application isn't just a backend and a database. By the time you're running in production, you typically have:
 
-- **A backend API** — Spring Boot, FastAPI, Express, or Go
-- **A frontend** — React, Next.js, or similar
-- **A database** — Postgres for persistence, Redis for caching
-- **A message bus** — Kafka for event-driven communication between services
-- **Observability** — Prometheus for metrics, Grafana for dashboards, Jaeger for distributed tracing, Loki for log aggregation
-- **CI/CD** — Jenkins (or similar) for automated build, test, and deploy pipelines
-- **A reverse proxy** — nginx to route traffic
+- **A backend API** (Spring Boot, FastAPI, Express, or Go)
+- **A frontend** (React, Next.js, or similar)
+- **A database** (Postgres for persistence, Redis for caching)
+- **A message bus** (Kafka for event-driven communication between services)
+- **Observability**: Prometheus for metrics, Grafana for dashboards, Jaeger for distributed tracing, Loki for log aggregation
+- **CI/CD**: Jenkins (or similar) for automated build, test, and deploy pipelines
+- **A reverse proxy** (nginx to route traffic)
 
 Setting all of this up by hand takes days. Keeping it in sync across a team takes ongoing effort. And running it in the cloud costs money before you've written a single line of business logic.
 
@@ -45,13 +45,13 @@ Here's what gets created:
 | Postgres | `localhost:5432` | Primary database |
 | Loki | `localhost:3100` | Log aggregation |
 
-Every service is pre-configured to talk to the others. Prometheus already knows where to scrape metrics. Grafana already has dashboards provisioned. Jaeger already receives traces from the backend. You don't connect any of it — it's connected.
+Every service is pre-configured to talk to the others. Prometheus already knows where to scrape metrics. Grafana already has dashboards provisioned. Jaeger already receives traces from the backend. You don't connect any of it; it's connected.
 
 ## Why local beats cloud for development
 
 ### Feedback loops
 
-The single most important metric for developer productivity is how quickly you can go from "I changed code" to "I can see the result." In a cloud dev environment, that round trip involves your code leaving your machine, hitting a build server, deploying to a remote container, and the result coming back. Even with fast CI/CD that's 2–5 minutes.
+The single most important metric for developer productivity is how quickly you can go from "I changed code" to "I can see the result." In a cloud dev environment, that round trip involves your code leaving your machine, hitting a build server, deploying to a remote container, and the result coming back. Even with fast CI/CD that's 2 to 5 minutes.
 
 Locally, with hot reload:
 
@@ -72,7 +72,7 @@ Locally, there are no stakes. Want to test what happens when Kafka goes down?
 
 ```bash
 docker compose stop kafka
-# Your app throws consumer errors — you see exactly how it behaves
+# Your app throws consumer errors. You see exactly how it behaves.
 docker compose start kafka
 # Back to normal
 ```
@@ -91,7 +91,7 @@ One of the hardest things to replicate locally is a proper observability setup. 
 
 ### Prometheus + Grafana
 
-The Spring Boot backend exposes metrics at `/actuator/prometheus`. Prometheus is pre-configured to scrape that endpoint every 15 seconds. Grafana has datasources and dashboards provisioned on startup — you open `localhost:3001` and JVM heap, HTTP request rate, and error rate are already graphed.
+The Spring Boot backend exposes metrics at `/actuator/prometheus`. Prometheus is pre-configured to scrape that endpoint every 15 seconds. Grafana has datasources and dashboards provisioned on startup. You open `localhost:3001` and JVM heap, HTTP request rate, and error rate are already graphed.
 
 ```yaml
 # prometheus/prometheus.yml (pre-generated)
@@ -110,18 +110,18 @@ No instrumentation code to write. The agent handles it.
 
 ### Log aggregation with Loki
 
-Promtail collects stdout from every Docker container and ships it to Loki. From the blissful-infra dashboard at `localhost:3002` you can tail logs across all services in one view — no `docker compose logs -f` juggling.
+Promtail collects stdout from every Docker container and ships it to Loki. From the blissful-infra dashboard at `localhost:3002` you can tail logs across all services in one view, no `docker compose logs -f` juggling.
 
 ## CI/CD that actually runs
 
 Jenkins is pre-configured with a pipeline that mirrors what you'd run in production:
 
-1. **Build** — Gradle compile + lint (parallel)
-2. **Test** — Unit tests + integration tests (parallel, with TestContainers)
-3. **Containerize** — Docker BuildKit with layer caching
-4. **Security scan** — Trivy for CRITICAL vulnerabilities
-5. **Push** — to the local Docker registry at `localhost:5050`
-6. **Deploy** — restarts your local containers with the new image
+1. **Build**: Gradle compile + lint (parallel)
+2. **Test**: Unit tests + integration tests (parallel, with TestContainers)
+3. **Containerize**: Docker BuildKit with layer caching
+4. **Security scan**: Trivy for CRITICAL vulnerabilities
+5. **Push**: to the local Docker registry at `localhost:5050`
+6. **Deploy**: restarts your local containers with the new image
 
 The Jenkinsfile is generated in your project directory. Push a change to your local Git and Jenkins picks it up automatically.
 
@@ -143,7 +143,7 @@ blissful-infra start my-app --database none
 blissful-infra start my-app --no-monitoring
 ```
 
-Available backends: Spring Boot (Kotlin), FastAPI (Python), Express (Node.js), Go Chi.
+Available backends: Spring Boot (Kotlin) and Lambda (Python).
 
 ## The AI agent
 
@@ -153,7 +153,7 @@ The dashboard at `localhost:3002` includes an AI chat interface that's connected
 - "Show me the slowest database queries in the last hour"
 - "What changed in the last deployment?"
 
-The agent reads your logs, metrics, and traces in real time. It's not answering from documentation — it's looking at your actual running system.
+The agent reads your logs, metrics, and traces in real time. It's not answering from documentation; it's looking at your actual running system.
 
 ## From local to live
 
@@ -161,18 +161,18 @@ When you're ready to share your project beyond your laptop:
 
 ```bash
 blissful-infra deploy
-# → Live at https://my-app.blissful-infra.com
+# Live at https://my-app.blissful-infra.com
 ```
 
 The same stack you built locally deploys to Cloudflare's edge infrastructure. Your local Postgres maps to Cloudflare D1, Redis to KV, Kafka to Queues. No config changes. The `blissful-infra.yaml` that defined your local environment defines your production one.
 
-[Get started →](/getting-started)
+[Get started](/getting-started)
 
 ## Prerequisites
 
 - **Node.js 18+**
-- **Docker Desktop** — the only real requirement; must be running before you use any `blissful-infra` commands
-- **4GB free RAM** — the full stack with monitoring uses 2–3GB
+- **Docker Desktop**: the only real requirement. Must be running before you use any `blissful-infra` commands.
+- **4GB free RAM**: the full stack with monitoring uses 2 to 3 GB.
 
 That's the entire list. No Kubernetes. No cloud account. No prior DevOps experience.
 

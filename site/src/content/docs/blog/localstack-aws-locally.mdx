@@ -1,6 +1,6 @@
 ---
 title: "Learn AWS for Free: LocalStack and the Limits of the Free Tier"
-description: Real AWS is the best way to learn AWS. The free tier doesn't go far. LocalStack fills the gap — here's how to think about when each is right.
+description: Real AWS is the best way to learn AWS. The free tier doesn't go far. LocalStack fills the gap. Here's how to think about when each is right.
 ---
 
 The best way to learn AWS is to use real AWS. There's no substitute for the
@@ -13,8 +13,8 @@ questions. The free tier covers basic learning for the first 12 months and
 then bills you for everything you forgot to tear down. Some services have no
 free tier at all. Some experiments need 50 invocations a minute and you'd
 rather not watch the meter run while you debug a JSON serialization error
-for two hours. And there's a category of work — schema iteration, integration
-testing, throwaway prototypes — where the round-trip to the real cloud is
+for two hours. And there's a category of work (schema iteration, integration
+testing, throwaway prototypes) where the round-trip to the real cloud is
 just slow.
 
 That's where [LocalStack](https://localstack.cloud/) earns its place. It
@@ -34,15 +34,15 @@ Costs are the harder problem, and they're harder than they should be:
 
 - **No spending warning by default.** AWS will not email you when your
   monthly spend crosses a threshold unless you manually create a Budget
-  and configure alerts. The thing that should be on by default — "tell me
-  if I'm about to be billed for this" — is opt-in.
+  and configure alerts. The thing that should be on by default ("tell me
+  if I'm about to be billed for this") is opt-in.
 - **Cost Explorer is disabled out of the box.** You have to enable it
   before you can even see what you're being charged for at a granular
   level.
 - **Region matters for billing**, and the console region selector is in a
   small dropdown in the top right. It's easy to create a bucket in
   `us-east-1`, an EC2 instance in `eu-west-2`, and a Lambda in
-  `ap-southeast-1` over a single afternoon of clicking — three different
+  `ap-southeast-1` over a single afternoon of clicking. Three different
   bills, three different consoles to find resources in later.
 - **Pricing models vary per service.** Lambda is per-invocation +
   per-millisecond + per-GB-second of memory. S3 is per-GB-stored +
@@ -51,10 +51,10 @@ Costs are the harder problem, and they're harder than they should be:
   per day" view until you set one up.
 - **The bill arrives weeks later.** Charges from May show up on the
   June 1–15 invoice as cryptic line items grouped by service. By the
-  time you see "$47 — EC2 — us-east-1," you've forgotten what experiment
+  time you see "$47, EC2, us-east-1," you've forgotten what experiment
   ran in May.
 
-This isn't a *beginner* problem — experienced engineers get surprise bills
+This isn't a *beginner* problem; experienced engineers get surprise bills
 too. But it's worse for beginners because the standard advice ("just
 spin up a free tier instance and play around") doesn't mention that
 you're one careless `terraform apply` away from a four-figure NAT
@@ -68,13 +68,13 @@ the alarm, you don't find out until next month.
 LocalStack removes this entire anxiety surface for the *experimentation*
 phase. The cost is exactly $0 regardless of what you do, the region is
 always your laptop, and the only thing you can break is your local Docker
-state — which you can rebuild in 30 seconds.
+state, which you can rebuild in 30 seconds.
 
 ## What LocalStack actually is
 
 LocalStack is a single Docker container that listens on `localhost:4566`
 and pretends to be the AWS endpoint for ~70 services. Free tier covers the
-basics — S3, Lambda, DynamoDB, SQS, SNS, Kinesis, Step Functions, Secrets
+basics: S3, Lambda, DynamoDB, SQS, SNS, Kinesis, Step Functions, Secrets
 Manager. The Pro tier adds RDS, EKS, IAM enforcement, and a longer list of
 specialized services.
 
@@ -96,37 +96,37 @@ locally and real S3 in production.
 
 ## What real AWS gets you that LocalStack doesn't
 
-Be honest about this — it matters when you're choosing where to spend your
-time:
+Be honest about this. It matters when you're choosing where to spend your
+time.
 
 - **Real IAM enforcement.** LocalStack's free tier doesn't enforce IAM
   policies. Permission bugs that would deny you in production will silently
   succeed locally. The Pro tier turns this on, but for free-tier users it's
   a real gap.
 - **Real performance characteristics.** Lambda cold-start times,
-  cross-region replication latency, S3 eventual consistency edge cases —
-  none of these reproduce locally. If you're optimizing for them, you need
+  cross-region replication latency, S3 eventual consistency edge cases.
+  None of these reproduce locally. If you're optimizing for them, you need
   real AWS.
 - **Real billing surprises.** You don't fully understand how a service is
   priced until you've been billed for it. NAT gateway egress, CloudWatch
-  Logs ingestion, GB-month for unused EBS volumes — these are the line
+  Logs ingestion, GB-month for unused EBS volumes. These are the line
   items that surprise people in production. LocalStack will never teach
   you that lesson.
 - **Real service quotas and limits.** Lambda concurrency, DynamoDB
-  read/write capacity, SQS message retention — production limits and
+  read/write capacity, SQS message retention. Production limits and
   throttling behavior are AWS-specific.
 - **Multi-region, multi-account scenarios.** LocalStack runs as a single
   endpoint. Real AWS organizations are messier.
 
-If you're learning AWS for a real job — interviewing, architecting at
-scale, getting certified — you need real AWS hours. There's no substitute.
+If you're learning AWS for a real job (interviewing, architecting at
+scale, getting certified), you need real AWS hours. There's no substitute.
 
 ## Where the free tier runs out
 
 The 12-month free tier covers a lot at first glance. Then you start
 running into the edges:
 
-- **Anything stateful expires.** RDS, ElastiCache, Redshift — all run on
+- **Anything stateful expires.** RDS, ElastiCache, Redshift all run on
   reserved-capacity pricing. The free tier covers `db.t2.micro` for 12
   months and then you're paying full price. Forgot to delete after the
   experiment? That's $15-30/month per cluster, billed silently.
@@ -135,7 +135,7 @@ running into the edges:
   500,000 times from S3 to a CDN you forgot to configure right. Real
   story, more than once.
 - **Some services have no free tier at all.** ECS, EKS, RDS Aurora,
-  DynamoDB Accelerator (DAX), Glue jobs, EMR — full price from minute one.
+  DynamoDB Accelerator (DAX), Glue jobs, EMR. Full price from minute one.
 - **Free tier is per-account, lifetime.** You can't keep creating new
   accounts to reset the timer (you can, but it's against TOS and AWS will
   catch up).
@@ -143,7 +143,7 @@ running into the edges:
   processing. ~$32/month per AZ for a NAT Gateway you forgot. Real cost
   of "let me just spin up a quick VPC for this experiment."
 
-Most engineers learn this the hard way — a $200 bill arrives because you
+Most engineers learn this the hard way: a $200 bill arrives because you
 left a project running over the holidays. After that, you tear things down
 more aggressively, but you also experiment less. LocalStack short-circuits
 that fear.
@@ -157,7 +157,7 @@ than fidelity:
 
 DynamoDB single-table design is a lot of trial and error. You add a GSI,
 realize the access pattern doesn't fit, drop it, try again. Doing that
-against real DynamoDB is fine — it's pay-per-request — but the round-trip
+against real DynamoDB is fine (it's pay-per-request) but the round-trip
 through `aws dynamodb` commands and AWS console refreshes is slow. Locally
 you can rerun a `awslocal dynamodb create-table` script in 200ms.
 
@@ -166,9 +166,9 @@ you can rerun a `awslocal dynamodb create-table` script in 200ms.
 You're writing a Lambda handler. You don't yet know if your event
 structure is right, your IAM role is too restrictive, or your response
 shape will satisfy API Gateway. Each iteration cycle in real AWS is "zip,
-upload, invoke, read CloudWatch logs, fix, repeat" — about 90 seconds per
-cycle. Locally, LocalStack's Lambda runs in the same Docker image as real
-Lambda, and the cycle is "save file, invoke, read logs" — about 5 seconds.
+upload, invoke, read CloudWatch logs, fix, repeat" (about 90 seconds per
+cycle). Locally, LocalStack's Lambda runs in the same Docker image as real
+Lambda, and the cycle is "save file, invoke, read logs" (about 5 seconds).
 
 ### 3. Integration tests
 
@@ -177,7 +177,7 @@ through a Lambda, sees the result land in DynamoDB. Doing this in real AWS
 needs a test account, IAM teardown logic, and 30 seconds per test for the
 provisioning round-trip. Doing this against LocalStack in a CI container
 is 2 seconds and uses no real resources. You can run the same test 1000
-times a day against LocalStack — try doing that in real AWS without a
+times a day against LocalStack. Try doing that in real AWS without a
 budget alarm going off.
 
 ### 4. Demo-able local dev
@@ -193,7 +193,7 @@ is a productive plane ride.
 
 What does your code do when SQS returns 503? When DynamoDB throttles?
 When Lambda times out? Real AWS rarely cooperates when you want it to
-fail. LocalStack has knobs to inject these failures deterministically — a
+fail. LocalStack has knobs to inject these failures deterministically. A
 much better way to test resilience than waiting for production to surprise
 you.
 
@@ -222,7 +222,7 @@ Three rules that make this stable:
    against a real (cheap, throwaway) AWS account catches LocalStack-only
    bugs before they hit prod.
 
-This pattern is what blissful-infra's `localstack` plugin embeds — a
+This pattern is what blissful-infra's `localstack` plugin embeds: a
 LocalStack container alongside your service, init scripts that create
 buckets/tables/queues, and environment variables wired so the same code
 works locally and in cloud.
@@ -257,10 +257,10 @@ If you're learning AWS for the first time:
    fidelity gap matters.
 
 Real AWS is the best teacher. LocalStack is the best playground. They're
-not in competition — they're complementary, and most professional AWS
-work that I've seen up close uses both.
+not in competition; they're complementary, and most professional AWS
+work I've seen up close uses both.
 
 If you want a project that ships LocalStack as a first-class plugin
-alongside Postgres, Kafka, and Jenkins — wired up so `boto3` just works —
-[blissful-infra has it](/getting-started). It's the same pattern, sized
+alongside Postgres, Kafka, and Jenkins (wired up so `boto3` just works),
+[blissful-infra has it](/getting-started). Same pattern, sized
 for a laptop.
