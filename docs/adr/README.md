@@ -59,6 +59,7 @@ Use `_template.md` as a starting point.
 | [0010](./0010-decompose-ai-pipeline-plugin.md) | Decompose the ai-pipeline plugin into client-level platform services | Proposed | 2026-05-02 |
 | [0011](./0011-compliance-grade-audit-logging.md) | Compliance-grade audit logging via immudb + Kafka + ClickHouse | Proposed | 2026-05-04 |
 | [0012](./0012-data-governance-and-dsar-enforcement.md) | Data governance and DSAR enforcement via a per-service classification manifest | Proposed | 2026-05-04 |
+| [0013](./0013-local-image-generation-plugin.md) | Local image generation as `infrastructure.gen.image` plugin | Proposed | 2026-05-04 |
 
 When you add an ADR, append a row to this index in the same PR.
 
