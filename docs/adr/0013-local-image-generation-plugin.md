@@ -40,7 +40,7 @@ flowchart LR
 3. **Container:** `<client>-gen-image` on the client `infra` network. Exposes an **OpenAI-images-compatible HTTP API** (`POST /v1/images/generations`) so callers (Mage workflows, Spring Boot services, the dashboard) speak a familiar shape and can swap to OpenAI's hosted endpoint later by changing one env var.
 4. **Default model:** SD 1.5 (~1.7 GB). Opt-in heavier models via env: `BLISSFUL_GEN_IMAGE_MODEL=sdxl-turbo | flux-schnell | sd3-medium`.
 5. **Model cache:** weights live at `~/.blissful-infra/cache/gen/image/models/`, **shared across clients** (weights are static, large, not per-client state). Same pattern Docker uses for image layers.
-6. **GPU:** opt-in via `infra.gen.image: { gpu: true }` (object form unlocks per-flag config). Adds Compose `deploy.resources.reservations.devices` block for NVIDIA. Apple Silicon uses Metal automatically when the host exposes it. Default CPU.
+6. **GPU:** Linux + NVIDIA opt-in via `infra.gen.image: { gpu: true }` (object form unlocks per-flag config) — adds Compose `deploy.resources.reservations.devices` block for NVIDIA. macOS + Metal **requires host-mode** ([ADR-0015](./0015-host-mode-sidecars.md)) since Docker Desktop on macOS has no path to the host GPU; the boolean form auto-resolves to host mode on macOS so most users don't need to think about it. Windows + CUDA via WSL2 works in container mode. Default CPU.
 7. **Port allocation:** `PortBlockSchema` gains `genImage: number`, allocated `7860 + blockIndex` (nod to Automatic1111's conventional port).
 8. **Env wiring (template guards):** services that opt into `gen.image` get `IMAGE_GEN_URL=http://gen-image:7860/v1` injected into compose, plus `{{#IF_gen_IMAGE}} ... {{/IF_gen_IMAGE}}` blocks in spring-boot / react-vite / lambda templates. Mirrors the keycloak / localstack wiring pattern that landed 2026-05-04.
 9. **CLI surface:** `blissful-infra client infra add <client> gen.image` and `... remove ...` toggle the flag on existing clients (extends the `infra-deps` manifest from the existing TODO list).
@@ -86,7 +86,7 @@ Both forms accepted; boolean is sugar for `{ model: 'sd15', gpu: false, maxConcu
 - **Quality on small models is "fine, not great."** SD 1.5 produces images suitable for IG carousels, blog headers, stock-style placeholders, not magazine covers. SDXL / Flux narrow the gap but at 6–12 GB and slower CPU times. Honest framing in docs.
 - **Disk footprint is non-trivial.** SD 1.5 ≈ 1.7 GB, SDXL Turbo ≈ 6 GB, Flux Schnell ≈ 12 GB. Shared cache mitigates but first-run pulls are large.
 - **First introduction of a nested infra namespace.** `gen.image` breaks the flat `ClientInfrastructure` convention. Schema migration is mechanical (Zod accepts both shapes during a deprecation window) but it's a structural choice that other generative components are now committed to follow.
-- **GPU passthrough adds friction.** NVIDIA Container Toolkit on Linux, Metal on macOS works automatically, Windows users need WSL2 + CUDA. Documented as opt-in.
+- **GPU passthrough is OS-asymmetric.** Linux uses Container Toolkit (in-container), macOS requires host-mode ([ADR-0015](./0015-host-mode-sidecars.md)) because Docker Desktop on macOS can't reach Metal, Windows uses WSL2 + CUDA. The boolean config form hides the asymmetry behind OS-aware defaults, but Mac users have a one-time `runtime install sd-cpp` step that Linux users don't.
 
 ### Risks / follow-ups
 
@@ -109,6 +109,7 @@ Both forms accepted; boolean is sugar for `{ model: 'sd15', gpu: false, maxConcu
 - [ADR-0008](./0008-clickhouse-as-client-level-warehouse.md), client-level shared resources pattern
 - [ADR-0009](./0009-keycloak-as-client-level-iam.md), opt-in client-level infra pattern
 - [ADR-0010](./0010-decompose-ai-pipeline-plugin.md), the generative / analytical platform-services family this joins
+- [ADR-0015](./0015-host-mode-sidecars.md), the host-mode sidecar pattern this plugin uses on macOS for Metal access
 - [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp), chosen runtime
 - [OpenAI Images API](https://platform.openai.com/docs/api-reference/images), HTTP shape we mirror
 - [specs/product.md](../../specs/product.md), local-first positioning that drives the "no SaaS default" stance

@@ -5,7 +5,7 @@ import inquirer from "inquirer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import type { ClientConfig } from "@blissful-infra/shared";
+import { normalizePostgresInstances, type ClientConfig } from "@blissful-infra/shared";
 import {
   allocateFreePortBlock,
   unregisterClient,
@@ -265,8 +265,13 @@ services: []
   if (infrastructure.kafka) {
     console.log(chalk.dim("  Kafka:       ") + chalk.cyan(`localhost:${ports.kafka}`));
   }
-  if (infrastructure.postgres) {
-    console.log(chalk.dim("  Postgres:    ") + chalk.cyan(`localhost:${ports.postgres}`));
+  // ADR-0014 — print every Postgres instance. The "default" instance uses
+  // the legacy ports.postgres slot; others come from ports.postgresInstances.
+  for (const instance of normalizePostgresInstances(infrastructure.postgres)) {
+    const p = instance.name === "default" ? ports.postgres : ports.postgresInstances?.[instance.name];
+    if (p === undefined) continue;
+    const label = instance.name === "default" ? "Postgres" : `Postgres (${instance.name})`;
+    console.log(chalk.dim(`  ${label.padEnd(11)} `) + chalk.cyan(`localhost:${p}`));
   }
   if (infrastructure.clickhouse && ports.clickhouse) {
     console.log(chalk.dim("  ClickHouse:  ") + chalk.cyan(`http://localhost:${ports.clickhouse}/play`));

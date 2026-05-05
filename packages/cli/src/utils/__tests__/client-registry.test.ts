@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   allocatePortBlock,
+  extraPostgresInstanceNames,
   getClientRequiredPorts,
   registerClient,
   unregisterClient,
@@ -43,6 +44,59 @@ describe("allocatePortBlock — pure math", () => {
   });
 });
 
+describe("allocatePortBlock — multiple postgres instances (ADR-0014)", () => {
+  it("returns no postgresInstances field when there are no extras", () => {
+    const p = allocatePortBlock("acme", 0);
+    expect(p.postgresInstances).toBeUndefined();
+  });
+
+  it("allocates expansion ports for extra instances", () => {
+    const p = allocatePortBlock("acme", 0, { extraPostgresInstances: ["legacy", "analytics"] });
+    expect(p.postgres).toBe(5432);
+    expect(p.postgresInstances).toEqual({ legacy: 5600, analytics: 5601 });
+  });
+
+  it("blockIndex shifts the expansion range by 10 per block", () => {
+    const p = allocatePortBlock("globex", 3, { extraPostgresInstances: ["legacy"] });
+    expect(p.postgresInstances).toEqual({ legacy: 5630 });
+  });
+
+  it("throws when the extras list exceeds the per-block cap", () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => `extra${i}`);
+    expect(() => allocatePortBlock("acme", 0, { extraPostgresInstances: eleven })).toThrow(/Too many/);
+  });
+});
+
+describe("extraPostgresInstanceNames — read non-default names from infra (ADR-0014)", () => {
+  it("returns [] for boolean shorthand", () => {
+    expect(extraPostgresInstanceNames({ kafka: true, postgres: true, jenkins: false } as never)).toEqual([]);
+  });
+
+  it("returns [] when only the default instance is named", () => {
+    expect(
+      extraPostgresInstanceNames({
+        kafka: true,
+        jenkins: false,
+        postgres: [{ name: "default", version: "16" }],
+      } as never),
+    ).toEqual([]);
+  });
+
+  it("returns non-default names in declaration order", () => {
+    expect(
+      extraPostgresInstanceNames({
+        kafka: true,
+        jenkins: false,
+        postgres: [
+          { name: "default", version: "16" },
+          { name: "legacy", version: "14" },
+          { name: "analytics", version: "16" },
+        ],
+      } as never),
+    ).toEqual(["legacy", "analytics"]);
+  });
+});
+
 describe("getClientRequiredPorts — feature-flag-aware", () => {
   const ports = allocatePortBlock("acme", 0);
 
@@ -70,6 +124,30 @@ describe("getClientRequiredPorts — feature-flag-aware", () => {
     expect(result.find(r => r.service === "Prometheus")).toBeUndefined();
     expect(result.find(r => r.service === "Grafana")).toBeUndefined();
     expect(result.find(r => r.service === "Jaeger")).toBeUndefined();
+  });
+
+  it("includes one Postgres entry per instance (ADR-0014)", () => {
+    const block = allocatePortBlock("acme", 0, { extraPostgresInstances: ["legacy"] });
+    const result = getClientRequiredPorts(block, {
+      kafka: false, jenkins: false,
+      postgres: [
+        { name: "default", version: "16" },
+        { name: "legacy", version: "14" },
+      ],
+      observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+    } as never);
+    const pg = result.filter(r => r.service.startsWith("Postgres"));
+    expect(pg.map(p => p.service).sort()).toEqual(["Postgres", "Postgres (legacy)"]);
+    expect(pg.find(r => r.service === "Postgres")?.port).toBe(5432);
+    expect(pg.find(r => r.service === "Postgres (legacy)")?.port).toBe(5600);
+  });
+
+  it("excludes all Postgres entries when postgres is false", () => {
+    const result = getClientRequiredPorts(ports, {
+      kafka: false, postgres: false, jenkins: false,
+      observability: { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+    });
+    expect(result.find(r => r.service.startsWith("Postgres"))).toBeUndefined();
   });
 
   it("dashboard is always required", () => {

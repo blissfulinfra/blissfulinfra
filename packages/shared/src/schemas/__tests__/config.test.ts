@@ -5,6 +5,8 @@ import {
   PortBlockSchema,
   ClientRegistrySchema,
   ProjectConfigSchema,
+  PostgresInstanceSchema,
+  normalizePostgresInstances,
 } from "../config.js";
 
 describe("ClientConfigSchema", () => {
@@ -146,6 +148,76 @@ describe("ClientRegistrySchema", () => {
       nextBlockIndex: 1,
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("Postgres multi-instance config (ADR-0014)", () => {
+  it("accepts boolean shorthand on ClientConfigSchema", () => {
+    const r = ClientConfigSchema.safeParse({
+      type: "client",
+      name: "acme",
+      infrastructure: { kafka: false, postgres: true, jenkins: false },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts array of named instances", () => {
+    const r = ClientConfigSchema.safeParse({
+      type: "client",
+      name: "acme",
+      infrastructure: {
+        kafka: false,
+        jenkins: false,
+        postgres: [
+          { name: "default", version: "16" },
+          { name: "legacy", version: "14", tuning: { sharedBuffers: "256MB" } },
+        ],
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects empty postgres array (requires at least one instance)", () => {
+    const r = ClientConfigSchema.safeParse({
+      type: "client",
+      name: "acme",
+      infrastructure: { kafka: false, jenkins: false, postgres: [] },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects invalid instance name (uppercase)", () => {
+    const r = PostgresInstanceSchema.safeParse({ name: "Default", version: "16" });
+    expect(r.success).toBe(false);
+  });
+
+  it("normalizePostgresInstances maps true -> single default instance", () => {
+    expect(normalizePostgresInstances(true)).toEqual([{ name: "default", version: "16" }]);
+  });
+
+  it("normalizePostgresInstances maps false -> empty array", () => {
+    expect(normalizePostgresInstances(false)).toEqual([]);
+  });
+
+  it("normalizePostgresInstances passes array through with defaults filled in", () => {
+    const result = normalizePostgresInstances([
+      { name: "legacy", version: "14" },
+      { name: "default" },
+    ] as never);
+    expect(result).toEqual([
+      { name: "legacy", version: "14" },
+      { name: "default", version: "16" },
+    ]);
+  });
+
+  it("PortBlockSchema accepts optional postgresInstances map", () => {
+    const r = PortBlockSchema.safeParse({
+      clientName: "acme", blockIndex: 0,
+      jenkins: 8090, grafana: 3010, prometheus: 9090, jaeger: 16680,
+      kafka: 9094, postgres: 5432, dashboard: 3002,
+      postgresInstances: { legacy: 5600, analytics: 5601 },
+    });
+    expect(r.success).toBe(true);
   });
 });
 

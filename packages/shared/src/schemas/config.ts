@@ -151,9 +151,23 @@ export const ObservabilityConfigSchema = z.object({
   clickhouse: z.boolean().default(false),
 });
 
+// ADR-0014 — Postgres can be a single boolean (shorthand: one instance named
+// `default`) or a list of named instances. Use `normalizePostgresInstances()`
+// downstream to always work with the canonical array form.
+export const PostgresInstanceSchema = z.object({
+  name: z.string().regex(/^[a-z][a-z0-9_-]*$/),
+  version: z.string().default("16"),
+  tuning: z.record(z.string(), z.string()).optional(),
+});
+
+export const PostgresConfigSchema = z.union([
+  z.boolean(),
+  z.array(PostgresInstanceSchema).min(1),
+]);
+
 export const ClientInfrastructureSchema = z.object({
   kafka: z.boolean().default(true),
-  postgres: z.boolean().default(true),
+  postgres: PostgresConfigSchema.default(true),
   jenkins: z.boolean().default(true),
   observability: ObservabilityConfigSchema.optional(),
   // Promoted to client-level platform services (ADR-0008, 0009, 0010).
@@ -165,6 +179,22 @@ export const ClientInfrastructureSchema = z.object({
   mlflow:     z.boolean().default(false),  // ADR-0010
   mage:       z.boolean().default(false),  // ADR-0010
 });
+
+/**
+ * Convert the user-facing `postgres` config (boolean shorthand or array)
+ * into the canonical `PostgresInstance[]` form used by all downstream code.
+ *
+ *   true  → [{ name: "default", version: "16" }]
+ *   false → []
+ *   array → array (with defaults filled in)
+ */
+export function normalizePostgresInstances(
+  value: PostgresConfig | undefined,
+): PostgresInstance[] {
+  if (value === undefined || value === false) return [];
+  if (value === true) return [{ name: "default", version: "16" }];
+  return value.map(i => PostgresInstanceSchema.parse(i));
+}
 
 export const ClientServiceRefSchema = z.object({
   name: z.string(),
@@ -211,6 +241,11 @@ export const PortBlockSchema = z.object({
   keycloak:   z.number().optional(),  // ADR-0009
   mlflow:     z.number().optional(),  // ADR-0010
   mage:       z.number().optional(),  // ADR-0010
+  // ADR-0014 — additional Postgres instances beyond the "default" instance.
+  // Keys are instance names; values are host ports allocated from the
+  // expansion range (5600 + blockIndex * 10 + extraIndex). The instance
+  // named `default` keeps using `postgres` above for back-compat.
+  postgresInstances: z.record(z.string(), z.number()).optional(),
 });
 
 export const ClientRegistrySchema = z.object({
@@ -261,6 +296,8 @@ export type ApiGenerate = z.infer<typeof ApiGenerateSchema>;
 export type ApiConfig = z.infer<typeof ApiConfigSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfigSchema>;
+export type PostgresInstance = z.infer<typeof PostgresInstanceSchema>;
+export type PostgresConfig = z.infer<typeof PostgresConfigSchema>;
 export type ClientInfrastructure = z.infer<typeof ClientInfrastructureSchema>;
 export type ClientServiceRef = z.infer<typeof ClientServiceRefSchema>;
 export type ClientConfig = z.infer<typeof ClientConfigSchema>;

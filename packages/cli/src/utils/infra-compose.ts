@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ClientConfig, PortBlock } from "@blissful-infra/shared";
+import yaml from "js-yaml";
+import {
+  normalizePostgresInstances,
+  type ClientConfig,
+  type PortBlock,
+  type PostgresInstance,
+} from "@blissful-infra/shared";
 
 export interface ParsedClientConfig {
   infrastructure: NonNullable<ClientConfig["infrastructure"]>;
@@ -8,52 +14,54 @@ export interface ParsedClientConfig {
 }
 
 /**
- * Minimal parser for the client's blissful-infra.yaml — extracts the
- * infrastructure block and the services list. Used by `service add/down`
- * to regenerate the infra compose with the correct include list.
+ * Parse a client's blissful-infra.yaml — extracts the infrastructure block
+ * and the services list. Used by `service add/down` to regenerate the infra
+ * compose with the correct include list. Forgiving: missing fields default
+ * to false / empty rather than throwing.
  */
 export function parseClientConfigYaml(content: string): ParsedClientConfig {
-  // Match flags at top level vs nested under observability:. The new
-  // promoted-to-client-level flags (clickhouse/localstack/keycloak/mlflow/mage)
-  // appear at the infrastructure root.
-  const matchTopLevel = (key: string) =>
-    new RegExp(`^  ${key}:\\s*true\\s*$`, "m").test(content);
+  const doc = (yaml.load(content) ?? {}) as Record<string, unknown>;
+  const infraIn = (doc.infrastructure ?? {}) as Record<string, unknown>;
+  const obsIn = (infraIn.observability ?? {}) as Record<string, unknown>;
+  const asBool = (v: unknown): boolean => v === true;
+
+  // Postgres can be boolean shorthand or array of instances (ADR-0014).
+  // We pass the on-disk shape through; downstream calls
+  // normalizePostgresInstances() to get the canonical array form.
+  const postgresRaw = infraIn.postgres;
+  const postgres =
+    Array.isArray(postgresRaw)
+      ? (postgresRaw as PostgresInstance[])
+      : asBool(postgresRaw);
+
   const infra: NonNullable<ClientConfig["infrastructure"]> = {
-    kafka:      matchTopLevel("kafka")      || /kafka:\s*true/.test(content),
-    postgres:   matchTopLevel("postgres")   || /postgres:\s*true/.test(content),
-    jenkins:    matchTopLevel("jenkins")    || /jenkins:\s*true/.test(content),
-    clickhouse: matchTopLevel("clickhouse"),
-    localstack: matchTopLevel("localstack"),
-    keycloak:   matchTopLevel("keycloak"),
-    mlflow:     matchTopLevel("mlflow"),
-    mage:       matchTopLevel("mage"),
+    kafka:      asBool(infraIn.kafka),
+    postgres,
+    jenkins:    asBool(infraIn.jenkins),
+    clickhouse: asBool(infraIn.clickhouse),
+    localstack: asBool(infraIn.localstack),
+    keycloak:   asBool(infraIn.keycloak),
+    mlflow:     asBool(infraIn.mlflow),
+    mage:       asBool(infraIn.mage),
     observability: {
-      prometheus: /prometheus:\s*true/.test(content),
-      grafana:    /grafana:\s*true/.test(content),
-      jaeger:     /jaeger:\s*true/.test(content),
-      loki:       /loki:\s*true/.test(content),
-      clickhouse: /clickhouse:\s*true/.test(content),
+      prometheus: asBool(obsIn.prometheus),
+      grafana:    asBool(obsIn.grafana),
+      jaeger:     asBool(obsIn.jaeger),
+      loki:       asBool(obsIn.loki),
+      clickhouse: asBool(obsIn.clickhouse),
     },
   };
 
+  const servicesRaw = Array.isArray(doc.services) ? doc.services : [];
   const refs: { name: string; path: string }[] = [];
-  const lines = content.split("\n");
-  let inServices = false;
-  let current: Partial<{ name: string; path: string }> = {};
-  for (const line of lines) {
-    if (/^services:/.test(line)) { inServices = true; continue; }
-    if (!inServices) continue;
-    if (line.length > 0 && !/^\s/.test(line)) break;
-    const nameMatch = line.match(/^\s+-\s+name:\s*(.+)$/);
-    if (nameMatch) {
-      if (current.name && current.path) refs.push(current as { name: string; path: string });
-      current = { name: nameMatch[1].trim() };
-      continue;
+  for (const entry of servicesRaw) {
+    if (entry && typeof entry === "object") {
+      const e = entry as Record<string, unknown>;
+      if (typeof e.name === "string" && typeof e.path === "string") {
+        refs.push({ name: e.name, path: e.path });
+      }
     }
-    const pathMatch = line.match(/^\s+path:\s*(.+)$/);
-    if (pathMatch) current.path = pathMatch[1].trim();
   }
-  if (current.name && current.path) refs.push(current as { name: string; path: string });
 
   return { infrastructure: infra, serviceRefs: refs };
 }
@@ -128,28 +136,71 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     };
   }
 
-  // Postgres
-  if (infrastructure.postgres) {
+  // Postgres — N instances (ADR-0014). The instance named `default` keeps
+  // back-compat names (service key `postgres`, volume `postgres-data`,
+  // container `${clientName}-postgres`, host port `ports.postgres`). Other
+  // instances get suffixed names and ports from the expansion range stored
+  // in `ports.postgresInstances`.
+  const postgresInstances = normalizePostgresInstances(infrastructure.postgres);
+  for (const instance of postgresInstances) {
+    const isDefault = instance.name === "default";
     const dbUser = clientName.replace(/-/g, "_");
-    services.postgres = {
-      image: "postgres:16-alpine",
-      container_name: `${clientName}-postgres`,
-      ports: [`${ports.postgres}:5432`],
-      networks: ["infra"],
-      environment: {
-        POSTGRES_USER: dbUser,
-        POSTGRES_PASSWORD: "localdev",
-        POSTGRES_DB: dbUser,
-      },
-      volumes: [`postgres-data:/var/lib/postgresql/data`],
-      healthcheck: {
-        test: ["CMD-SHELL", `pg_isready -U ${dbUser}`],
-        interval: "5s",
-        timeout: "3s",
-        retries: 5,
-      },
+    const dbName = isDefault ? dbUser : `${dbUser}_${instance.name.replace(/-/g, "_")}`;
+    const serviceKey = isDefault ? "postgres" : `postgres-${instance.name}`;
+    const containerName = isDefault ? `${clientName}-postgres` : `${clientName}-postgres-${instance.name}`;
+    const volumeName = isDefault ? "postgres-data" : `postgres-data-${instance.name}`;
+    const hostPort = isDefault ? ports.postgres : ports.postgresInstances?.[instance.name];
+    if (hostPort === undefined) {
+      throw new Error(`No host port allocated for postgres instance "${instance.name}"`);
+    }
+
+    const env: Record<string, string> = {
+      POSTGRES_USER: dbUser,
+      POSTGRES_PASSWORD: "localdev",
+      POSTGRES_DB: dbName,
     };
-    volumes["postgres-data"] = null;
+    if (instance.tuning) {
+      // Postgres image supports POSTGRES_INITDB_ARGS but not arbitrary GUCs
+      // via env. The community pattern is to mount postgresql.conf or pass
+      // -c flags. We pass tuning as `-c key=value` command args so they
+      // apply to the running server. Common keys: shared_buffers,
+      // max_connections, work_mem.
+      const cmdArgs: string[] = ["postgres"];
+      for (const [k, v] of Object.entries(instance.tuning)) {
+        cmdArgs.push("-c", `${toSnakeCase(k)}=${v}`);
+      }
+      services[serviceKey] = {
+        image: `postgres:${instance.version}-alpine`,
+        container_name: containerName,
+        ports: [`${hostPort}:5432`],
+        networks: ["infra"],
+        environment: env,
+        volumes: [`${volumeName}:/var/lib/postgresql/data`],
+        command: cmdArgs,
+        healthcheck: {
+          test: ["CMD-SHELL", `pg_isready -U ${dbUser}`],
+          interval: "5s",
+          timeout: "3s",
+          retries: 5,
+        },
+      };
+    } else {
+      services[serviceKey] = {
+        image: `postgres:${instance.version}-alpine`,
+        container_name: containerName,
+        ports: [`${hostPort}:5432`],
+        networks: ["infra"],
+        environment: env,
+        volumes: [`${volumeName}:/var/lib/postgresql/data`],
+        healthcheck: {
+          test: ["CMD-SHELL", `pg_isready -U ${dbUser}`],
+          interval: "5s",
+          timeout: "3s",
+          retries: 5,
+        },
+      };
+    }
+    volumes[volumeName] = null;
   }
 
   // Jenkins
@@ -361,8 +412,15 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
       },
       volumes: ["./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"],
       command: ["start-dev", "--import-realm"],
+      // The Keycloak image is UBI9-minimal, no curl/wget. Use bash's
+      // built-in /dev/tcp redirect to probe the HTTP endpoint, then grep
+      // for any HTTP status line. /realms/master returns 200 once the
+      // realm import has finished and the listener is fully serving.
       healthcheck: {
-        test: ["CMD", "curl", "-sf", "http://localhost:8080/health/ready"],
+        test: [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /realms/master HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q HTTP <&3",
+        ],
         interval: "15s",
         timeout: "10s",
         retries: 20,
@@ -671,6 +729,12 @@ export async function generateKeycloakRealm(clientDir: string, clientName: strin
     ],
   };
   await fs.writeFile(path.join(dir, "realm.json"), JSON.stringify(realm, null, 2));
+}
+
+// camelCase → snake_case for Postgres GUC names. Tuning keys like
+// `sharedBuffers` are written by users; Postgres expects `shared_buffers`.
+function toSnakeCase(s: string): string {
+  return s.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`);
 }
 
 // Minimal YAML serializer (reused from start.ts pattern)

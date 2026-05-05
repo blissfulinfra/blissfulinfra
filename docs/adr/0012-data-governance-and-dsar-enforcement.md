@@ -38,7 +38,7 @@ Every backend / frontend / plugin template ships a `data-classification.yaml` de
 ```yaml
 # packages/cli/templates/spring-boot/data-classification.yaml
 - field: users.email
-  storage: postgres
+  storage: postgres:default:users   # ADR-0014 qualifier — instance:database
   classification: pii
   legalBasis: contract        # GDPR Art 6(1)(b)
   retention: P7Y              # ISO 8601 duration
@@ -47,7 +47,14 @@ Every backend / frontend / plugin template ships a `data-classification.yaml` de
   exportPath: $.user.email    # JSONPath in DSAR export bundle
 
 - field: users.passwordHash
-  storage: postgres
+  storage: postgres:default:users
+  classification: sensitive
+  legalBasis: contract
+  retention: P7Y
+  erasure: delete
+
+- field: orders.line_items
+  storage: postgres:legacy:orders   # different instance + different database
   classification: sensitive
   legalBasis: contract
   retention: P7Y
@@ -72,7 +79,7 @@ Schema lives in `packages/shared/src/schemas/data-classification.ts`. The CLI va
 
 ### 2. Identity vault, the single PII-to-subject-ID mapping
 
-A dedicated Postgres schema `identity_vault` (in the per-client Postgres) is the **only** place where the mapping `subject_id ↔ (email, name, phone, ...)` lives. Every other system (audit log, traces, analytics, application tables) references `subject_id` only.
+A dedicated Postgres schema `identity_vault` (in the per-client Postgres instance named `default`, per [ADR-0014](./0014-multiple-postgres-instances-per-client.md)) is the **only** place where the mapping `subject_id ↔ (email, name, phone, ...)` lives. Every other system (audit log, traces, analytics, application tables) references `subject_id` only.
 
 - Created automatically when `infrastructure.governance: true` is set in the client config.
 - Has its own role: `vault-writer` (insert + read-own-row only), `vault-reader` (full read for DSAR fulfillment).
@@ -165,6 +172,7 @@ The `residency` field on each manifest entry (`eu-only | us-only | any`) is info
 - [ADR-0002](./0002-per-client-isolation-model.md), per-client isolation (defines erasure scope)
 - [ADR-0009](./0009-keycloak-as-client-level-iam.md). Keycloak (extended here for consent tracking)
 - [ADR-0011](./0011-compliance-grade-audit-logging.md), compliance-grade audit logging (depends on this ADR's pseudonymous rule)
+- [ADR-0014](./0014-multiple-postgres-instances-per-client.md), multiple Postgres instances (defines the `instance` dimension of the `storage:` qualifier)
 - [specs/cloud-deploy.md](../../specs/cloud-deploy.md), residency field becomes load-bearing once cloud deploy ships
 - [GDPR Art 15](https://gdpr-info.eu/art-15-gdpr/), right of access
 - [GDPR Art 17](https://gdpr-info.eu/art-17-gdpr/), right to erasure
