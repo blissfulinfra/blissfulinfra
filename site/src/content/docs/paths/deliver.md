@@ -1,9 +1,9 @@
 ---
 title: Deliver path
-description: For small studios and indie teams running multiple client projects. Per-client isolated stacks with their own Kafka, Postgres, observability and CI — all on one laptop.
+description: For small studios and indie teams running multiple client projects. Per-client isolated stacks with their own Kafka, Postgres, observability, and CI, all on one laptop.
 ---
 
-This path is for small software studios, freelance engineers and indie teams who ship work for several clients in parallel. Every client deserves their own stack, but spinning up SaaS subscriptions per client (Vercel + Supabase + Auth0 + Datadog × N clients) gets expensive and messy fast.
+This path is for small software studios, freelance engineers, and indie teams who ship work for several clients in parallel. Every client deserves their own stack, but spinning up SaaS subscriptions per client (Vercel + Supabase + Auth0 + Datadog × N clients) gets expensive and messy fast.
 
 blissful-infra lets you run a fully isolated production-shaped stack for each client on one laptop, free, with the same tooling and workflows everywhere.
 
@@ -15,9 +15,9 @@ Each **client** is a fully isolated environment with its own:
 - Postgres + Redis
 - Jenkins server
 - Prometheus + Grafana + Loki + Jaeger
-- Docker network — clients cannot see each other's data or services
+- Docker network. Clients cannot see each other's data or services.
 
-Inside a client you add **services** — backend + frontend pairs, Lambda functions, ML pipelines. Services in the same client share infrastructure but each gets its own ports and own deploy lifecycle.
+Inside a client you add **services**: backend + frontend pairs, Lambda functions, ML pipelines. Services in the same client share infrastructure, but each gets its own ports and its own deploy lifecycle.
 
 ```bash
 blissful-infra client create acme-corp
@@ -28,7 +28,7 @@ blissful-infra client up acme-corp
 blissful-infra client status acme-corp
 ```
 
-→ [Client model guide](/guides/client-model) · [`client` command](/commands/client) · [`service` command](/commands/service)
+[Client model guide](/guides/client-model) · [`client` command](/commands/client) · [`service` command](/commands/service)
 
 ## Why this beats SaaS-per-client
 
@@ -38,7 +38,7 @@ blissful-infra client status acme-corp
 | Onboarding new client | Provision N services manually | One command |
 | Tearing down a finished engagement | Cancel N subscriptions, hope you got them all | `client remove` |
 | Reproducibility for the next dev | "Hope you have the same plan tier" | `git clone && client up` |
-| Vendor lock-in per client | High | None — all OSS underneath |
+| Vendor lock-in per client | High | None. All OSS underneath. |
 
 ## Practical workflow
 
@@ -48,7 +48,7 @@ blissful-infra client status acme-corp
 
 **Per-client observability.** Each client has its own Grafana with its own dashboards and its own retention policy. Useful when one client wants 30 days of logs and another wants 7.
 
-**Shared dev machine, isolated state.** Two clients can both run a service called `api` without colliding — they're on separate Docker networks and the [client registry](/guides/client-model) allocates non-overlapping ports.
+**Shared dev machine, isolated state.** Two clients can both run a service called `api` without colliding. They're on separate Docker networks and the [client registry](/guides/client-model) allocates non-overlapping ports.
 
 ## Adding optional infrastructure per client
 
@@ -74,14 +74,14 @@ blissful-infra deploy
 
 The deploy adapter for the configured target (Cloudflare, Vercel, AWS) ships the services to the client's actual cloud. The local stack stays as your dev mirror.
 
-→ [`deploy` command](/commands/deploy)
+[`deploy` command](/commands/deploy)
 
 ## Where this goes next
 
 The deliver path gets a lot more powerful once you have:
 
-- **Per-client billing visibility** — track which client's stack is using which resources locally
-- **Templated client onboarding** — a `studio.yaml` that scaffolds your standard client starter
-- **Cross-client dashboard** — one view across every client you run
+- **Per-client billing visibility**: track which client's stack is using which resources locally
+- **Templated client onboarding**: a `studio.yaml` that scaffolds your standard client starter
+- **Cross-client dashboard**: one view across every client you run
 
 These are on the roadmap. If your studio depends on any of them, [open an issue](https://github.com/cavanpage/blissful-infra/issues) and they will move up.
