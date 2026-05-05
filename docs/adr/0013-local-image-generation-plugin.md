@@ -1,4 +1,4 @@
-# 0013. Local image generation as `infrastructure.gen.image` plugin
+# 0013. Local image generation as `infra.gen.image` plugin
 
 - **Status:** Proposed
 - **Date:** 2026-05-04
@@ -19,7 +19,7 @@ We need a local image-generation primitive that:
 
 ## Decision
 
-**Add local image generation as a client-level platform service**, opt-in via `infrastructure.gen.image: true` in the client config. Introduce a new `gen` namespace under `ClientInfrastructure` to hold this and future generative components.
+**Add local image generation as a client-level platform service**, opt-in via `infra.gen.image: true` in the client config. Introduce a new `gen` namespace under `ClientInfrastructure` to hold this and future generative components.
 
 ```mermaid
 flowchart LR
@@ -35,12 +35,12 @@ flowchart LR
 
 ### What changes
 
-1. **New schema namespace:** `ClientInfrastructure.gen: { image?: boolean }`. First nested infra namespace in the schema; existing flags stay flat. Future siblings (`gen.video`, `gen.audio`) slot in here without re-shaping.
+1. **New schema namespace:** `Clientinfra.gen: { image?: boolean }`. First nested infra namespace in the schema; existing flags stay flat. Future siblings (`gen.video`, `gen.audio`) slot in here without re-shaping.
 2. **Runtime:** [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) — single C++ binary, CPU-capable, GPU opt-in (CUDA / Metal / Vulkan), Apache-2, supports SD 1.5 / SDXL / SD3 / Flux. Direct analog to llama.cpp.
 3. **Container:** `<client>-gen-image` on the client `infra` network. Exposes an **OpenAI-images-compatible HTTP API** (`POST /v1/images/generations`) so callers (Mage workflows, Spring Boot services, the dashboard) speak a familiar shape and can swap to OpenAI's hosted endpoint later by changing one env var.
 4. **Default model:** SD 1.5 (~1.7 GB). Opt-in heavier models via env: `BLISSFUL_GEN_IMAGE_MODEL=sdxl-turbo | flux-schnell | sd3-medium`.
 5. **Model cache:** weights live at `~/.blissful-infra/cache/gen/image/models/`, **shared across clients** (weights are static, large, not per-client state). Same pattern Docker uses for image layers.
-6. **GPU:** opt-in via `infrastructure.gen.image: { gpu: true }` (object form unlocks per-flag config). Adds Compose `deploy.resources.reservations.devices` block for NVIDIA. Apple Silicon uses Metal automatically when the host exposes it. Default CPU.
+6. **GPU:** opt-in via `infra.gen.image: { gpu: true }` (object form unlocks per-flag config). Adds Compose `deploy.resources.reservations.devices` block for NVIDIA. Apple Silicon uses Metal automatically when the host exposes it. Default CPU.
 7. **Port allocation:** `PortBlockSchema` gains `genImage: number`, allocated `7860 + blockIndex` (nod to Automatic1111's conventional port).
 8. **Env wiring (template guards):** services that opt into `gen.image` get `IMAGE_GEN_URL=http://gen-image:7860/v1` injected into compose, plus `{{#IF_gen_IMAGE}} ... {{/IF_gen_IMAGE}}` blocks in spring-boot / react-vite / lambda templates. Mirrors the keycloak / localstack wiring pattern that landed 2026-05-04.
 9. **CLI surface:** `blissful-infra client infra add <client> gen.image` and `... remove ...` toggle the flag on existing clients (extends the `infra-deps` manifest from the existing TODO list).
@@ -65,7 +65,7 @@ Both forms accepted; boolean is sugar for `{ model: 'sd15', gpu: false, maxConcu
 ### What is intentionally NOT in this ADR
 
 - **`gen.text` and `gen.audio` and `gen.video`.** Reserving the namespace; concrete components are separate ADRs. `gen.text` overlaps with the existing ai-pipeline / Ollama path and would require a migration discussion better held on its own.
-- **ComfyUI or Automatic1111 as a swap-in runtime.** Stronger feature set (ControlNet, LoRA, inpainting) but heavier image and graph-based API. Earmark as a future runtime option behind `infrastructure.gen.image.runtime: comfyui`. Not built now.
+- **ComfyUI or Automatic1111 as a swap-in runtime.** Stronger feature set (ControlNet, LoRA, inpainting) but heavier image and graph-based API. Earmark as a future runtime option behind `infra.gen.image.runtime: comfyui`. Not built now.
 - **Auto-uploading generated images to social platforms.** Out of scope; matches the v0 stance for Cadence (export-and-you-upload).
 - **Model fine-tuning / LoRA training.** Inference only. Training belongs near MLflow ([ADR-0010](./0010-decompose-ai-pipeline-plugin.md)) if/when it lands.
 - **Content safety / NSFW filtering.** stable-diffusion.cpp ships with a configurable safety check; default on, document the off switch. A real moderation pipeline is future work.
