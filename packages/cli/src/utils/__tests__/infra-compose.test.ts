@@ -103,6 +103,7 @@ describe("generateInfraCompose — structural assertions", () => {
       clientDir: dir,
       ports: allocatePortBlock("tc", 0),
       infrastructure: { kafka: true, postgres: true, jenkins: false,
+        clickhouse: false, localstack: false, keycloak: false, mlflow: false, mage: false,
         observability: { prometheus: false, grafana: false, tempo: true, jaeger: false, loki: true, clickhouse: false } },
     });
     const { parsed } = await readGeneratedCompose();
@@ -193,9 +194,9 @@ describe("generateInfraCompose — structural assertions", () => {
   // `executable file not found in $PATH` and the container is permanently
   // unhealthy. Use bash's /dev/tcp redirect to probe HTTP without external
   // binaries.
-  // The Tempo image is distroless: no curl, no wget, no shell utilities
-  // beyond the Tempo binary itself. Same /dev/tcp probe pattern as Keycloak.
-  it("tempo healthcheck does not depend on curl/wget", async () => {
+  // Tempo's image is alpine-based with BusyBox sh (no /dev/tcp redirect)
+  // but wget is bundled. Probe must use wget, not curl or bash tcp tricks.
+  it("tempo healthcheck uses wget (alpine + busybox compatible)", async () => {
     await generateInfraCompose({
       clientName: "tc",
       clientDir: dir,
@@ -207,9 +208,10 @@ describe("generateInfraCompose — structural assertions", () => {
     const { parsed } = await readGeneratedCompose();
     const tempo = (parsed.services as Record<string, { healthcheck?: { test?: string[] } }>).tempo;
     const cmd = (tempo.healthcheck?.test ?? []).join(" ");
-    expect(cmd).not.toContain("curl");
-    expect(cmd).not.toContain("wget");
-    expect(cmd).toContain("/dev/tcp");
+    expect(cmd).toContain("wget");
+    expect(cmd).toContain("/ready");
+    // BusyBox sh's lack of /dev/tcp is what motivated this; never reintroduce.
+    expect(cmd).not.toContain("/dev/tcp");
   });
 
   it("keycloak healthcheck does not depend on curl/wget", async () => {

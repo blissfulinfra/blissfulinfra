@@ -265,8 +265,10 @@ services: []
   if (obs.prometheus) {
     console.log(chalk.dim("  Prometheus:  ") + chalk.cyan(`http://localhost:${ports.prometheus}`));
   }
-  if (obs.jaeger) {
-    console.log(chalk.dim("  Jaeger:      ") + chalk.cyan(`http://localhost:${ports.jaeger}`));
+  // ADR-0016: Tempo replaced Jaeger. Print Tempo when either flag is set
+  // (the legacy `jaeger: true` config is still parsed as tempo).
+  if (obs.tempo || obs.jaeger) {
+    console.log(chalk.dim("  Tempo:       ") + chalk.cyan(`http://localhost:${ports.tempo}`) + chalk.dim("  (or use Grafana Explore)"));
   }
   if (infrastructure.kafka) {
     console.log(chalk.dim("  Kafka:       ") + chalk.cyan(`localhost:${ports.kafka}`));

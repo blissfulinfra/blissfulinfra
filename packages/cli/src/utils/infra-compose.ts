@@ -245,13 +245,10 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
         "tempo-data:/var/tempo",
       ],
       healthcheck: {
-        test: [
-          "CMD-SHELL",
-          // Tempo image is distroless: no curl/wget. Use bash's /dev/tcp
-          // probe and grep for an HTTP status line. /ready returns 200
-          // once the receivers are listening.
-          "exec 3<>/dev/tcp/localhost/3200 && printf 'GET /ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q HTTP <&3",
-        ],
+        // Tempo's image is alpine-based with BusyBox sh (no /dev/tcp), but
+        // wget is in /usr/bin. /ready returns 200 once the receivers are
+        // listening. wget exits 0 on 2xx, non-zero otherwise.
+        test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3200/ready"],
         interval: "10s",
         timeout: "5s",
         retries: 5,
