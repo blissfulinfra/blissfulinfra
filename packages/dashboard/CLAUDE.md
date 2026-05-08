@@ -57,8 +57,8 @@ Key endpoints consumed:
 | `GET /api/v1/projects/:name/metrics` | Metrics charts (polled) |
 | `GET /api/v1/projects/:name/deployments` | Deployments tab, history with latency delta |
 | `POST /api/v1/projects/:name/up` | "Restart" button action |
-| `GET /api/v1/projects/:name/traces` | Jaeger trace links in Deployments tab |
-| `GET /api/v1/links` | Tool URLs (Jaeger/Grafana/etc) for the current client |
+| `GET /api/v1/projects/:name/traces` | Trace explorer links (Grafana / Tempo, ADR-0016) in Deployments tab |
+| `GET /api/v1/links` | Tool URLs (Tempo via Grafana, Jenkins, etc.) for the current client |
 
 ---
 
@@ -71,7 +71,7 @@ The dashboard has these top-level tabs (managed in `App.tsx` local state):
 | **Overview** | Project list, service health status, quick actions |
 | **Logs** | Real-time log streaming per service |
 | **Metrics** | CPU, memory, request latency charts (Recharts) |
-| **Deployments** | Deployment history, git SHA, status badge, P95 latency before/after delta, Jaeger trace link |
+| **Deployments** | Deployment history, git SHA, status badge, P95 latency before/after delta, trace explorer link (Grafana / Tempo) |
 | **AI Chat** | Conversational interface to the AI agent (streams responses from the API) |
 
 ---
@@ -82,7 +82,7 @@ In the Deployments tab, each row shows:
 - Git SHA (7 chars)
 - Status badge: `running` (blue), `success` (green), `failed` (red)
 - P95 latency delta: `+12ms` / `-8ms` vs previous deployment (color-coded)
-- Jaeger trace link (opens Jaeger UI at `http://localhost:16686`)
+- Trace explorer link (opens Grafana's Explore tab pointed at the Tempo datasource; ADR-0016 replaced Jaeger with Tempo)
 - Duration in seconds
 - Timestamp
 

@@ -14,7 +14,7 @@ Each **client** is a fully isolated environment with its own:
 - Kafka cluster
 - Postgres + Redis
 - Jenkins server
-- Prometheus + Grafana + Loki + Jaeger
+- Prometheus + Grafana + Loki + Tempo (one Grafana UI for all three)
 - Docker network. Clients cannot see each other's data or services.
 
 Inside a client you add **services**: backend + frontend pairs, Lambda functions, ML pipelines. Services in the same client share infrastructure, but each gets its own ports and its own deploy lifecycle.

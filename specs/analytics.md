@@ -57,7 +57,7 @@ CREATE TABLE events (
   referrer      Nullable(String),
   user_agent    Nullable(String),
   ip            Nullable(String),
-  trace_id      Nullable(String),     -- correlate with Jaeger
+  trace_id      Nullable(String),     -- correlate with Tempo (ADR-0016)
   properties    String                -- JSON-encoded freeform props
 )
 ENGINE = MergeTree()
@@ -159,7 +159,7 @@ UI sections (all charts via Recharts):
 - **Sessions per hour**: bar chart, last 24h
 - **Top events**: table, sortable
 - **Top pages**: table with avg time on page
-- **Session detail**: timeline of events for one session_id, linked to Jaeger
+- **Session detail**: timeline of events for one session_id, linked to Grafana's Tempo trace explorer
   trace via `trace_id`
 - **Funnel builder**: pick 2-5 events, see drop-off
 
@@ -199,7 +199,7 @@ Build incrementally. Each slice is independently testable.
 - 5 new `/api/v1/analytics/...` endpoints (see API list above)
 - New "Sessions" tab in dashboard
 - Live ticker, sessions/hour, top events, top pages, session detail view
-- Link `trace_id` from session detail → existing Jaeger UI
+- Link `trace_id` from session detail to Grafana's Tempo Explore tab (ADR-0016)
 
 **Done when:** loading the frontend, clicking around, then opening the Sessions tab shows your activity in real time.
 

@@ -572,11 +572,12 @@ function App() {
   // honor the per-client port allocation when running in client mode.
   const [links, setLinks] = useState<{
     clientName: string | null
+    tempoUrl: string | null
     jaegerUrl: string | null
     grafanaUrl: string | null
     prometheusUrl: string | null
     jenkinsUrl: string | null
-  }>({ clientName: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
+  }>({ clientName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
 
   useEffect(() => {
     fetch(`${API_BASE}/links`).then(r => r.ok ? r.json() : null).then(data => {
@@ -1553,16 +1554,16 @@ function App() {
             <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">orchestrator</span>
           </div>
           <div className="flex items-center gap-2">
-            {links.jaegerUrl && (
+            {links.tempoUrl && (
               <a
-                href={links.jaegerUrl}
+                href={links.tempoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-purple-400"
-                title="Open Jaeger Distributed Tracing"
+                title="Open distributed tracing in Grafana (Tempo)"
               >
                 <ExternalLink className="w-4 h-4" />
-                Jaeger
+                Traces
               </a>
             )}
             {links.grafanaUrl && (

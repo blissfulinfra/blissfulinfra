@@ -5,7 +5,7 @@ import inquirer from "inquirer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import type { ClientConfig } from "@blissful-infra/shared";
+import { normalizePostgresInstances, type ClientConfig } from "@blissful-infra/shared";
 import {
   allocateFreePortBlock,
   unregisterClient,
@@ -18,6 +18,7 @@ import {
   generatePrometheusConfig,
   generateLokiConfig,
   generateGrafanaConfig,
+  generateTempoConfig,
   generateClickHouseInit,
   generateClientLocalStackInit,
   generateKeycloakRealm,
@@ -30,7 +31,7 @@ import type { InfraComponent } from "../utils/infra-deps.js";
 const VALID_INFRA_COMPONENTS: InfraComponent[] = [
   "kafka", "postgres", "jenkins",
   "clickhouse", "localstack", "keycloak", "mlflow", "mage",
-  "prometheus", "grafana", "jaeger", "loki",
+  "prometheus", "grafana", "tempo", "jaeger", "loki",
 ];
 
 interface ClientCreateOptions {
@@ -94,7 +95,7 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
           { name: "Postgres", value: "postgres", checked: true },
           { name: "Jenkins (CI/CD)", value: "jenkins", checked: flagJenkins },
           { name: "Prometheus + Grafana (metrics)", value: "metrics", checked: flagObs },
-          { name: "Jaeger (tracing)", value: "jaeger", checked: flagObs },
+          { name: "Tempo (tracing, ADR-0016)", value: "tempo", checked: flagObs },
           { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
           // Promoted to client-level platform services — opt-in (ADR-0008/0009/0010)
           { name: "ClickHouse warehouse (ADR-0008)", value: "clickhouse", checked: flagClickhouse },
@@ -118,7 +119,8 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       observability: {
         prometheus: answers.components.includes("metrics"),
         grafana: answers.components.includes("metrics"),
-        jaeger: answers.components.includes("jaeger"),
+        tempo: answers.components.includes("tempo"),
+        jaeger: false,  // ADR-0016: legacy alias, never set on new clients
         loki: answers.components.includes("loki"),
         clickhouse: answers.components.includes("clickhouse"),  // legacy mirror
       },
@@ -134,8 +136,8 @@ async function clientCreateAction(clientName: string, opts: ClientCreateOptions)
       mlflow:     flagMlflow,
       mage:       flagMage,
       observability: flagObs
-        ? { prometheus: true, grafana: true, jaeger: true, loki: true, clickhouse: flagClickhouse }
-        : { prometheus: false, grafana: false, jaeger: false, loki: false, clickhouse: false },
+        ? { prometheus: true, grafana: true, tempo: true, jaeger: false, loki: true, clickhouse: flagClickhouse }
+        : { prometheus: false, grafana: false, tempo: false, jaeger: false, loki: false, clickhouse: false },
     };
   }
 
@@ -173,7 +175,7 @@ infrastructure:
   observability:
     prometheus: ${obs.prometheus}
     grafana: ${obs.grafana}
-    jaeger: ${obs.jaeger}
+    tempo: ${obs.tempo}
     loki: ${obs.loki}
     clickhouse: ${obs.clickhouse}
 
@@ -200,6 +202,10 @@ services: []
   }
   if (obs.loki) {
     await generateLokiConfig(clientDir);
+  }
+  // ADR-0016: Tempo replaced Jaeger. Either flag triggers tempo.yaml.
+  if (obs.tempo || obs.jaeger) {
+    await generateTempoConfig(clientDir);
   }
   if (obs.grafana && obs.prometheus) {
     await generateGrafanaConfig(clientDir);
@@ -259,14 +265,21 @@ services: []
   if (obs.prometheus) {
     console.log(chalk.dim("  Prometheus:  ") + chalk.cyan(`http://localhost:${ports.prometheus}`));
   }
-  if (obs.jaeger) {
-    console.log(chalk.dim("  Jaeger:      ") + chalk.cyan(`http://localhost:${ports.jaeger}`));
+  // ADR-0016: Tempo replaced Jaeger. Print Tempo when either flag is set
+  // (the legacy `jaeger: true` config is still parsed as tempo).
+  if (obs.tempo || obs.jaeger) {
+    console.log(chalk.dim("  Tempo:       ") + chalk.cyan(`http://localhost:${ports.tempo}`) + chalk.dim("  (or use Grafana Explore)"));
   }
   if (infrastructure.kafka) {
     console.log(chalk.dim("  Kafka:       ") + chalk.cyan(`localhost:${ports.kafka}`));
   }
-  if (infrastructure.postgres) {
-    console.log(chalk.dim("  Postgres:    ") + chalk.cyan(`localhost:${ports.postgres}`));
+  // ADR-0014 — print every Postgres instance. The "default" instance uses
+  // the legacy ports.postgres slot; others come from ports.postgresInstances.
+  for (const instance of normalizePostgresInstances(infrastructure.postgres)) {
+    const p = instance.name === "default" ? ports.postgres : ports.postgresInstances?.[instance.name];
+    if (p === undefined) continue;
+    const label = instance.name === "default" ? "Postgres" : `Postgres (${instance.name})`;
+    console.log(chalk.dim(`  ${label.padEnd(11)} `) + chalk.cyan(`localhost:${p}`));
   }
   if (infrastructure.clickhouse && ports.clickhouse) {
     console.log(chalk.dim("  ClickHouse:  ") + chalk.cyan(`http://localhost:${ports.clickhouse}/play`));

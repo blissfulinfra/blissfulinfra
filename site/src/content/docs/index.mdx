@@ -55,7 +55,7 @@ Curious why blissful-infra runs real open-source services instead of bundling ma
 
 <CardGrid>
   <Card title="Sandbox in seconds" icon="setting">
-    One command scaffolds and boots a complete Docker Compose stack: Spring Boot API, React frontend, Kafka, Postgres, Redis, Jaeger tracing, Prometheus, Grafana, Loki, and nginx, isolated on your machine, ready to break and rebuild.
+    One command scaffolds and boots a complete Docker Compose stack: Spring Boot API, React frontend, Kafka, Postgres, Redis, Tempo tracing, Prometheus, Grafana, Loki, and nginx, isolated on your machine, ready to break and rebuild.
   </Card>
   <Card title="Full-Stack Templates" icon="document">
     Choose from battle-tested templates for your backend (Spring Boot, FastAPI, Express, Go Chi) and frontend (React+Vite, Next.js). Each generated project is immediately yours, modify, delete, and recreate as many times as you want.
@@ -77,9 +77,9 @@ Running `blissful-infra start my-app` scaffolds a complete project directory and
 | Frontend    | http://localhost:3000      | React + Vite app served via nginx    |
 | Backend API | http://localhost:8080      | Spring Boot REST + WebSocket API     |
 | Dashboard   | http://localhost:3002      | blissful-infra management UI         |
-| Grafana     | http://localhost:3001      | Pre-provisioned metrics dashboards   |
+| Grafana     | http://localhost:3001      | Pre-provisioned dashboards (metrics, logs, traces) |
 | Prometheus  | http://localhost:9090      | Metrics scraping from `/actuator`    |
-| Jaeger      | http://localhost:16686     | Distributed trace viewer             |
+| Tempo       | http://localhost:3200      | Distributed tracing (view traces inside Grafana) |
 | Jenkins     | http://localhost:8081      | CI/CD pipelines (admin/admin)        |
 | Kafka       | localhost:9092             | Event streaming message bus          |
 | Postgres    | localhost:5432             | Primary relational database          |

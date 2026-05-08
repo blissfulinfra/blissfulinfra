@@ -91,7 +91,7 @@ These are pure-ish functions with file I/O, use a temp directory (`os.tmpdir()` 
 Vitest + `@testing-library/react`. Test the data transformation and display logic, not the full render tree.
 
 Priority targets:
-- Deployment row: renders correct status badge, latency delta color, Jaeger link
+- Deployment row: renders correct status badge, latency delta color, trace explorer link (Grafana / Tempo per ADR-0016)
 - Metrics chart: handles empty data gracefully, renders with mocked Recharts
 - Type safety: TypeScript compilation with shared schema types is test enough for most UI shapes
 

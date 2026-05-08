@@ -15,7 +15,7 @@ blissful-infra start my-app
 - **Frontend**: React + Vite with TypeScript and Tailwind
 - **Database**: Postgres with Flyway migrations, Redis caching, or both
 - **Kafka**: event bus wired between backend and frontend via WebSockets + SSE
-- **Observability**: Prometheus, Grafana, Loki, and Jaeger provisioned automatically
+- **Observability**: Prometheus, Grafana, Loki, and Tempo provisioned automatically (one Grafana UI for metrics, logs, and traces)
 - **CI/CD**: Jenkins pipeline with a generated Jenkinsfile, Docker registry included
 - **AI agent**: Ask Claude or Ollama to diagnose errors, analyze logs, and explain metrics
 - **MCP server**: Let Claude orchestrate your entire local platform via natural language

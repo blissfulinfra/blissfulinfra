@@ -15,7 +15,7 @@ A modern production application isn't just a backend and a database. By the time
 - **A frontend** (React, Next.js, or similar)
 - **A database** (Postgres for persistence, Redis for caching)
 - **A message bus** (Kafka for event-driven communication between services)
-- **Observability**: Prometheus for metrics, Grafana for dashboards, Jaeger for distributed tracing, Loki for log aggregation
+- **Observability**: Prometheus for metrics, Grafana for dashboards, Tempo for distributed tracing, Loki for log aggregation (Grafana shows all three with click-through correlation)
 - **CI/CD**: Jenkins (or similar) for automated build, test, and deploy pipelines
 - **A reverse proxy** (nginx to route traffic)
 
@@ -39,13 +39,13 @@ Here's what gets created:
 | Dashboard | `http://localhost:3002` | blissful-infra management UI |
 | Grafana | `http://localhost:3001` | Pre-built metrics dashboards |
 | Prometheus | `http://localhost:9090` | Scrapes `/actuator/prometheus` |
-| Jaeger | `http://localhost:16686` | Distributed trace viewer |
+| Tempo | `http://localhost:3200` | Distributed traces (viewed inside Grafana) |
 | Jenkins | `http://localhost:8081` | CI/CD pipeline |
 | Kafka | `localhost:9092` | Event streaming |
 | Postgres | `localhost:5432` | Primary database |
 | Loki | `localhost:3100` | Log aggregation |
 
-Every service is pre-configured to talk to the others. Prometheus already knows where to scrape metrics. Grafana already has dashboards provisioned. Jaeger already receives traces from the backend. You don't connect any of it; it's connected.
+Every service is pre-configured to talk to the others. Prometheus already knows where to scrape metrics. Grafana already has datasources for metrics, logs, and traces provisioned. Tempo already receives spans from the backend over OTLP. You don't connect any of it; it's connected.
 
 ## Why local beats cloud for development
 
@@ -102,9 +102,9 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
 ```
 
-### Distributed tracing with Jaeger
+### Distributed tracing with Tempo
 
-The backend Dockerfile includes the OpenTelemetry Java agent. Every HTTP request and Kafka message automatically generates a trace span. Open Jaeger at `localhost:16686`, pick the `backend` service, and you can see exactly how long each database query and downstream call took.
+The backend Dockerfile includes the OpenTelemetry Java agent. Every HTTP request and Kafka message automatically generates a trace span, exported via OTLP to Tempo. Open Grafana at `localhost:3001`, switch to the Explore tab, pick the Tempo datasource, and search for `service.name = backend` to see exactly how long each database query and downstream call took. Click any span to jump to the matching Loki log lines at that timestamp.
 
 No instrumentation code to write. The agent handles it.
 

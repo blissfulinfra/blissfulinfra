@@ -142,12 +142,16 @@ export function createApiServer(workingDir: string, port = 3002) {
     }
 
     try {
-      // GET /api/links - Tool URLs (Jaeger/Grafana/etc) for the current
+      // GET /api/links - Tool URLs (Tempo/Grafana/etc) for the current
       // client. Empty when running in flat-model mode without env injection.
+      // ADR-0016: tempoUrl points at Grafana's trace explorer (since traces
+      // live in the unified Grafana UI now). jaegerUrl is kept null for
+      // back-compat with any older dashboard build still in the wild.
       if (req.method === "GET" && url.pathname === "/api/v1/links") {
         const links: Record<string, string | null> = {
           clientName: process.env.CLIENT_NAME || null,
-          jaegerUrl: process.env.JAEGER_URL || null,
+          tempoUrl: process.env.TEMPO_URL || null,
+          jaegerUrl: null,
           grafanaUrl: process.env.GRAFANA_URL || null,
           prometheusUrl: process.env.PROMETHEUS_URL || null,
           jenkinsUrl: process.env.JENKINS_URL || null,
@@ -1145,10 +1149,20 @@ async function queryPrometheusP95(projectName: string): Promise<number | null> {
 }
 
 /**
- * Build a Jaeger UI URL for a given time window.
+ * Build a trace-explorer URL for a given time window. ADR-0016 swapped
+ * Jaeger for Tempo; traces now live behind Grafana's Explore tab pointed
+ * at the Tempo datasource. The function name keeps `Jaeger` for back-compat
+ * with the deployment-record field (`jaegerTraceUrl`), which is on disk in
+ * existing JSONL files and would be a separate migration to rename.
  */
 function buildJaegerTraceUrl(startMs: number, endMs: number): string {
-  return `http://localhost:16686/search?service=backend&start=${startMs * 1000}&end=${endMs * 1000}&limit=20`;
+  const grafanaBase = process.env.GRAFANA_URL ?? "http://localhost:3001";
+  const exploreState = encodeURIComponent(JSON.stringify({
+    datasource: "tempo",
+    queries: [{ refId: "A", queryType: "traceqlSearch", filters: [{ id: "service-name", tag: "service.name", operator: "=", scope: "resource", value: "backend" }] }],
+    range: { from: String(startMs), to: String(endMs) },
+  }));
+  return `${grafanaBase}/explore?left=${exploreState}`;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { ClientInfrastructure } from "@blissful-infra/shared";
+import { normalizePostgresInstances, type ClientInfrastructure } from "@blissful-infra/shared";
 
 /**
  * The set of client-level infrastructure components a template or plugin can
@@ -18,12 +18,29 @@ export type InfraComponent =
   | "mage"
   | "prometheus"
   | "grafana"
+  // ADR-0016: tempo is the canonical tracing component; jaeger is a
+  // deprecated alias kept on the type union for back-compat with manifests
+  // and CLI invocations that still use the old name.
+  | "tempo"
   | "jaeger"
   | "loki";
+
+export interface PostgresBinding {
+  /** Instance name. Defaults to `default`. */
+  instance?: string;
+  /** Databases to ensure exist on the named instance (CREATE DATABASE if missing). */
+  databases?: string[];
+}
 
 export interface InfraDep {
   component: InfraComponent;
   reason: string;
+  /**
+   * Component-specific binding. Currently only `postgres` carries one
+   * (ADR-0014: which instance + which databases). Other components ignore
+   * this field.
+   */
+  postgres?: PostgresBinding;
 }
 
 export interface InfraManifest {
@@ -40,7 +57,11 @@ export interface InfraManifest {
 export const TEMPLATE_INFRA_MANIFESTS: Record<string, InfraManifest> = {
   "spring-boot": {
     requires: [
-      { component: "postgres", reason: "JPA persistence + Flyway migrations" },
+      {
+        component: "postgres",
+        reason: "JPA persistence + Flyway migrations",
+        postgres: { instance: "default" },
+      },
     ],
     optional: [
       { component: "localstack", reason: "S3 file uploads via /api/files endpoint" },
@@ -100,7 +121,9 @@ function isComponentEnabled(infra: ClientInfrastructure | undefined, c: InfraCom
   if (!infra) return false;
   switch (c) {
     case "kafka":      return infra.kafka === true;
-    case "postgres":   return infra.postgres === true;
+    // ADR-0014 — postgres can be a boolean or a list of instances. The
+    // dependency `postgres` is satisfied when at least one instance exists.
+    case "postgres":   return normalizePostgresInstances(infra.postgres).length > 0;
     case "jenkins":    return infra.jenkins === true;
     case "clickhouse": return infra.clickhouse === true;
     case "localstack": return infra.localstack === true;
@@ -109,9 +132,13 @@ function isComponentEnabled(infra: ClientInfrastructure | undefined, c: InfraCom
     case "mage":       return infra.mage === true;
     case "prometheus":
     case "grafana":
-    case "jaeger":
     case "loki":
       return infra.observability?.[c] === true;
+    case "tempo":
+    case "jaeger":
+      // ADR-0016: either flag satisfies a tempo/jaeger dep, since the
+      // legacy `jaeger: true` config still spawns a Tempo container.
+      return infra.observability?.tempo === true || infra.observability?.jaeger === true;
   }
 }
 

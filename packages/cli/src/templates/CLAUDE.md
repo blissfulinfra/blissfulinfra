@@ -106,7 +106,7 @@ ai-pipeline:
 - **Language:** Kotlin, targeting JVM 21
 - **Framework:** Spring Boot 3.x with Spring Web, Spring Data JPA, Spring Kafka, WebSocket support
 - **Build:** Gradle (Kotlin DSL). Run with `./gradlew build -x test` in CI.
-- **Observability:** OpenTelemetry Java agent bundled in the Dockerfile (`COPY otel-javaagent.jar`). OTLP traces exported to Jaeger. Metrics exposed at `/actuator/prometheus`.
+- **Observability:** OpenTelemetry Java agent bundled in the Dockerfile (`COPY otel-javaagent.jar`). OTLP traces exported to Tempo at `http://tempo:4318` ([ADR-0016](../../../../docs/adr/0016-tempo-replaces-jaeger.md) replaced Jaeger with Tempo). Metrics exposed at `/actuator/prometheus`.
 - **Health:** `/actuator/health`, used by the Jenkinsfile deploy stage to confirm the service is up.
 - **Database migrations:** Flyway (when postgres is enabled). Migration files go in `src/main/resources/db/migration/`.
 

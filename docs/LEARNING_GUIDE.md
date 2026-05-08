@@ -83,7 +83,7 @@ New to enterprise infrastructure? This guide explains what each component does, 
 │   ────────────────                                                          │
 │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                        │
 │   │   Metrics   │  │    Logs     │  │   Traces    │                        │
-│   │ (Prometheus)│  │  (stdout)   │  │  (Jaeger)   │                        │
+│   │ (Prometheus)│  │   (Loki)    │  │   (Tempo)   │                        │
 │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                        │
 │          └────────────────┼────────────────┘                                │
 │                           ▼                                                 │

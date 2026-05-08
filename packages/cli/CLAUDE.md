@@ -159,8 +159,8 @@ GET  /api/v1/projects/:name/metrics                Prometheus metrics (p95 laten
 GET  /api/v1/projects/:name/deployments            List deployments (JSONL storage)
 POST /api/v1/projects/:name/deployments            Register new deployment
 PATCH /api/v1/projects/:name/deployments/:id       Update deployment status
-GET  /api/v1/projects/:name/traces                 Jaeger trace links
-GET  /api/v1/links                                 Tool URLs (Jaeger/Grafana/etc) for the current client
+GET  /api/v1/projects/:name/traces                 Trace explorer links (Grafana / Tempo, ADR-0016)
+GET  /api/v1/links                                 Tool URLs (Tempo via Grafana, Jenkins, etc.) for the current client
 ```
 
 ### API versioning
@@ -268,7 +268,7 @@ See [src/templates/CLAUDE.md](src/templates/CLAUDE.md) for the full template sys
 
 `src/utils/deployment-storage.ts` stores deployments as append-only JSONL at `~/.blissful-infra/deployments/<project>.jsonl`.
 
-Each record: `{ id, gitSha, status, startedAt, completedAt, durationSeconds, p95LatencyBefore, p95LatencyAfter, jaegerTraceUrl }`.
+Each record: `{ id, gitSha, status, startedAt, completedAt, durationSeconds, p95LatencyBefore, p95LatencyAfter, jaegerTraceUrl }`. The `jaegerTraceUrl` field name is kept for back-compat with on-disk JSONL; the value points at Grafana's Tempo trace explorer since [ADR-0016](../../docs/adr/0016-tempo-replaces-jaeger.md).
 
 The Jenkins Jenkinsfile template calls the API to register a deployment on start and patches it on success/failure.
 

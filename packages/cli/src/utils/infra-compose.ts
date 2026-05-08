@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ClientConfig, PortBlock } from "@blissful-infra/shared";
+import yaml from "js-yaml";
+import {
+  normalizePostgresInstances,
+  type ClientConfig,
+  type PortBlock,
+  type PostgresInstance,
+} from "@blissful-infra/shared";
 
 export interface ParsedClientConfig {
   infrastructure: NonNullable<ClientConfig["infrastructure"]>;
@@ -8,52 +14,57 @@ export interface ParsedClientConfig {
 }
 
 /**
- * Minimal parser for the client's blissful-infra.yaml — extracts the
- * infrastructure block and the services list. Used by `service add/down`
- * to regenerate the infra compose with the correct include list.
+ * Parse a client's blissful-infra.yaml — extracts the infrastructure block
+ * and the services list. Used by `service add/down` to regenerate the infra
+ * compose with the correct include list. Forgiving: missing fields default
+ * to false / empty rather than throwing.
  */
 export function parseClientConfigYaml(content: string): ParsedClientConfig {
-  // Match flags at top level vs nested under observability:. The new
-  // promoted-to-client-level flags (clickhouse/localstack/keycloak/mlflow/mage)
-  // appear at the infrastructure root.
-  const matchTopLevel = (key: string) =>
-    new RegExp(`^  ${key}:\\s*true\\s*$`, "m").test(content);
+  const doc = (yaml.load(content) ?? {}) as Record<string, unknown>;
+  const infraIn = (doc.infrastructure ?? {}) as Record<string, unknown>;
+  const obsIn = (infraIn.observability ?? {}) as Record<string, unknown>;
+  const asBool = (v: unknown): boolean => v === true;
+
+  // Postgres can be boolean shorthand or array of instances (ADR-0014).
+  // We pass the on-disk shape through; downstream calls
+  // normalizePostgresInstances() to get the canonical array form.
+  const postgresRaw = infraIn.postgres;
+  const postgres =
+    Array.isArray(postgresRaw)
+      ? (postgresRaw as PostgresInstance[])
+      : asBool(postgresRaw);
+
   const infra: NonNullable<ClientConfig["infrastructure"]> = {
-    kafka:      matchTopLevel("kafka")      || /kafka:\s*true/.test(content),
-    postgres:   matchTopLevel("postgres")   || /postgres:\s*true/.test(content),
-    jenkins:    matchTopLevel("jenkins")    || /jenkins:\s*true/.test(content),
-    clickhouse: matchTopLevel("clickhouse"),
-    localstack: matchTopLevel("localstack"),
-    keycloak:   matchTopLevel("keycloak"),
-    mlflow:     matchTopLevel("mlflow"),
-    mage:       matchTopLevel("mage"),
+    kafka:      asBool(infraIn.kafka),
+    postgres,
+    jenkins:    asBool(infraIn.jenkins),
+    clickhouse: asBool(infraIn.clickhouse),
+    localstack: asBool(infraIn.localstack),
+    keycloak:   asBool(infraIn.keycloak),
+    mlflow:     asBool(infraIn.mlflow),
+    mage:       asBool(infraIn.mage),
     observability: {
-      prometheus: /prometheus:\s*true/.test(content),
-      grafana:    /grafana:\s*true/.test(content),
-      jaeger:     /jaeger:\s*true/.test(content),
-      loki:       /loki:\s*true/.test(content),
-      clickhouse: /clickhouse:\s*true/.test(content),
+      prometheus: asBool(obsIn.prometheus),
+      grafana:    asBool(obsIn.grafana),
+      // ADR-0016: tempo is canonical; jaeger is a deprecated alias still
+      // accepted on disk so existing client YAMLs keep working.
+      tempo:      asBool(obsIn.tempo) || asBool(obsIn.jaeger),
+      jaeger:     asBool(obsIn.jaeger),
+      loki:       asBool(obsIn.loki),
+      clickhouse: asBool(obsIn.clickhouse),
     },
   };
 
+  const servicesRaw = Array.isArray(doc.services) ? doc.services : [];
   const refs: { name: string; path: string }[] = [];
-  const lines = content.split("\n");
-  let inServices = false;
-  let current: Partial<{ name: string; path: string }> = {};
-  for (const line of lines) {
-    if (/^services:/.test(line)) { inServices = true; continue; }
-    if (!inServices) continue;
-    if (line.length > 0 && !/^\s/.test(line)) break;
-    const nameMatch = line.match(/^\s+-\s+name:\s*(.+)$/);
-    if (nameMatch) {
-      if (current.name && current.path) refs.push(current as { name: string; path: string });
-      current = { name: nameMatch[1].trim() };
-      continue;
+  for (const entry of servicesRaw) {
+    if (entry && typeof entry === "object") {
+      const e = entry as Record<string, unknown>;
+      if (typeof e.name === "string" && typeof e.path === "string") {
+        refs.push({ name: e.name, path: e.path });
+      }
     }
-    const pathMatch = line.match(/^\s+path:\s*(.+)$/);
-    if (pathMatch) current.path = pathMatch[1].trim();
   }
-  if (current.name && current.path) refs.push(current as { name: string; path: string });
 
   return { infrastructure: infra, serviceRefs: refs };
 }
@@ -85,7 +96,8 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   const obs = infrastructure.observability ?? {
     prometheus: true,
     grafana: true,
-    jaeger: true,
+    tempo: true,
+    jaeger: false,
     loki: true,
     clickhouse: false,
   };
@@ -128,28 +140,71 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     };
   }
 
-  // Postgres
-  if (infrastructure.postgres) {
+  // Postgres — N instances (ADR-0014). The instance named `default` keeps
+  // back-compat names (service key `postgres`, volume `postgres-data`,
+  // container `${clientName}-postgres`, host port `ports.postgres`). Other
+  // instances get suffixed names and ports from the expansion range stored
+  // in `ports.postgresInstances`.
+  const postgresInstances = normalizePostgresInstances(infrastructure.postgres);
+  for (const instance of postgresInstances) {
+    const isDefault = instance.name === "default";
     const dbUser = clientName.replace(/-/g, "_");
-    services.postgres = {
-      image: "postgres:16-alpine",
-      container_name: `${clientName}-postgres`,
-      ports: [`${ports.postgres}:5432`],
-      networks: ["infra"],
-      environment: {
-        POSTGRES_USER: dbUser,
-        POSTGRES_PASSWORD: "localdev",
-        POSTGRES_DB: dbUser,
-      },
-      volumes: [`postgres-data:/var/lib/postgresql/data`],
-      healthcheck: {
-        test: ["CMD-SHELL", `pg_isready -U ${dbUser}`],
-        interval: "5s",
-        timeout: "3s",
-        retries: 5,
-      },
+    const dbName = isDefault ? dbUser : `${dbUser}_${instance.name.replace(/-/g, "_")}`;
+    const serviceKey = isDefault ? "postgres" : `postgres-${instance.name}`;
+    const containerName = isDefault ? `${clientName}-postgres` : `${clientName}-postgres-${instance.name}`;
+    const volumeName = isDefault ? "postgres-data" : `postgres-data-${instance.name}`;
+    const hostPort = isDefault ? ports.postgres : ports.postgresInstances?.[instance.name];
+    if (hostPort === undefined) {
+      throw new Error(`No host port allocated for postgres instance "${instance.name}"`);
+    }
+
+    const env: Record<string, string> = {
+      POSTGRES_USER: dbUser,
+      POSTGRES_PASSWORD: "localdev",
+      POSTGRES_DB: dbName,
     };
-    volumes["postgres-data"] = null;
+    if (instance.tuning) {
+      // Postgres image supports POSTGRES_INITDB_ARGS but not arbitrary GUCs
+      // via env. The community pattern is to mount postgresql.conf or pass
+      // -c flags. We pass tuning as `-c key=value` command args so they
+      // apply to the running server. Common keys: shared_buffers,
+      // max_connections, work_mem.
+      const cmdArgs: string[] = ["postgres"];
+      for (const [k, v] of Object.entries(instance.tuning)) {
+        cmdArgs.push("-c", `${toSnakeCase(k)}=${v}`);
+      }
+      services[serviceKey] = {
+        image: `postgres:${instance.version}-alpine`,
+        container_name: containerName,
+        ports: [`${hostPort}:5432`],
+        networks: ["infra"],
+        environment: env,
+        volumes: [`${volumeName}:/var/lib/postgresql/data`],
+        command: cmdArgs,
+        healthcheck: {
+          test: ["CMD-SHELL", `pg_isready -U ${dbUser}`],
+          interval: "5s",
+          timeout: "3s",
+          retries: 5,
+        },
+      };
+    } else {
+      services[serviceKey] = {
+        image: `postgres:${instance.version}-alpine`,
+        container_name: containerName,
+        ports: [`${hostPort}:5432`],
+        networks: ["infra"],
+        environment: env,
+        volumes: [`${volumeName}:/var/lib/postgresql/data`],
+        healthcheck: {
+          test: ["CMD-SHELL", `pg_isready -U ${dbUser}`],
+          interval: "5s",
+          timeout: "3s",
+          retries: 5,
+        },
+      };
+    }
+    volumes[volumeName] = null;
   }
 
   // Jenkins
@@ -171,22 +226,36 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     volumes["jenkins-data"] = null;
   }
 
-  // Jaeger
-  if (obs.jaeger) {
-    services.jaeger = {
-      image: "jaegertracing/all-in-one:1.57",
-      container_name: `${clientName}-jaeger`,
-      ports: [`${ports.jaeger}:16686`],
+  // Tempo (ADR-0016 replaced Jaeger). The legacy `obs.jaeger: true` flag is
+  // treated as an alias for tempo: existing client configs continue to work
+  // and get a Tempo container instead. Backends send OTLP to tempo:4318.
+  const wantsTracing = obs.tempo || obs.jaeger;
+  if (wantsTracing) {
+    services.tempo = {
+      image: "grafana/tempo:2.5.0",
+      container_name: `${clientName}-tempo`,
+      // Map only the HTTP query API to a host port (Grafana queries via
+      // the in-network hostname). 4317/4318 (OTLP receivers) are
+      // in-network only, services reach them via `tempo:4318`.
+      ports: [`${ports.tempo}:3200`],
       networks: ["infra"],
-      environment: { COLLECTOR_OTLP_ENABLED: "true" },
+      command: ["-config.file=/etc/tempo/tempo.yaml"],
+      volumes: [
+        "./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro",
+        "tempo-data:/var/tempo",
+      ],
       healthcheck: {
-        test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"],
+        // Tempo's image is alpine-based with BusyBox sh (no /dev/tcp), but
+        // wget is in /usr/bin. /ready returns 200 once the receivers are
+        // listening. wget exits 0 on 2xx, non-zero otherwise.
+        test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3200/ready"],
         interval: "10s",
         timeout: "5s",
-        retries: 3,
-        start_period: "10s",
+        retries: 5,
+        start_period: "15s",
       },
     };
+    volumes["tempo-data"] = null;
   }
 
   // Loki + Promtail
@@ -361,8 +430,15 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
       },
       volumes: ["./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro"],
       command: ["start-dev", "--import-realm"],
+      // The Keycloak image is UBI9-minimal, no curl/wget. Use bash's
+      // built-in /dev/tcp redirect to probe the HTTP endpoint, then grep
+      // for any HTTP status line. /realms/master returns 200 once the
+      // realm import has finished and the listener is fully serving.
       healthcheck: {
-        test: ["CMD", "curl", "-sf", "http://localhost:8080/health/ready"],
+        test: [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /realms/master HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q HTTP <&3",
+        ],
         interval: "15s",
         timeout: "10s",
         retries: 20,
@@ -430,7 +506,15 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   };
   // Tool URLs use the client's allocated host ports so the dashboard's
   // header links and trace links point to the right place per-client.
-  if (obs.jaeger) linkEnv.JAEGER_URL = `http://localhost:${ports.jaeger}`;
+  // ADR-0016: Tempo replaced Jaeger as the tracing backend. The trace
+  // explorer link points at Grafana's Explore tab with the Tempo
+  // datasource preselected, since users view traces inside Grafana now.
+  if ((obs.tempo || obs.jaeger) && obs.grafana) {
+    linkEnv.TEMPO_URL = `http://localhost:${ports.grafana}/explore?left=` +
+      encodeURIComponent(JSON.stringify({ datasource: "Tempo", queries: [{ refId: "A" }] }));
+  } else if (obs.tempo || obs.jaeger) {
+    linkEnv.TEMPO_URL = `http://localhost:${ports.tempo}`;
+  }
   if (obs.grafana) linkEnv.GRAFANA_URL = `http://localhost:${ports.grafana}`;
   if (obs.prometheus) linkEnv.PROMETHEUS_URL = `http://localhost:${ports.prometheus}`;
   if (infrastructure.jenkins) linkEnv.JENKINS_URL = `http://localhost:${ports.jenkins}`;
@@ -560,25 +644,109 @@ export async function generateGrafanaConfig(clientDir: string): Promise<void> {
   await fs.mkdir(provDir, { recursive: true });
   await fs.mkdir(dashDir, { recursive: true });
 
+  // ADR-0016: Tempo replaces Jaeger. The Tempo datasource is configured
+  // with `tracesToLogsV2` so clicking a span in Grafana's trace explorer
+  // jumps straight to the matching Loki log lines. This is the killer
+  // observability feature the swap was made for.
   const datasources = `apiVersion: 1
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
-  - name: Jaeger
-    type: jaeger
+  - name: Tempo
+    uid: tempo
+    type: tempo
     access: proxy
-    url: http://jaeger:16686
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        filterByTraceID: true
+        filterBySpanID: false
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
 `;
 
   await fs.writeFile(path.join(provDir, "datasources.yaml"), datasources);
   await fs.writeFile(path.join(dashDir, ".gitkeep"), "");
+}
+
+/**
+ * Generate the client-level Tempo config (ADR-0016). Tempo wants its own
+ * config file mounted in (unlike Jaeger all-in-one). This config:
+ *   - Listens for OTLP on 4317 (gRPC) and 4318 (HTTP) on all interfaces
+ *   - Stores trace blocks on the local filesystem at /var/tempo
+ *   - Serves the HTTP query API on :3200 (mapped to a host port for Grafana)
+ *
+ * For cloud deploys the storage backend should switch to S3/GCS/Azure;
+ * that's a deploy-adapter concern, not local dev.
+ */
+export async function generateTempoConfig(clientDir: string): Promise<void> {
+  const dir = path.join(clientDir, "tempo");
+  await fs.mkdir(dir, { recursive: true });
+  const config = `# Generated by blissful-infra (ADR-0016).
+# Local-dev defaults: filesystem storage, no auth, OTLP on 4317/4318.
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  trace_idle_period: 10s
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+
+# Required for trace-to-metrics + service map in Grafana (ADR-0016).
+# Tempo generates RED metrics from spans and exposes them as
+# Prometheus remote-write to a target; we keep them in-memory only for
+# local dev (no remote_write block configured).
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
+`;
+  await fs.writeFile(path.join(dir, "tempo.yaml"), config);
 }
 
 /**
@@ -671,6 +839,12 @@ export async function generateKeycloakRealm(clientDir: string, clientName: strin
     ],
   };
   await fs.writeFile(path.join(dir, "realm.json"), JSON.stringify(realm, null, 2));
+}
+
+// camelCase → snake_case for Postgres GUC names. Tuning keys like
+// `sharedBuffers` are written by users; Postgres expects `shared_buffers`.
+function toSnakeCase(s: string): string {
+  return s.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`);
 }
 
 // Minimal YAML serializer (reused from start.ts pattern)

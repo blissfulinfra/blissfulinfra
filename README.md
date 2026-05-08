@@ -487,7 +487,7 @@ It pulls these as Docker images at runtime. None are vendored or modified.
 | [Jenkins](https://www.jenkins.io/) | MIT | CI/CD pipelines |
 | [Prometheus](https://prometheus.io/) | Apache 2.0 | Metrics collection |
 | [Grafana](https://grafana.com/) | AGPL 3.0 | Metrics & log dashboards |
-| [Jaeger](https://www.jaegertracing.io/) | Apache 2.0 | Distributed tracing |
+| [Tempo](https://grafana.com/oss/tempo/) | AGPL 3.0 | Distributed tracing (replaces Jaeger as of [ADR-0016](./docs/adr/0016-tempo-replaces-jaeger.md)) |
 | [Loki](https://grafana.com/oss/loki/) + Promtail | AGPL 3.0 | Log aggregation |
 | [Caddy](https://caddyserver.com/) | Apache 2.0 | TLS edge proxy (planned, ADR-0001) |
 | [Keycloak](https://www.keycloak.org/) | Apache 2.0 | Identity & access management |

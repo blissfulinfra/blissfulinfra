@@ -46,7 +46,7 @@ https://api-<service>.<client>.localhost:<httpsPort>    # service backend
 https://assets-<service>.<client>.localhost:<httpsPort> # service localstack
 https://grafana.<client>.localhost:<httpsPort>          # client grafana
 https://jenkins.<client>.localhost:<httpsPort>          # client jenkins
-https://jaeger.<client>.localhost:<httpsPort>           # client jaeger
+https://tempo.<client>.localhost:<httpsPort>            # client tempo (since ADR-0016)
 ```
 
 Browsers (Chrome, Firefox, Safari) resolve `*.localhost` to `127.0.0.1`
@@ -63,7 +63,7 @@ flowchart LR
   caddy -->|assets-app.dev.localhost| ls["dev-app-localstack"]
   caddy -->|grafana.dev.localhost| graf["dev-grafana"]
   caddy -->|jenkins.dev.localhost| jenk["dev-jenkins"]
-  caddy -->|jaeger.dev.localhost| jaeg["dev-jaeger"]
+  caddy -->|tempo.dev.localhost| tmpo["dev-tempo"]
 ```
 
 ### Implementation

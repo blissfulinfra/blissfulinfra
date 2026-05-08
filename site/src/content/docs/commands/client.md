@@ -5,7 +5,7 @@ description: Manage isolated client environments, each one its own Kafka, Postgr
 
 `blissful-infra client` manages isolated **client environments**. Each
 client is a fully self-contained stack, its own Kafka, Postgres, Jenkins,
-Prometheus, Grafana, Jaeger, Loki, and dashboard, running on its own
+Prometheus, Grafana, Tempo, Loki, and dashboard, running on its own
 Docker network with its own port block.
 
 This is the path to take when you need multiple environments isolated from
@@ -47,7 +47,7 @@ the infra Compose file, and brings everything up.
 | `-y, --yes` | Skip the interactive infrastructure-components prompt and use defaults |
 | `--no-jenkins` | Skip Jenkins (faster create, first Jenkins build takes ~2 min) |
 | `--no-kafka` | Skip Kafka |
-| `--no-observability` | Skip Prometheus, Grafana, Jaeger, Loki |
+| `--no-observability` | Skip Prometheus, Grafana, Tempo, Loki |
 
 ### Interactive mode
 
@@ -63,9 +63,9 @@ blissful-infra client create acme-corp
   ◉ Postgres
   ◉ Jenkins (CI/CD)
   ◉ Prometheus + Grafana (metrics)
-  ◉ Jaeger (tracing)
+  ◉ Tempo (tracing, ADR-0016)
   ◉ Loki + Promtail (logs)
-  ◯ ClickHouse (Phase 8+ TSDB)
+  ◯ ClickHouse warehouse (ADR-0008)
 ```
 
 After the infra is up, you'll be asked if you want to add a service
@@ -80,9 +80,9 @@ the next free block). For block 0 you'd see:
 | Service | URL |
 |---|---|
 | Jenkins | <http://localhost:8090> (admin / admin) |
-| Grafana | <http://localhost:3010> |
+| Grafana | <http://localhost:3010> (metrics, logs, traces all in one UI) |
 | Prometheus | <http://localhost:9090> |
-| Jaeger | <http://localhost:16680> |
+| Tempo | <http://localhost:3200> (or use Grafana's trace explorer) |
 | Dashboard | <http://localhost:3002> |
 | Kafka | localhost:9094 |
 | Postgres | localhost:5432 |
@@ -132,7 +132,8 @@ blissful-infra client infra remove acme-corp mage
 ```
 
 Components: `kafka`, `postgres`, `jenkins`, `clickhouse`, `localstack`,
-`keycloak`, `mlflow`, `mage`, `prometheus`, `grafana`, `jaeger`, `loki`.
+`keycloak`, `mlflow`, `mage`, `prometheus`, `grafana`, `tempo`, `loki`.
+(`jaeger` is also accepted as a deprecated alias for `tempo`; see [ADR-0016](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0016-tempo-replaces-jaeger.md).)
 
 The command edits `~/.blissful-infra/clients/<client>/blissful-infra.yaml`
 in place. It does **not** restart anything, run

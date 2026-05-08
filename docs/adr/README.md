@@ -60,6 +60,9 @@ Use `_template.md` as a starting point.
 | [0011](./0011-compliance-grade-audit-logging.md) | Compliance-grade audit logging via immudb + Kafka + ClickHouse | Proposed | 2026-05-04 |
 | [0012](./0012-data-governance-and-dsar-enforcement.md) | Data governance and DSAR enforcement via a per-service classification manifest | Proposed | 2026-05-04 |
 | [0013](./0013-local-image-generation-plugin.md) | Local image generation as `infra.gen.image` plugin | Proposed | 2026-05-04 |
+| [0014](./0014-multiple-postgres-instances-per-client.md) | Multiple Postgres instances per client (canonical array form) | Proposed | 2026-05-05 |
+| [0015](./0015-host-mode-sidecars.md) | Host-mode sidecars for hardware-accelerated plugins | Proposed | 2026-05-05 |
+| [0016](./0016-studio-level-infra-and-plane-tracker.md) | Studio-level infrastructure layer with Plane | Proposed | 2026-05-05 |
 
 When you add an ADR, append a row to this index in the same PR.
 
