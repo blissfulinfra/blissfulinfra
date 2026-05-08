@@ -3,6 +3,8 @@ title: Learn path
 description: A guided course that takes you from zero to a running Kubernetes service with Kafka, Postgres, and Keycloak. Understand each layer before reaching for a managed equivalent.
 ---
 
+Not sure if this is the right path for you? Read [Start here](/paths/start-here) first — it routes you based on your background and what you want to do.
+
 This path is for students, new grads, and anyone who wants enterprise-pattern fluency without paying for cloud while they learn.
 
 The job market expects "experience with distributed systems" but very few entry-level roles will pay you to get it. blissful-infra exists so you can build that experience on a laptop, in your own time, without a credit card.

@@ -80,6 +80,7 @@ export default defineConfig({
         {
           label: 'Choose your path',
           items: [
+            { label: 'Start here', link: '/paths/start-here' },
             { label: 'Learn', link: '/paths/learn' },
             { label: 'Build', link: '/paths/build' },
             { label: 'Deliver', link: '/paths/deliver' },
