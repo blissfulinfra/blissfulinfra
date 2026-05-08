@@ -1,13 +1,15 @@
 ---
 title: Learn path
-description: A guided course that takes you from zero to a running Kubernetes service with Kafka, Postgres, and Keycloak. Understand each layer before reaching for a managed equivalent.
+description: A guided course that takes you from zero to a production-grade service with Kafka, Postgres, Keycloak, and observability. Understand each layer before reaching for a managed equivalent.
 ---
 
 Not sure if this is the right path for you? Read [Start here](/paths/start-here) first — it routes you based on your background and what you want to do.
 
-This path is for students, new grads, and anyone who wants enterprise-pattern fluency without paying for cloud while they learn.
+This path is for students, new grads, and anyone who wants to understand how production systems actually work — without paying for cloud while they learn.
 
 The job market expects "experience with distributed systems" but very few entry-level roles will pay you to get it. blissful-infra exists so you can build that experience on a laptop, in your own time, without a credit card.
+
+By the time you finish this path you'll have run the same stack a 50-person engineering team would run. You'll understand why each piece exists, what it costs to operate at scale, and what the managed equivalent does for you. That mental model is the part that transfers to any job.
 
 ## What you'll build
 
@@ -18,7 +20,7 @@ By the end of this path you will have:
 - A real CI/CD pipeline: Jenkins, multi-stage build, deploy on green
 - An identity layer: Keycloak with realms, JWTs, role-based access
 - AWS-shaped services running locally: LocalStack for S3, Lambda, SQS
-- A Kubernetes deployment: your service running on a real cluster (kind), not just Compose
+- Kubernetes deploy (planned): your service on a real local cluster with kind — coming in a later module
 
 You will understand what each piece does, why it exists, and what tradeoffs the managed equivalent makes for you.
 
@@ -68,20 +70,20 @@ LocalStack for S3, Lambda, and SQS. What the AWS API contract looks like, and wh
 
 *Course module: coming soon.*
 
-### Module 7: Kubernetes deploy
-
-Take the same service and run it on a real Kubernetes cluster locally with [kind](https://kind.sigs.k8s.io/). Manifests, Services, Deployments, Ingress. The vocabulary and the mental model.
-
-*Course module: coming soon.*
-
-### Module 8: Multi-tenancy
+### Module 7: Multi-tenancy
 
 Once you've built one service, the [client model](/guides/client-model) shows how to host many isolated environments side by side. Useful for multi-tenant apps, per-customer staging, or just keeping personal projects separate.
 
 [Client model guide](/guides/client-model)
 
+### Module 8: Kubernetes deploy (planned)
+
+Take the same service and run it on a real Kubernetes cluster locally with [kind](https://kind.sigs.k8s.io/). Manifests, Services, Deployments, Ingress. The vocabulary and the mental model. This module is on the roadmap and will be linked here when it ships.
+
 ## Why hands-on, not managed
 
-Many of the technologies in this course have excellent managed equivalents. The course teaches the open-source originals on purpose. Once you understand Keycloak you understand what Auth0 abstracts; once you understand Postgres you understand what RDS does for you. That mental model is the part that transfers.
+Many of the technologies in this course have excellent managed equivalents. The course teaches the open-source originals on purpose. Once you understand Keycloak you understand what Auth0 abstracts; once you understand Kafka you understand what SQS trades away for simplicity; once you understand Postgres you understand what RDS does for you.
+
+That mental model is the part that transfers. You can replace any component with a managed version in a day. Understanding why it exists and what it's doing — that takes hands-on time.
 
 [More on the philosophy](/philosophy)
