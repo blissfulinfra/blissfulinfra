@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
@@ -1888,7 +1889,7 @@ async function handleAgentQuery(
   return response;
 }
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Phase 2: Helper functions for deployment and pipeline
 
