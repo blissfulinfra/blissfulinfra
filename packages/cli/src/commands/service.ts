@@ -685,7 +685,7 @@ services:
     yaml += `
 
   ${localstackKey}:
-    image: localstack/localstack:3
+    image: floci/floci:latest
     container_name: ${clientName}-${serviceName}-localstack
     networks:
       ${internalNet}:
@@ -695,6 +695,7 @@ services:
     environment:
       SERVICES: "s3,sqs,dynamodb,sns,secretsmanager,lambda"
       DEFAULT_REGION: us-east-1
+      FLOCI_HOSTNAME: localstack
       LOCALSTACK_HOST: localstack
       # Allow browser preflight on presigned S3 URLs from any localhost frontend
       EXTRA_CORS_ALLOWED_ORIGINS: "*"

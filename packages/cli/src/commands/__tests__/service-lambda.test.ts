@@ -82,7 +82,7 @@ networks:
     name: dev_infra
 services:
   localstack:
-    image: localstack/localstack:3
+    image: floci/floci:latest
     container_name: dev-localstack
     networks: [infra]
     healthcheck:

@@ -384,16 +384,20 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     volumes["clickhouse-data"] = null;
   }
 
-  // LocalStack — client-level AWS emulator (ADR-0008).
+  // LocalStack-compatible AWS emulator — engine is floci/floci (drop-in
+  // replacement, ADR-0008). FLOCI_HOSTNAME=localstack so URLs returned by
+  // the emulator (e.g. presigned S3 URLs, SQS queue URLs) resolve to the
+  // service name other containers reach it by.
   if (infrastructure.localstack) {
     services.localstack = {
-      image: "localstack/localstack:3",
+      image: "floci/floci:latest",
       container_name: `${clientName}-localstack`,
       ports: [`${ports.localstack ?? 4570 + ports.blockIndex}:4566`],
       networks: ["infra"],
       environment: {
         SERVICES: "s3,sqs,dynamodb,sns,secretsmanager,iam,lambda,logs",
         DEFAULT_REGION: "us-east-1",
+        FLOCI_HOSTNAME: "localstack",
         LOCALSTACK_HOST: "localstack",
         EXTRA_CORS_ALLOWED_ORIGINS: "*",
         EXTRA_CORS_ALLOWED_HEADERS: "*",
