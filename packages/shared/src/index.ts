@@ -5,3 +5,4 @@ export * from "./schemas/deployments.js";
 export * from "./schemas/logs.js";
 export * from "./schemas/metrics.js";
 export * from "./schemas/plugins.js";
+export * from "./schemas/ontology.js";

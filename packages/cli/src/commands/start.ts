@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
+import inquirer from "inquirer";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,9 @@ import { toExecError } from "../utils/errors.js";
 import { parsePluginSpecs, serializePluginSpecs, loadConfig, type PluginInstance } from "../utils/config.js";
 import { isJenkinsRunning, startJenkins, registerProjectWithJenkins } from "./jenkins.js";
 import { runCodegen } from "../codegen/index.js";
+import { serviceAddAction } from "./service.js";
+import { clientCreateAction } from "./client.js";
+import { getClientDir, listClients } from "../utils/client-registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -45,6 +49,8 @@ interface StartOptions {
   plugins?: string;
   monitoring?: boolean;
   deployTarget?: string;
+  client?: string;
+  yes?: boolean;
 }
 
 const DEFAULTS = {
@@ -659,326 +665,86 @@ export const startCommand = new Command("start")
   .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")
   .option("--no-monitoring", "Disable Prometheus + Grafana monitoring stack")
   .option("--deploy-target <target>", "Cloud deploy target: cloudflare, vercel, aws (default: local-only)")
+  .option("-c, --client <client>", "Client to add this service to (skips the prompt)")
+  .option("-y, --yes", "Skip prompts; accept defaults for new client infra")
   .action(async (name: string, opts: StartOptions) => {
     console.log();
-    console.log(chalk.bold("⚡ blissful-infra start"), chalk.dim("- Create and run fullstack app"));
+    console.log(chalk.bold("⚡ blissful-infra start"), chalk.cyan(name));
     console.log();
 
-    // Validate name
     if (!/^[a-z0-9-]+$/.test(name)) {
-      console.error(chalk.red("Project name must be lowercase alphanumeric with hyphens"));
+      console.error(chalk.red("Service name must be lowercase alphanumeric with hyphens"));
       process.exit(1);
     }
 
-    // Check Docker first
-    if (!(await checkDockerRunning())) {
-      console.error(chalk.red("Docker is not running."));
-      console.error(chalk.dim("Please start Docker and try again."));
-      process.exit(1);
-    }
+    // Determine which client to use
+    let clientName: string;
+    const existingClients = await listClients();
 
-    // Ensure Jenkins is running (shared CI/CD server)
-    if (!(await isJenkinsRunning())) {
-      console.log(chalk.dim("Starting Jenkins CI/CD server..."));
-      await startJenkins({});
-    }
-
-    const backend = opts.backend || DEFAULTS.backend;
-    const frontend = opts.frontend || DEFAULTS.frontend;
-    const database = opts.database || DEFAULTS.database;
-    const linkMode = opts.link || false;
-    const plugins = opts.plugins ? parsePluginSpecs(opts.plugins.split(",").map(p => p.trim())) : [];
-    const monitoring = opts.monitoring === false ? "default" : "prometheus";
-
-    // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ name: "gg", backend, frontend, database, plugins, monitoring });
-    const portResults = await checkPorts(requiredPorts);
-    const conflicts = portResults.filter((p) => p.inUse);
-
-    if (conflicts.length > 0) {
-      console.error(chalk.red("Port conflicts detected:"));
-      for (const conflict of conflicts) {
-        console.error(chalk.dim(`  • Port ${conflict.port} (${conflict.service}) is already in use`));
-      }
-      console.error();
-      console.error(chalk.dim("Stop the conflicting services or use different ports."));
-      process.exit(1);
-    }
-
-    const projectDir = path.resolve(process.cwd(), name);
-
-    // Check if directory exists
-    try {
-      await fs.access(projectDir);
-      console.error(chalk.red(`Directory ${name} already exists`));
-      process.exit(1);
-    } catch {
-      // Good - doesn't exist
-    }
-
-    const availableTemplates = getAvailableTemplates();
-    const availablePlugins = getAvailablePlugins();
-
-    // Step 1: Scaffold
-    const scaffoldSpinner = ora("Creating fullstack project...").start();
-
-    await fs.mkdir(projectDir, { recursive: true });
-
-    // Copy template files (link mode no longer symlinks — templates contain
-    // conditional blocks like {{#IF_POSTGRES}} that must be processed)
-    await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
-    await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
-
-    // Copy backend
-    if (availableTemplates.includes(backend)) {
-      scaffoldSpinner.text = `Copying ${backend} backend...`;
-      await copyTemplate(backend, path.join(projectDir, "backend"), {
-        projectName: name,
-        database,
-        deployTarget: "local-only",
-        plugins: plugins.map(p => p.type),
-      });
-    } else {
-      scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
-      await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
-    }
-
-    // Copy frontend
-    if (availableTemplates.includes(frontend)) {
-      scaffoldSpinner.text = `Copying ${frontend} frontend...`;
-      await copyTemplate(frontend, path.join(projectDir, "frontend"), {
-        projectName: name,
-        database,
-        deployTarget: "local-only",
-        plugins: plugins.map(p => p.type),
-      });
-    } else {
-      scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
-      await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
-    }
-
-    // Copy plugin templates
-    for (const plugin of plugins) {
-      if (availablePlugins.includes(plugin.type)) {
-        scaffoldSpinner.text = `Copying ${plugin.instance} plugin...`;
-        const pluginDir = path.join(projectDir, plugin.instance);
-        await fs.mkdir(pluginDir, { recursive: true });
-        const index = plugins.filter(p => p.type === plugin.type).indexOf(plugin);
-        await copyPlugin(plugin.type, pluginDir, {
-          projectName: name,
-          database,
-          deployTarget: "local-only",
-          instanceName: plugin.instance,
-          apiPort: 8090 + index,
-        });
-      }
-    }
-
-    // Copy Loki config (always included)
-    scaffoldSpinner.text = "Copying Loki config...";
-    await copyTemplate("loki", path.join(projectDir, "loki"), {
-      projectName: name,
-      database,
-      deployTarget: "local-only",
-    });
-
-    // Copy monitoring templates
-    if (monitoring === "prometheus") {
-      scaffoldSpinner.text = "Copying Prometheus + Grafana config...";
-      await copyTemplate("prometheus", path.join(projectDir, "prometheus"), {
-        projectName: name,
-        database,
-        deployTarget: "local-only",
-      });
-      await copyTemplate("grafana", path.join(projectDir, "grafana"), {
-        projectName: name,
-        database,
-        deployTarget: "local-only",
-      });
-    }
-
-    // Create config
-    const deployTarget = opts.deployTarget ?? "local-only";
-    const configLines = [
-      "# Blissful Infra Configuration",
-      `name: ${name}`,
-      "type: fullstack",
-      `backend: ${backend}`,
-      `frontend: ${frontend}`,
-      `database: ${database}`,
-      "deploy:",
-      `  target: ${deployTarget}`,
-    ];
-    if (monitoring === "default") {
-      configLines.push("monitoring: default");
-    }
-    if (plugins.length > 0) {
-      configLines.push(`plugins: ${serializePluginSpecs(plugins)}`);
-    }
-    await fs.writeFile(
-      path.join(projectDir, "blissful-infra.yaml"),
-      configLines.join("\n") + "\n"
-    );
-
-    // Generate wrangler.toml for Cloudflare-targeted projects
-    if (deployTarget === "cloudflare") {
-      const workerName = `${name}-api`;
-      const pagesProject = `${name}-frontend`;
-      await fs.writeFile(
-        path.join(projectDir, "frontend", "wrangler.toml"),
-        `name = "${pagesProject}"\ncompatibility_date = "2024-01-01"\npages_build_output_dir = "dist"\n`
-      );
-      await fs.writeFile(
-        path.join(projectDir, "backend", "wrangler.toml"),
-        `name = "${workerName}"\ncompatibility_date = "2024-01-01"\nmain = "src/index.ts"\n`
-      );
-    }
-
-    // Create .gitignore
-    await fs.writeFile(
-      path.join(projectDir, ".gitignore"),
-      `node_modules/
-dist/
-build/
-.gradle/
-target/
-.idea/
-.vscode/
-.env
-.env.local
-.DS_Store
-docker-compose.override.yaml
-`
-    );
-
-    if (linkMode) {
-      scaffoldSpinner.succeed(`Created ${name}/ (linked to templates)`);
-    } else {
-      scaffoldSpinner.succeed(`Created ${name}/`);
-    }
-
-    // Step 2: Generate docker-compose
-    const composeSpinner = ora("Generating docker-compose.yaml...").start();
-    await generateDockerCompose(projectDir, name, database, plugins, monitoring);
-    composeSpinner.succeed("Generated docker-compose.yaml");
-
-    // Step 2b: API codegen — if api.spec is configured, copy starter spec and run generators
-    const freshConfig = await loadConfig(projectDir);
-    if (freshConfig?.api?.spec) {
-      const specDest = path.resolve(projectDir, freshConfig.api.spec);
-      try {
-        await fs.access(specDest);
-      } catch {
-        // Spec doesn't exist yet — copy the starter template
-        const templateSpec = path.join(__dirname, "..", "..", "templates", "openapi", "openapi.yaml");
-        const specContent = (await fs.readFile(templateSpec, "utf8")).replace(/\{\{PROJECT_NAME\}\}/g, name);
-        await fs.mkdir(path.dirname(specDest), { recursive: true });
-        await fs.writeFile(specDest, specContent, "utf8");
-      }
-      if (freshConfig.api.generate) {
-        const genSpinner = ora("Running API codegen...").start();
-        try {
-          await runCodegen(freshConfig, projectDir);
-          genSpinner.succeed("API codegen complete");
-        } catch {
-          genSpinner.warn("API codegen skipped (run `blissful-infra generate` manually)");
-        }
-      }
-    }
-
-    // Step 3: Build dashboard image and start containers
-    await ensureDashboardImage();
-    console.log(chalk.dim("Building and starting containers (streaming output)..."));
-    console.log();
-
-    try {
-      await execa("docker", ["compose", "up", "-d", "--build"], {
-        cwd: projectDir,
-        stdio: "inherit",
-      });
+    if (opts.client) {
+      clientName = opts.client;
+    } else if (existingClients.length === 0) {
+      console.log(chalk.dim("No client environments found. A client is needed to hold your services."));
       console.log();
-      console.log(chalk.green("✔ Containers started"));
+      const { newName } = await inquirer.prompt([
+        {
+          type: "input",
+          name: "newName",
+          message: "Name for new client environment:",
+          default: "dev",
+          validate: (v: string) => /^[a-z0-9-]+$/.test(v) || "Lowercase alphanumeric and hyphens only",
+        },
+      ] as never) as { newName: string };
+      clientName = newName;
+    } else {
+      const { selected } = await inquirer.prompt([
+        {
+          type: "list",
+          name: "selected",
+          message: "Add to which client?",
+          choices: [
+            ...existingClients.map(c => ({ name: c.clientName, value: c.clientName })),
+            { name: "Create new client...", value: "__new__" },
+          ],
+        },
+      ] as never) as { selected: string };
 
-      // Register project with Jenkins (best-effort, non-fatal)
-      try {
-        await registerProjectWithJenkins(projectDir, name);
-      } catch {
-        console.log(chalk.dim("  (Jenkins registration skipped — run `blissful-infra jenkins add-project " + name + "` manually if needed)"));
+      if (selected === "__new__") {
+        const { newName } = await inquirer.prompt([
+          {
+            type: "input",
+            name: "newName",
+            message: "Name for new client environment:",
+            default: "dev",
+            validate: (v: string) => /^[a-z0-9-]+$/.test(v) || "Lowercase alphanumeric and hyphens only",
+          },
+        ] as never) as { newName: string };
+        clientName = newName;
+      } else {
+        clientName = selected;
       }
-    } catch (error) {
-      const execError = toExecError(error);
-      // stderr is a fallback; with stdio:inherit the output already streamed above
-      if (execError.stderr) {
-        console.error(chalk.red(execError.stderr));
-      }
-      console.log();
-      console.log(chalk.yellow("Project created but failed to start. Try:"));
-      console.log(chalk.cyan(`  cd ${name}`));
-      console.log(chalk.cyan("  docker compose up --build"));
-      process.exit(1);
     }
 
-    // Success!
-    console.log();
-    console.log(chalk.green.bold("✓ Your fullstack app is running!"));
-    if (linkMode) {
-      console.log(chalk.yellow("  (Link mode: editing templates will affect this project)"));
-    }
-    console.log();
-    console.log(chalk.dim("  Frontend:    ") + chalk.cyan("http://localhost:3000"));
-    console.log(chalk.dim("  Backend API: ") + chalk.cyan("http://localhost:8080"));
-    console.log(chalk.dim("  Nginx:       ") + chalk.cyan("http://localhost"));
-    console.log(chalk.dim("  Kafka:       ") + chalk.cyan("localhost:9092"));
-    if (database === "postgres" || database === "postgres-redis") {
-      console.log(chalk.dim("  PostgreSQL:  ") + chalk.cyan("localhost:5432"));
-    }
-    if (database === "redis" || database === "postgres-redis") {
-      console.log(chalk.dim("  Redis:       ") + chalk.cyan("localhost:6379"));
-    }
-    const aiPipelinesOut = plugins.filter(p => p.type === "ai-pipeline");
-    aiPipelinesOut.forEach((plugin, index) => {
-      const port = 8090 + index;
-      const label = aiPipelinesOut.length > 1 ? `AI Pipeline (${plugin.instance})` : "AI Pipeline";
-      console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
-    });
-    if (aiPipelinesOut.length > 0) {
-      console.log(chalk.dim("  ClickHouse:  ") + chalk.cyan("http://localhost:8123"));
-      console.log(chalk.dim("  MLflow:      ") + chalk.cyan("http://localhost:5001"));
-      console.log(chalk.dim("  Mage:        ") + chalk.cyan("http://localhost:6789"));
-    }
-    const agentServicesOut = plugins.filter(p => p.type === "agent-service");
-    agentServicesOut.forEach((plugin, index) => {
-      const port = 8095 + index;
-      const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
-      console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
-    });
-    const keycloaksOut = plugins.filter(p => p.type === "keycloak");
-    keycloaksOut.forEach((plugin, index) => {
-      const port = 8001 + index;
-      console.log(chalk.dim("  Keycloak:    ") + chalk.cyan(`http://localhost:${port}/admin`) + chalk.dim("  (admin/admin)"));
-    });
-    if (plugins.some(p => p.type === "localstack")) {
-      console.log(chalk.dim("  LocalStack:  ") + chalk.cyan("http://localhost:4566") + chalk.dim("  AWS_ENDPOINT_URL=http://localstack:4566"));
-    }
-    console.log(chalk.dim("  Jaeger:      ") + chalk.cyan("http://localhost:16686"));
-    console.log(chalk.dim("  Loki:        ") + chalk.cyan("http://localhost:3100"));
-    if (monitoring === "prometheus") {
-      console.log(chalk.dim("  Prometheus:  ") + chalk.cyan("http://localhost:9090"));
-      console.log(chalk.dim("  Grafana:     ") + chalk.cyan("http://localhost:3001"));
-    }
-    console.log(chalk.dim("  Jenkins:     ") + chalk.cyan("http://localhost:8081"));
-    console.log(chalk.dim("  Registry:    ") + chalk.cyan("localhost:5050"));
-    console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));
-    console.log();
+    // Create the client if it doesn't exist yet
+    const clientDir = getClientDir(clientName);
+    let clientExists = false;
+    try {
+      await fs.access(clientDir);
+      clientExists = true;
+    } catch { /* doesn't exist */ }
 
-    // Open browser tabs
-    await openBrowser("http://localhost:3000");
-    await openBrowser("http://localhost:3002");
+    if (!clientExists) {
+      await clientCreateAction(clientName, { yes: opts.yes });
+    }
 
-    console.log(chalk.dim("Commands:"));
-    console.log(chalk.dim("  cd ") + chalk.cyan(name));
-    console.log(chalk.dim("  blissful-infra logs     ") + chalk.dim("# View logs"));
-    console.log(chalk.dim("  blissful-infra dev      ") + chalk.dim("# Hot reload mode"));
-    console.log(chalk.dim("  blissful-infra down     ") + chalk.dim("# Stop everything"));
-    console.log();
+    // Add the service
+    await serviceAddAction(clientName, name, {
+      backend: opts.backend,
+      frontend: opts.frontend,
+      plugins: opts.plugins,
+      yes: opts.yes,
+    });
   });
+
+
+

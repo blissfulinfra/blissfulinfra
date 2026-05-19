@@ -34,7 +34,7 @@ const VALID_INFRA_COMPONENTS: InfraComponent[] = [
   "prometheus", "grafana", "tempo", "jaeger", "loki",
 ];
 
-interface ClientCreateOptions {
+export interface ClientCreateOptions {
   // Commander populates these (defaulting to true) for `--no-X` flags
   jenkins?: boolean;
   kafka?: boolean;
@@ -48,7 +48,7 @@ interface ClientCreateOptions {
   yes?: boolean;
 }
 
-async function clientCreateAction(clientName: string, opts: ClientCreateOptions): Promise<void> {
+export async function clientCreateAction(clientName: string, opts: ClientCreateOptions): Promise<void> {
   console.log();
   console.log(chalk.bold("blissful-infra client create"), chalk.cyan(clientName));
   console.log();

@@ -8,6 +8,14 @@ import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
 import {
+  loadOntology,
+  saveOntology,
+  annotateStatus,
+  getNodeConfig,
+  setNodeConfig,
+  wireEdge,
+} from "../utils/ontology.js";
+import {
   collectDockerLogs,
   collectContext,
   formatContextForPrompt,
@@ -1035,6 +1043,108 @@ export function createApiServer(workingDir: string, port = 3002) {
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // ── Ontology endpoints ─────────────────────────────────────────────
+      // Resolution: when CLIENT_NAME is set (dashboard inside a client's
+      // infra stack), the client dir is mounted at workingDir/<clientName>.
+      // From the host CLI, workingDir is the user's projects dir, so the
+      // same join works as long as the client config was created via
+      // `client create` and lives at ~/.blissful-infra/clients/<name>.
+      const ontologyClient = process.env.CLIENT_NAME;
+      const resolveClientDir = (clientName: string): string => path.join(workingDir, clientName);
+
+      const ontologyGetMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)$/);
+      if (req.method === "GET" && ontologyGetMatch) {
+        const clientName = ontologyGetMatch[1];
+        if (ontologyClient && clientName !== ontologyClient) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+          return;
+        }
+        const clientDir = resolveClientDir(clientName);
+        const graph = await loadOntology(clientDir, clientName);
+        const annotated = await annotateStatus(clientName, graph);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(annotated));
+        return;
+      }
+
+      if (req.method === "PUT" && ontologyGetMatch) {
+        const clientName = ontologyGetMatch[1];
+        if (ontologyClient && clientName !== ontologyClient) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+          return;
+        }
+        const body = await readBody(req);
+        await saveOntology(resolveClientDir(clientName), JSON.parse(body));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      const ontologyConfigMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)\/nodes\/([^/]+)\/config$/);
+      if (req.method === "GET" && ontologyConfigMatch) {
+        const [, clientName, nodeId] = ontologyConfigMatch;
+        if (ontologyClient && clientName !== ontologyClient) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+          return;
+        }
+        try {
+          const config = await getNodeConfig(resolveClientDir(clientName), decodeURIComponent(nodeId));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(config));
+        } catch (error) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: toExecError(error).message }));
+        }
+        return;
+      }
+
+      if (req.method === "PUT" && ontologyConfigMatch) {
+        const [, clientName, nodeId] = ontologyConfigMatch;
+        if (ontologyClient && clientName !== ontologyClient) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+          return;
+        }
+        const body = await readBody(req);
+        const { content } = JSON.parse(body);
+        await setNodeConfig(resolveClientDir(clientName), decodeURIComponent(nodeId), content);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      const ontologyWireMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)\/edges\/([^/]+)\/wire$/);
+      if (req.method === "POST" && ontologyWireMatch) {
+        const [, clientName, edgeId] = ontologyWireMatch;
+        if (ontologyClient && clientName !== ontologyClient) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+          return;
+        }
+        const clientDir = resolveClientDir(clientName);
+        const graph = await loadOntology(clientDir, clientName);
+        const edge = graph.edges.find(e => e.id === decodeURIComponent(edgeId));
+        if (!edge) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Edge not found" }));
+          return;
+        }
+        try {
+          const wired = await wireEdge(clientDir, edge);
+          const updated = { ...graph, edges: graph.edges.map(e => e.id === wired.id ? wired : e) };
+          await saveOntology(clientDir, updated);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(wired));
+        } catch (error) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: toExecError(error).message }));
+        }
         return;
       }
 
