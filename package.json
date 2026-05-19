@@ -28,6 +28,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "npm run build -w packages/shared",
     "build": "npm run build -w packages/shared && npm run build -w packages/cli && npm run build -w packages/dashboard",
     "build:shared": "npm run build -w packages/shared",
     "build:cli": "npm run build -w packages/shared && npm run build -w packages/cli",

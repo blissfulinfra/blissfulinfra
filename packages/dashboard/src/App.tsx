@@ -49,6 +49,7 @@ import {
   Cpu,
   Workflow,
 } from 'lucide-react'
+import { GraphView } from './components/ontology/GraphView'
 
 interface Project {
   name: string
@@ -526,6 +527,7 @@ function App() {
   // `currentHealth` can keep working without a rewrite. Refactor opportunistically.
   const currentHealth = selectedProject ? (healthByProject[selectedProject.name] || []) : []
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showGraph, setShowGraph] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
   const [models, setModels] = useState<ModelsResponse | null>(null)
@@ -1545,13 +1547,20 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
+      {showGraph && links.clientName && (
+        <GraphView clientName={links.clientName} onClose={() => setShowGraph(false)} />
+      )}
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Activity className="w-6 h-6 text-blue-400" />
             <h1 className="text-xl font-semibold">blissful-infra</h1>
-            <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">orchestrator</span>
+            {links.clientName ? (
+              <span className="text-xs text-blue-300 bg-blue-900/40 border border-blue-700 px-2 py-1 rounded font-mono">{links.clientName}</span>
+            ) : (
+              <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">orchestrator</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {links.tempoUrl && (
@@ -1577,6 +1586,16 @@ function App() {
                 <ExternalLink className="w-4 h-4" />
                 Grafana
               </a>
+            )}
+            {links.clientName && (
+              <button
+                onClick={() => setShowGraph(true)}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-blue-300"
+                title="Open the system topology graph"
+              >
+                <Network className="w-4 h-4" />
+                Graph
+              </button>
             )}
             <button
               onClick={() => setShowCreateModal(true)}

@@ -14,7 +14,7 @@
     "examples"
   ],
   "scripts": {
-    "build": "tsc && cp -r examples dist/examples",
+    "build": "tsc && node -e \"import('node:fs').then(m=>m.cpSync('examples','dist/examples',{recursive:true}))\"",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",

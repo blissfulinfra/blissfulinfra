@@ -4,7 +4,7 @@ The published CLI package. Handles everything: command parsing, project scaffold
 
 **Published to npm as:** `@blissful-infra/cli` (version in `package.json`)
 **Binary name:** `blissful-infra`
-**Build:** `tsc` → `dist/` + `cp -r examples dist/examples`
+**Build:** `tsc` → `dist/` + Node.js `cpSync` to copy examples (cross-platform, no `cp` dependency)
 
 See root [CLAUDE.md](../../CLAUDE.md) for monorepo conventions.
 

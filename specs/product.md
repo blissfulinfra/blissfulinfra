@@ -1,44 +1,53 @@
 # Blissful Infra - Technical Specification
 
-**Enterprise-grade infrastructure in a local sandbox. Zero cloud costs.**
+**The infrastructure stack real engineering teams use — running on your laptop.**
 
 ## Vision
 
-Give software engineers a complete enterprise development environment running locally on their laptop. Learn, experiment, and develop with the same infrastructure patterns used at scale, without cloud accounts, without touching shared environments, without surprise bills.
+Two kinds of people reach for blissful-infra, and it serves both:
+
+**Indie studios and solo creators** who want to ship a real product without paying for cloud infrastructure they can't afford yet. They need Kafka, Postgres, observability, CI/CD, and AI inference — all running locally, all isolated per client, no credit card required.
+
+**Engineers and students** who want to understand how production systems actually work. CI/CD pipelines, canary deployments, chaos testing, observability — these patterns are hard to learn without a real environment to break. blissful-infra is that environment.
+
+The path from the second group to the first is short. A student who builds a social content pipeline with blissful-infra ends up, six months later, running the same stack a 50-person engineering team would run. They just did it for $0 and without a shared environment to damage.
 
 ## Problem
 
-Enterprise infrastructure is complex and inaccessible:
+**For indie studios and solo creators:**
+- Cloud infrastructure costs real money before the product makes real money
+- Setting up Kafka, Postgres, observability, and CI/CD from scratch takes weeks
+- AI inference via SaaS APIs adds per-request cost that kills margins on content-heavy apps
+- Handing off a client engagement means exporting data from someone else's SaaS
 
-**For engineers joining companies:**
-- CI/CD pipelines, Kubernetes, GitOps, canary deployments are hard to understand without hands-on experience
-- Shared environments are fragile, experimentation risks breaking things for others
-- Cloud resources are expensive, spinning up a test EKS cluster costs real money
+**For engineers learning enterprise patterns:**
+- CI/CD pipelines, canary deployments, chaos testing are hard to understand without hands-on experience
+- Shared staging environments are fragile — experimentation risks breaking things for others
+- Cloud resources are expensive; spinning up a realistic environment costs real money
+- Shared infra means you can never fully own the setup end-to-end
 
-**For teams building production services:**
+**For small teams building production services:**
 - Testing deployment strategies (canary, blue-green) requires infrastructure that doesn't exist locally
 - Validating rollback procedures means intentionally breaking production-like environments
-- Chaos testing and resilience validation need dedicated resources
-
-**For startups:**
-- Enterprise patterns (observability, GitOps, progressive delivery) seem out of reach
-- Building infrastructure expertise takes time away from building the product
-- Cloud costs scale faster than revenue
+- Observability and chaos testing feel like luxuries until the first production incident
 
 ## Solution
 
-A local sandbox that simulates enterprise infrastructure:
+A local sandbox running the same tools real engineering teams use — one command to start, fully isolated per client, no cloud account required:
 
 - **CI/CD Pipeline**: Jenkins with build, test, scan, deploy stages
-- **Container Registry**: Local Docker registry for images
-- **Kubernetes Manifests**: Deployment, Service, ConfigMap with Kustomize overlays
-- **GitOps**: Argo CD application manifests for declarative deployments
-- **Observability**: Metrics, logs, health monitoring, and dashboard
-- **Canary Deployments**: Progressive rollouts with automated analysis and rollback
-- **Chaos Testing**: FMEA scenarios to validate service resilience
-- **AI Agent**: Local LLM that analyzes failures and suggests fixes
+- **Observability**: Prometheus, Grafana, Loki, Tempo — metrics, logs, traces
+- **Event streaming**: Kafka, fully isolated per client
+- **Databases**: Postgres (multiple named instances), Redis, ClickHouse as a client-level warehouse
+- **Identity**: Keycloak for auth, per-client or studio-wide
+- **AI inference**: Local LLM (Ollama) and image generation (stable-diffusion.cpp) with GPU acceleration on macOS via host-mode sidecars
+- **Object storage**: LocalStack S3-compatible, client-level shared resource
+- **Studio layer**: Plane for project management, one instance per studio spanning all clients
+- **Dashboard**: Real-time view of every client's pipeline, services, and infra state
 
 All running locally. No cloud account required. Same patterns as production.
+
+> **Note on current vs planned:** The client model (per-client isolated environments), observability stack, Kafka, Postgres, Jenkins, AI inference, and studio layer are implemented. Features referenced later in this spec — Kubernetes orchestration, Argo CD GitOps, Chaos Mesh, parallel version comparison — are planned or deferred. See [specs/timeline.md](timeline.md) and the ADR index for current status.
 
 ## Fast Feedback Loops
 
