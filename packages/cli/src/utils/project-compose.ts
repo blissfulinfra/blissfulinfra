@@ -169,6 +169,25 @@ export function buildProjectComposeYaml(input: GenerateProjectComposeInput): str
       labels: { ...blissfulLabels, "com.blissful.service": "redis" },
     };
     volumes[volName] = null;
+
+    // redis_exporter sidecar — translates Redis INFO output into Prometheus
+    // metrics (memory usage, command rate, key count, hit/miss ratio, replication).
+    services[`redis-exporter`] = {
+      image: "oliver006/redis_exporter:v1.58.0",
+      container_name: `${config.tenant}-${config.name}-redis-exporter`,
+      networks: ["project"],
+      ports: [`${ports.redisExporter}:9121`],
+      environment: {
+        REDIS_ADDR: "redis://redis:6379",
+      },
+      depends_on: { redis: { condition: "service_healthy" } },
+      labels: {
+        ...blissfulLabels,
+        "com.blissful.service": "redis-exporter",
+        "com.blissful.metrics_port": String(ports.redisExporter),
+        "com.blissful.metrics_path": "/metrics",
+      },
+    };
   }
 
   if (config.infrastructure.gateway) {

@@ -497,9 +497,40 @@ export function buildTenantOverviewDashboard(tenantName: string): string {
       },
       {
         id: 10,
+        type: "timeseries",
+        title: "Redis — commands processed per second",
+        gridPos: { h: 8, w: 12, x: 0, y: 32 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [{
+          refId: "A",
+          expr: "sum by (project) (rate(redis_commands_processed_total[1m]))",
+          legendFormat: "{{project}}",
+        }],
+      },
+      {
+        id: 11,
+        type: "timeseries",
+        title: "Redis — memory used (MB) + key count",
+        gridPos: { h: 8, w: 12, x: 12, y: 32 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [
+          {
+            refId: "A",
+            expr: "redis_memory_used_bytes / 1024 / 1024",
+            legendFormat: "{{project}} MB",
+          },
+          {
+            refId: "B",
+            expr: "sum by (project) (redis_db_keys)",
+            legendFormat: "{{project}} keys",
+          },
+        ],
+      },
+      {
+        id: 12,
         type: "logs",
         title: "Recent logs (all services in tenant)",
-        gridPos: { h: 10, w: 24, x: 0, y: 32 },
+        gridPos: { h: 10, w: 24, x: 0, y: 40 },
         datasource: { type: "loki", uid: "loki" },
         targets: [{
           refId: "A",

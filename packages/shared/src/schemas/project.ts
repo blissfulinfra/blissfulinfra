@@ -68,6 +68,7 @@ export const ProjectPortBlockSchema = z.object({
   /** Metrics exporter sidecars (Prometheus scrape targets). */
   postgresExporter: z.number().int().positive(),
   kafkaExporter:    z.number().int().positive(),
+  redisExporter:    z.number().int().positive(),
 });
 
 export type ProjectConfig         = z.infer<typeof ProjectConfigSchema>;
