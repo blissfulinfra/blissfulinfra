@@ -1,15 +1,19 @@
 ---
 title: Blissful Infra
-description: A production-grade sandbox on your laptop, full-stack app with CI/CD, observability, and an AI agent. One command.
+description: An enterprise sandbox on your laptop. Iterate on architecture patterns at the speed of one command. Real Kafka, real Postgres, real observability, real CI.
 template: splash
 hero:
-  tagline: A production-grade sandbox on your laptop. One command.
-  title: Ship-ready infrastructure you can actually play with
+  tagline: An enterprise sandbox on your laptop. Iterate on architecture patterns at the speed of one command.
+  title: The local playground for enterprise engineers
   actions:
     - text: Get Started
       link: /getting-started
       icon: right-arrow
       variant: primary
+    - text: Why I built this
+      link: /about
+      icon: open-book
+      variant: minimal
     - text: View on GitHub
       link: https://github.com/cavanpage/blissful-infra
       icon: external
@@ -18,32 +22,34 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-One command spins up a complete production-grade stack, backend, frontend, databases, message bus, tracing, metrics, CI/CD, and a web dashboard, running entirely on your laptop. Experiment freely. Tear it down. Spin it back up. No cloud account, no billing surprise, no YAML to write.
+At a big company most of the infrastructure is already provided for you. Auth, observability, deploy pipelines, message buses, datastores. Productive, but layered. Several abstractions sit between you and the technology underneath. blissful-infra is the opposite. One command and the layers are gone. Real Kafka, real Postgres, real Grafana, real Jenkins, wired together on your laptop. Yours to break, swap and rebuild.
 
 ```bash
 npm install -g @blissful-infra/cli
 blissful-infra start my-app
 ```
 
-Your app is running at `http://localhost:3000` in under a minute, backend, frontend, databases, message bus, tracing, metrics, CI/CD, and a local web dashboard all wired together and managed as a unit.
+Under a minute later your stack is running. Try an architecture pattern, throw it away, try the next one. No cloud account, no billing surprise, no YAML to hand write.
+
+[Why I built this →](/about)
 
 ## Choose your path
 
-Three audiences, one toolchain. Pick the entry point that matches what you're trying to do.
+One toolchain. Pick the entry point that matches what you are trying to do.
 
 <CardGrid>
-  <Card title="Learn" icon="open-book">
-    Students, new grads, and engineers who want to understand how production systems work — without an AWS bill. A guided course through Kafka, Postgres, Keycloak, CI/CD, and observability. Run the same stack real engineering teams run, on your laptop.
-
-    [Start the Learn path →](/paths/learn)
-  </Card>
   <Card title="Build" icon="rocket">
-    Engineers with an idea who want a fast experimentation loop. One command to a production-grade local stack — skip the theory, prototype now.
+    Enterprise engineers and indie builders who want to try architecture patterns fast. One command to a real stack you can actually pull apart. Skip the boilerplate, get to the interesting part.
 
     [Start the Build path →](/paths/build)
   </Card>
+  <Card title="Learn" icon="open-book">
+    Students, new grads and engineers who want to understand how production systems work without an AWS bill. A guided course through Kafka, Postgres, Keycloak, CI/CD and observability. The same stack real teams run.
+
+    [Start the Learn path →](/paths/learn)
+  </Card>
   <Card title="Deliver" icon="puzzle">
-    Indie studios and small teams shipping real products for clients. Per-client isolated stacks with Kafka, Postgres, observability, CI/CD, local AI inference, and project tracking — no cloud overhead, no SaaS bill.
+    Indie studios and small teams shipping real products for clients. Per-client isolated stacks with Kafka, Postgres, observability, CI/CD and local AI inference. No cloud overhead, no SaaS bill stacking up per client.
 
     [Start the Deliver path →](/paths/deliver)
   </Card>

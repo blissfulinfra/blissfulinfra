@@ -24,7 +24,7 @@ const BACKEND_TEMPLATES = [
   },
   {
     name: "lambda-python",
-    description: "Serverless Python on LocalStack",
+    description: "Serverless Python on floci (LocalStack-compatible)",
   },
 ] as const;
 

@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import ora from "ora";
 import { execa } from "execa";
-import { type ProjectConfig } from "@blissful-infra/shared";
+import { type LegacyProjectConfig } from "@blissful-infra/shared";
 import { PrereqMissingError } from "./errors.js";
 import { type DeployOptions } from "./index.js";
 
@@ -29,7 +29,7 @@ async function checkCdkAvailable(): Promise<void> {
 }
 
 export async function deploy(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   projectDir: string,
   opts: DeployOptions
 ): Promise<void> {

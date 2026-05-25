@@ -27,7 +27,7 @@ async function findLocalstackContainer(clientName: string, serviceName: string):
   const expected = `${clientName}-${serviceName}-localstack`;
   const r = await execa("docker", ["ps", "--filter", `name=^${expected}$`, "--format", "{{.Names}}"], { reject: false });
   if (r.stdout.trim() !== expected) {
-    console.error(chalk.red(`LocalStack container '${expected}' is not running.`));
+    console.error(chalk.red(`AWS emulator container '${expected}' (floci) is not running.`));
     console.error(chalk.dim(`Run: blissful-infra service up ${clientName} ${serviceName}`));
     process.exit(1);
   }
@@ -39,7 +39,7 @@ async function lambdaDeployAction(args: LambdaCommonArgs): Promise<void> {
   const serviceDir = await ensureService(client, service);
   const localstack = await findLocalstackContainer(client, service);
 
-  const spinner = ora(`Deploying ${client}/${service} to LocalStack...`).start();
+  const spinner = ora(`Deploying ${client}/${service} to floci...`).start();
 
   // Re-run the deployer container against the running LocalStack. The compose
   // file already has the right env vars + volume mounts, so just compose-run it.
@@ -189,11 +189,11 @@ async function lambdaLogsAction(
 }
 
 export const lambdaCommand = new Command("lambda")
-  .description("Manage AWS Lambda functions running locally on LocalStack");
+  .description("Manage AWS Lambda functions running locally (floci)");
 
 lambdaCommand
   .command("deploy")
-  .description("Re-package and deploy the function to the service's LocalStack")
+  .description("Re-package and deploy the function to the service's floci instance")
   .argument("<client>", "Client name")
   .argument("<service>", "Service name (must be a lambda-python service)")
   .action(async (client: string, service: string) => {
@@ -212,7 +212,7 @@ lambdaCommand
 
 lambdaCommand
   .command("logs")
-  .description("Tail Lambda logs (CloudWatch logs emulated by LocalStack)")
+  .description("Tail Lambda logs (CloudWatch logs emulated by floci)")
   .argument("<client>", "Client name")
   .argument("<service>", "Service name")
   .option("--last", "Show only the most recent invocation's logs and exit", false)

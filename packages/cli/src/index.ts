@@ -28,10 +28,18 @@ import { analyzeCommand, analyzeAction, suggestCommand, suggestAction } from "./
 import { exampleCommand } from "./commands/example.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { generateCommand } from "./commands/generate.js";
-// Phase 6 commands (Client Model)
+// Phase 6 commands (Client Model — legacy, scheduled for deletion in ADR-0017 phase 8)
 import { clientCommand } from "./commands/client.js";
-import { serviceCommand } from "./commands/service.js";
+// Legacy serviceCommand is no longer registered here — its `serviceAddAction`
+// function is still imported internally by init/start until Phase 6 reworks
+// them. Surface `blissful-infra service` resolves to the new V2 command below.
 import { lambdaCommand } from "./commands/lambda.js";
+
+// Tenant/Project/Service hierarchy (ADR-0017)
+import { tenantCommand } from "./commands/tenant.js";
+import { projectCommand } from "./commands/project.js";
+import { serviceCommandV2 } from "./commands/service-v2.js";
+import { useCommand } from "./commands/use.js";
 
 const program = new Command();
 
@@ -77,10 +85,15 @@ program.addCommand(mcpCommand);
 // Schema-first code generation
 program.addCommand(generateCommand);
 
-// Phase 6 commands (Client Model)
+// Phase 6 commands (Client Model — legacy)
 program.addCommand(clientCommand);
-program.addCommand(serviceCommand);
 program.addCommand(lambdaCommand);
+
+// Tenant/Project/Service (ADR-0017)
+program.addCommand(useCommand);
+program.addCommand(tenantCommand);
+program.addCommand(projectCommand);
+program.addCommand(serviceCommandV2);
 
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {

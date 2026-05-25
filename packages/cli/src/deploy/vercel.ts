@@ -2,7 +2,7 @@ import chalk from "chalk";
 import ora from "ora";
 import path from "node:path";
 import { execa } from "execa";
-import { type ProjectConfig } from "@blissful-infra/shared";
+import { type LegacyProjectConfig } from "@blissful-infra/shared";
 import { PrereqMissingError, DeployFailedError } from "./errors.js";
 import { type DeployOptions } from "./index.js";
 
@@ -19,7 +19,7 @@ async function checkVercelAvailable(): Promise<string> {
 }
 
 export async function deploy(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   projectDir: string,
   opts: DeployOptions
 ): Promise<void> {

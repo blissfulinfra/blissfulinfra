@@ -735,7 +735,9 @@ export const startCommand = new Command("start")
     } catch { /* doesn't exist */ }
 
     if (!clientExists) {
-      await clientCreateAction(clientName, { yes: opts.yes });
+      // skipServicePrompt: start always follows up with serviceAddAction for
+      // the explicitly-named service, so don't ask the user twice.
+      await clientCreateAction(clientName, { yes: opts.yes, skipServicePrompt: true });
     }
 
     // Add the service

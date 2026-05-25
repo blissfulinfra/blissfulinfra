@@ -21,10 +21,17 @@ spring:
       auto-offset-reset: earliest
 {{#IF_POSTGRES}}
 
+  # Database wiring for the tenant/project/service model (ADR-0017).
+  # The service-compose.yaml generator injects:
+  #   DB_HOST=postgres, DB_PORT=5432, DB_NAME=app, DB_USER=postgres,
+  #   DB_PASSWORD=postgres, DB_SCHEMA=<auto-allocated>,
+  #   DB_URL=jdbc:postgresql://postgres:5432/app?currentSchema=<schema>
+  #
+  # All env vars have localhost fallbacks for running the JAR outside Docker.
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/{{PROJECT_NAME}}}
-    username: ${DB_USERNAME:{{PROJECT_NAME}}}
-    password: ${DB_PASSWORD:localdev}
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:app}?currentSchema=${DB_SCHEMA:public}}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -35,10 +42,21 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Pin Hibernate to the per-service schema so every JPA query is
+        # automatically scoped (DDD: one bounded context, one schema).
+        default_schema: ${DB_SCHEMA:public}
 
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # Flyway creates its history table inside the per-service schema and runs
+    # migrations there. Each service therefore versions its own data
+    # independently; cross-schema queries are impossible by accident.
+    schemas: ${DB_SCHEMA:public}
+    default-schema: ${DB_SCHEMA:public}
+    # Create the schema if the postgres init script didn't already (true is the
+    # Flyway default, made explicit so future-us doesn't get bitten if it flips).
+    create-schemas: true
 {{/IF_POSTGRES}}
 {{#IF_REDIS}}
 
@@ -92,7 +110,13 @@ management:
       enabled: true
   metrics:
     tags:
+      # `application` is resolved at scaffold time to the service name (template
+      # var). The other three are runtime env vars injected by the service
+      # compose generator so Prometheus can slice by tenant / project / service.
       application: {{PROJECT_NAME}}
+      tenant: ${TENANT_NAME:unknown}
+      project: ${PROJECT_NAME:unknown}
+      service: ${SERVICE_NAME:unknown}
     distribution:
       percentiles-histogram:
         http.server.requests: true

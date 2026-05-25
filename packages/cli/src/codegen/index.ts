@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import ora from "ora";
-import type { ProjectConfig } from "@blissful-infra/shared";
+import type { LegacyProjectConfig } from "@blissful-infra/shared";
 import { generateTypescriptClient } from "./typescript.js";
 import { generateSpringServer } from "./spring.js";
 import { generateZodSchemas } from "./zod.js";
@@ -11,7 +11,7 @@ export interface CodegenOptions {
 }
 
 export async function runCodegen(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   projectDir: string,
   opts: CodegenOptions = {}
 ): Promise<void> {

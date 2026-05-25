@@ -4,7 +4,7 @@ import {
   ServiceConfigSchema,
   PortBlockSchema,
   ClientRegistrySchema,
-  ProjectConfigSchema,
+  LegacyProjectConfigSchema,
   PostgresInstanceSchema,
   normalizePostgresInstances,
 } from "../config.js";
@@ -221,9 +221,9 @@ describe("Postgres multi-instance config (ADR-0014)", () => {
   });
 });
 
-describe("ProjectConfigSchema (legacy flat model)", () => {
+describe("LegacyProjectConfigSchema (legacy flat model)", () => {
   it("still accepts the legacy shape so flat-model projects don't break", () => {
-    const r = ProjectConfigSchema.safeParse({
+    const r = LegacyProjectConfigSchema.safeParse({
       name: "demo",
       backend: "spring-boot",
       frontend: "react-vite",

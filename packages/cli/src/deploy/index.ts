@@ -1,4 +1,4 @@
-import { type ProjectConfig } from "@blissful-infra/shared";
+import { type LegacyProjectConfig } from "@blissful-infra/shared";
 import { DeployTargetError } from "./errors.js";
 
 export interface DeployOptions {
@@ -6,7 +6,7 @@ export interface DeployOptions {
 }
 
 export async function deployProject(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   projectDir: string,
   opts: DeployOptions
 ): Promise<void> {

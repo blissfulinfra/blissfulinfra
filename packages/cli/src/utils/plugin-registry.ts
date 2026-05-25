@@ -72,8 +72,8 @@ export const PLUGIN_REGISTRY: Record<string, PluginDef> = {
     color: "#f97316",
   },
   "localstack": {
-    displayName: "LocalStack",
-    description: "AWS cloud service emulator — S3, SQS, DynamoDB, SNS, Lambda and more, running locally in Docker",
+    displayName: "floci",
+    description: "AWS emulator (floci, LocalStack-compatible API) — S3, SQS, DynamoDB, SNS, Lambda and more, running locally in Docker",
     category: "Infrastructure",
     defaultPort: 4566,
     healthPath: "/_localstack/health",

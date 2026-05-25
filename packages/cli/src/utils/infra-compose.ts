@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import yaml from "js-yaml";
 import {
   normalizePostgresInstances,
@@ -519,7 +520,7 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   } else if (obs.tempo || obs.jaeger) {
     linkEnv.TEMPO_URL = `http://localhost:${ports.tempo}`;
   }
-  if (obs.grafana) linkEnv.GRAFANA_URL = `http://localhost:${ports.grafana}`;
+  if (obs.grafana) linkEnv.GRAFANA_URL = `http://localhost:${ports.grafana}/d/blissful-overview`;
   if (obs.prometheus) linkEnv.PROMETHEUS_URL = `http://localhost:${ports.prometheus}`;
   if (infrastructure.jenkins) linkEnv.JENKINS_URL = `http://localhost:${ports.jenkins}`;
   if (infrastructure.clickhouse && ports.clickhouse) linkEnv.CLICKHOUSE_URL = `http://localhost:${ports.clickhouse}`;
@@ -527,6 +528,14 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
   if (infrastructure.keycloak && ports.keycloak)     linkEnv.KEYCLOAK_URL   = `http://localhost:${ports.keycloak}`;
   if (infrastructure.mlflow && ports.mlflow)         linkEnv.MLFLOW_URL     = `http://localhost:${ports.mlflow}`;
   if (infrastructure.mage && ports.mage)             linkEnv.MAGE_URL       = `http://localhost:${ports.mage}`;
+
+  // Mount the host's ~/.blissful-infra inside the dashboard container so the
+  // dashboard's API server can shell out to `blissful-infra service add` (and
+  // any other CLI command) — the CLI reads/writes the registry and client
+  // directories under BLISSFUL_HOME. Resolved at generation time so the path
+  // is portable across Windows/Mac/Linux without relying on ${HOME} expansion.
+  linkEnv.BLISSFUL_HOME = "/blissful-home";
+  const hostBlissfulHome = process.env.BLISSFUL_HOME ?? path.join(os.homedir(), ".blissful-infra");
 
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -537,6 +546,7 @@ export async function generateInfraCompose(opts: InfraComposeOptions): Promise<v
     volumes: [
       "/var/run/docker.sock:/var/run/docker.sock",
       `.:/projects/${clientName}`,
+      `${hostBlissfulHome}:/blissful-home:rw`,
     ],
   };
 
@@ -617,6 +627,16 @@ schema_config:
         period: 24h
 `;
 
+  // Tag every log line with labels the dashboard's Loki proxy actually queries:
+  //   - client  = compose project name (the blissful-infra client)
+  //   - service = the "role" part (backend, frontend, kafka, ...). For service
+  //               containers whose compose key is "<svc>-<role>" we strip the
+  //               prefix so the role alone shows up in the service filter; for
+  //               infra containers (single-token compose key like "kafka") we
+  //               keep the whole name.
+  //   - project = the service name prefix for service containers (e.g. "app"
+  //               from "app-backend"). Unset for infra. The dashboard's logs
+  //               view queries {project="<service>"} so this is the join key.
   const promtailConfig = `server:
   http_listen_port: 9080
 
@@ -633,19 +653,35 @@ scrape_configs:
         refresh_interval: 5s
     relabel_configs:
       - source_labels: ["__meta_docker_container_name"]
+        regex: "/?(.+)"
         target_label: container
+        replacement: "$1"
       - source_labels: ["__meta_docker_container_log_stream"]
         target_label: stream
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: client
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: service
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        regex: "[^-]+-(.+)"
+        target_label: service
+        replacement: "$1"
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        regex: "(.+)-(.+)"
+        target_label: project
+        replacement: "$1"
 `;
 
   await fs.writeFile(path.join(lokiDir, "loki-config.yaml"), lokiConfig);
   await fs.writeFile(path.join(lokiDir, "promtail-config.yaml"), promtailConfig);
 }
 
-export async function generateGrafanaConfig(clientDir: string): Promise<void> {
+export async function generateGrafanaConfig(clientDir: string, clientName?: string): Promise<void> {
   const provDir = path.join(clientDir, "grafana", "provisioning", "datasources");
+  const dashProvDir = path.join(clientDir, "grafana", "provisioning", "dashboards");
   const dashDir = path.join(clientDir, "grafana", "dashboards");
   await fs.mkdir(provDir, { recursive: true });
+  await fs.mkdir(dashProvDir, { recursive: true });
   await fs.mkdir(dashDir, { recursive: true });
 
   // ADR-0016: Tempo replaces Jaeger. The Tempo datasource is configured
@@ -686,7 +722,74 @@ datasources:
 `;
 
   await fs.writeFile(path.join(provDir, "datasources.yaml"), datasources);
-  await fs.writeFile(path.join(dashDir, ".gitkeep"), "");
+
+  // Dashboard provider — picks up any JSON in /var/lib/grafana/dashboards
+  const dashboardProvider = `apiVersion: 1
+providers:
+  - name: 'blissful-infra'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+`;
+  await fs.writeFile(path.join(dashProvDir, "dashboards.yaml"), dashboardProvider);
+
+  // Client overview dashboard — landing page for the Grafana button in the
+  // dashboard header. Three panels: service health (Prometheus `up`),
+  // recent logs (Loki), trace search hint (Tempo Explore link). Kept
+  // deliberately minimal; users can edit since allowUiUpdates is on.
+  const title = clientName ? `${clientName} — Client Overview` : "Client Overview";
+  const dashboard = {
+    uid: "blissful-overview",
+    title,
+    tags: ["blissful-infra", "overview", ...(clientName ? [clientName] : [])],
+    timezone: "browser",
+    schemaVersion: 39,
+    version: 1,
+    refresh: "30s",
+    time: { from: "now-1h", to: "now" },
+    panels: [
+      {
+        id: 1,
+        type: "stat",
+        title: "Services up",
+        gridPos: { h: 4, w: 6, x: 0, y: 0 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [{ expr: "sum(up)", refId: "A" }],
+        fieldConfig: { defaults: { color: { mode: "thresholds" } } },
+      },
+      {
+        id: 2,
+        type: "logs",
+        title: "Recent logs (all services)",
+        gridPos: { h: 12, w: 18, x: 6, y: 0 },
+        datasource: { type: "loki", uid: "loki" },
+        targets: [{ expr: "{job=~\".+\"}", refId: "A" }],
+        options: { showTime: true, wrapLogMessage: false, sortOrder: "Descending" },
+      },
+      {
+        id: 3,
+        type: "stat",
+        title: "Trace explorer",
+        gridPos: { h: 4, w: 6, x: 0, y: 4 },
+        datasource: { type: "tempo", uid: "tempo" },
+        options: {
+          textMode: "name",
+          colorMode: "background",
+          graphMode: "none",
+        },
+        targets: [{ refId: "A", queryType: "traceqlSearch" }],
+      },
+    ],
+  };
+  await fs.writeFile(
+    path.join(dashDir, "client-overview.json"),
+    JSON.stringify(dashboard, null, 2),
+  );
 }
 
 /**

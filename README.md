@@ -2,16 +2,16 @@
 
 # blissful-infra
 
-**Enterprise infrastructure on your laptop.**
+**An enterprise sandbox on your laptop.**
 
-One command creates and runs a full-stack app with CI/CD, observability, and an AI agent. No cloud required.
+Real Kafka, real Postgres, real observability, real CI. Wired together by one command. Built for engineers who want to iterate on architecture patterns without a cloud bill.
 
 [![CI](https://github.com/cavanpage/blissful-infra/actions/workflows/ci.yml/badge.svg)](https://github.com/cavanpage/blissful-infra/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@blissful-infra/cli)](https://www.npmjs.com/package/@blissful-infra/cli)
 
 ---
 
-[What is blissful-infra?](#what-is-blissful-infra) · [Choose your path](#choose-your-path) · [Quickstart](#quickstart) · [Basics](#basics) · [Next Steps](#next-steps)
+[What is blissful-infra?](#what-is-blissful-infra) · [Why I built this](#why-i-built-this) · [Choose your path](#choose-your-path) · [Quickstart](#quickstart) · [Basics](#basics) · [Next Steps](#next-steps)
 
 ---
 
@@ -19,19 +19,29 @@ One command creates and runs a full-stack app with CI/CD, observability, and an 
 
 ## What is blissful-infra?
 
-blissful-infra is a CLI that scaffolds and runs production-grade full-stack applications locally. Run one command and get a backend API, React frontend, Kafka message bus, Postgres database, Prometheus metrics, Grafana dashboards, Jenkins CI/CD pipeline, and an AI debugging agent. Everything is wired together and running in Docker.
+blissful-infra is a CLI that spins up a real enterprise-shaped stack on your laptop. Run one command and get a backend API, React frontend, Kafka message bus, Postgres database, Prometheus metrics, Grafana dashboards, Jenkins CI/CD pipeline and an AI debugging agent. Everything is wired together and running in Docker.
 
 ```bash
-blissful-infra start my-app
+blissful-infra init
 ```
 
-That's it. No YAML to hand-write. No services to manually connect. No cloud account required.
+That's it. A guided wizard walks you through picking infrastructure and adding your first service. No YAML to hand-write. No services to manually connect. No cloud account required.
 
-blissful-infra organizes your local stack into a single managed environment and exposes it through a dashboard UI. The same configuration and workflows work whether you're iterating on a feature locally or handing off to a CI pipeline.
+The idea is that you should be able to try an architecture pattern, throw it away and try the next one in the time it usually takes to read the docs for one of them. The same config that drives the local stack also drives the deploy when a project is ready to ship.
 
 **What makes it different from tools like Tilt or Garden:**
 
-Those tools orchestrate services you already wrote. blissful-infra also *creates* them, scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start.
+Those tools orchestrate services you already wrote. blissful-infra also *creates* them, scaffolding a production-shaped project with observability, CI/CD and AI tooling wired in from the start.
+
+## Why I built this
+
+I spent a few years at Intuit on the Identity / Auth team. Most of the infrastructure you work with at that scale is already provided for you. Auth, observability, deploy pipelines, message buses, datastores. Productive, but layered. Internal platforms exist for good reasons (resource caps, standardization, blast-radius limits) and they do their job well. The trade off is that several layers of abstraction sit between you and the technology underneath.
+
+I wanted to go deeper on the enterprise patterns I used every day. I wanted to wire Kafka up by hand, watch a JWT round trip through Keycloak, swap Redis for a Postgres read replica and benchmark the difference. The frustrating part was that none of the interesting work started with the experiment. It started with two hours of `docker-compose.yaml` and an evening of "why is Kafka not reachable from the JVM container".
+
+blissful-infra is the tool I wanted. Spin up real infrastructure fast, focus on the fun parts: building apps, services and products. For enterprise engineers it is a sandbox that mirrors what real teams run. For solo developers and small studios it is enterprise-shape infrastructure without the enterprise bill (a managed Kafka, Postgres, observability stack and CI runner across two or three client projects adds up to real money every month).
+
+Longer version on the site: [Why I built this →](https://blissful-infra.com/about)
 
 ---
 
@@ -41,9 +51,9 @@ blissful-infra serves three audiences, all working from the same toolchain.
 
 | You are... | Path | Outcome |
 |---|---|---|
-| **Learning**: student, new grad, or anyone wanting enterprise-pattern fluency without an AWS bill | [Learn](https://blissful-infra.com/paths/learn) | A guided course that takes you from zero to a running Kubernetes service backed by Kafka, Postgres, and Keycloak. Understand each layer before reaching for a managed equivalent. |
-| **Building**: engineer with an idea who wants a fast experimentation loop | [Build](https://blissful-infra.com/paths/build) | One command to a production-grade local stack. Skip the theory, prototype now, dig deeper later. |
-| **Delivering**: small studio or indie team running multiple client projects | [Deliver](https://blissful-infra.com/paths/deliver) | Per-client isolated stacks with their own Kafka, Postgres, observability, and CI. One laptop, many clients, no SaaS sprawl. |
+| **Building**: enterprise engineer or indie builder who wants to iterate on architecture patterns fast | [Build](https://blissful-infra.com/paths/build) | One command to a real stack you can actually pull apart. Skip the boilerplate, prototype now, dig deeper later. |
+| **Learning**: student, new grad or anyone wanting enterprise-pattern fluency without an AWS bill | [Learn](https://blissful-infra.com/paths/learn) | A guided course that takes you from zero to a running Kubernetes service backed by Kafka, Postgres and Keycloak. Understand each layer before reaching for a managed equivalent. |
+| **Delivering**: small studio or indie team running multiple client projects | [Deliver](https://blissful-infra.com/paths/deliver) | Per-client isolated stacks with their own Kafka, Postgres, observability and CI. One laptop, many clients, no SaaS sprawl. |
 
 ### A note on managed services
 
@@ -57,73 +67,249 @@ blissful-infra exists for a different reason. A lot of enterprise development ha
 
 ### Starting a new project from scratch
 
-blissful-infra's primary use case. Pick a backend and frontend, optionally add a database or plugins, and have a running full-stack app with real infrastructure in under a minute.
+blissful-infra's primary use case. The `init` wizard prompts you for a client name, the infrastructure components you want, and your first service. Under a minute later you have a running full-stack app with real infra.
 
 ```bash
-blissful-infra start my-app --backend spring-boot --database postgres
-
-# With the AI/ML data platform
-blissful-infra start my-app --backend spring-boot --database postgres --plugins ai-pipeline
+blissful-infra init
 ```
+
+Want to skip prompts? Pass `--yes` to accept all defaults (creates client `dev` with the standard infra and a `spring-boot` + `react-vite` service called `app`).
 
 ### Standardizing dev environments across a team
 
-Every developer runs the same stack. `blissful-infra up` in a project directory reads the `blissful-infra.yaml` config and starts the exact same services, ports, and configuration. No "works on my machine" drift.
-
-```bash
-git clone git@github.com:your-org/my-app.git
-cd my-app && blissful-infra up
-```
+Every developer runs `blissful-infra init` and picks the same client name. The client config lives in `~/.blissful-infra/clients/<name>/blissful-infra.yaml`; check it into your team repo or share the relevant parts so everyone gets the same Kafka, Postgres, Jenkins, and observability stack with the same ports.
 
 ### Learning enterprise infrastructure patterns
 
-blissful-infra is designed to be a working reference for how production systems are built. Event-driven microservices, Kafka streams, Kubernetes manifests, GitOps with Argo CD, canary deployments, chaos testing, and observability with Prometheus and Grafana. Everything is generated as real, readable code in your project directory.
+blissful-infra is designed to be a working reference for how production systems are built. Event-driven microservices, Kafka streams, Kubernetes manifests, GitOps with Argo CD, canary deployments, chaos testing, and observability with Prometheus and Grafana. Everything is generated as real, readable code in your client directory.
 
 ### Building AI/ML-powered services
 
-The `ai-pipeline` plugin deploys a full ML data platform alongside your app. A Python FastAPI service classifies Kafka events with scikit-learn, with ClickHouse for prediction storage, MLflow for experiment tracking, and Mage for visual pipeline orchestration.
+The `ai-pipeline` plugin deploys a full ML data platform alongside your app. A Python FastAPI service classifies Kafka events with scikit-learn, with ClickHouse for prediction storage, MLflow for experiment tracking, and Mage for visual pipeline orchestration. Pick it from the plugin checkbox during `init` and the dashboard auto-draws the Kafka edge from your backend to the pipeline in the ontology graph.
 
-```bash
-blissful-infra start my-app --plugins ai-pipeline
-```
-
-Your AI stack is now running:
-
-| Service      | URL                        | Purpose                          |
-|--------------|----------------------------|----------------------------------|
-| AI Pipeline  | http://localhost:8090/docs | FastAPI + scikit-learn classifier |
-| ClickHouse   | http://localhost:8123/play | Columnar store for predictions   |
-| MLflow       | http://localhost:5001      | Experiment tracking & model registry |
-| Mage         | http://localhost:6789      | Visual data pipeline orchestrator |
+(Exact URLs depend on the port block assigned to your client — `client status <name>` lists them.)
 
 ---
 
-## Quickstart
+## Your first client, step by step
 
-**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, Node.js 18+
+This walks you from zero through a running frontend + backend + data pipeline, all visible in an ontology graph you can extend visually.
+
+### Prerequisites
 
 ```bash
-# Install
-npm install -g @blissful-infra/cli
-
-# Create and run a fullstack app
-blissful-infra start my-app
-
-# Open the dashboard
-blissful-infra dashboard
+docker --version   # Docker Desktop running (or Docker Engine on Linux)
+node --version     # Node 20+
 ```
 
-Your app is now running:
+### Install
 
-| Service    | URL                       |
-|------------|---------------------------|
-| Frontend   | http://localhost:3000     |
-| Backend    | http://localhost:8080     |
-| Grafana    | http://localhost:3001     |
-| Prometheus | http://localhost:9090     |
-| Dashboard  | http://localhost:3002     |
-| Jenkins    | http://localhost:8081     |
-| Registry   | localhost:5050            |
+```bash
+git clone https://github.com/cavanpage/blissful-infra.git
+cd blissful-infra
+npm install
+npm run build:cli
+npm link -w packages/cli
+```
+
+`npm link` makes `blissful-infra` available globally.
+
+### 1. Run the one command
+
+```bash
+blissful-infra init
+```
+
+This is the single entry point. Everything else is prompts.
+
+### 2. Name your client
+
+```
+👋 Welcome to blissful-infra
+
+This will set up one isolated client environment with its own Kafka,
+Postgres, observability stack, dashboard, and (optionally) a first service.
+
+? Client environment name: (dev) _
+```
+
+A **client** is your isolated environment — its own infra stack, its own port range, its own dashboard. You can have many side by side. Hit enter to accept `dev`.
+
+### 3. Choose infrastructure
+
+```
+? Infrastructure components (space to toggle, enter to confirm)
+  ◉ Kafka
+  ◉ Postgres
+  ◉ Jenkins (CI/CD)
+  ◉ Prometheus + Grafana (metrics)
+  ◉ Tempo (tracing)
+  ◉ Loki + Promtail (logs)
+  ◯ ClickHouse warehouse
+  ◯ AWS emulator (floci, LocalStack-compatible)
+  ◯ Keycloak IAM
+  ◯ MLflow model registry
+  ◯ Mage workflow orchestrator
+```
+
+The defaults are sensible for a data-pipeline app.
+
+### 4. Add your first service
+
+```
+? Add your first service now? Y
+? Service name: app
+? Backend framework: spring-boot
+? Frontend framework: react-vite
+? Plugins:
+  ◉ ai-pipeline
+  ◯ agent-service
+  ◯ gatling
+```
+
+The scaffold drops in real, runnable code — not stubs.
+
+### 5. Wait
+
+```
+Allocating port block...                  ✓ block 0 allocated
+Creating client directory...              ✓
+Generating docker-compose.infra.yaml...   ✓
+Copying spring-boot backend...            ✓
+Copying react-vite frontend...            ✓
+Copying ai-pipeline plugin...             ✓
+[+] Running 11/11
+ ✔ Container dev-kafka          Healthy
+ ✔ Container dev-postgres       Healthy
+ ✔ Container dev-jenkins        Started
+ ✔ Container dev-grafana        Healthy
+ ✔ Container dev-prometheus     Healthy
+ ✔ Container dev-tempo          Healthy
+ ✔ Container dev-loki           Healthy
+ ✔ Container dev-dashboard      Healthy
+ ✔ Container dev-app-backend   Healthy
+ ✔ Container dev-app-frontend  Healthy
+ ✔ Container dev-ai-pipeline    Healthy
+```
+
+First run takes a few minutes (pulling images, building Jenkins). Subsequent runs are seconds.
+
+### 6. Open the dashboard
+
+Look for `Dashboard: http://localhost:3010` in the output (port is `3010 + blockIndex` — first client gets `3010`).
+
+What you'll see:
+
+- **Header:** `blissful-infra · dev` — the blue badge confirms the client
+- **Sidebar:** `Services (1)` → `app`
+- **Buttons:** `Graph` · `Grafana` · `New Service`
+
+### 7. See your system in the ontology
+
+Click **Graph** in the header.
+
+- **Left column (services):** `app`
+- **Right column (infra):** `kafka`, `postgres`, `jenkins`, `grafana`, `prometheus`, `tempo`, `loki`, `dashboard`, `ai-pipeline`
+- **Edge already drawn:** `app → kafka` labeled "publishes events"
+
+The edge is auto-wired because you picked `ai-pipeline`. Click it.
+
+### 8. Inspect the auto-wired contract
+
+The right panel opens with two tabs: **Settings** and **Contract** (green dot = contract defined).
+
+Click **Contract**. Monaco opens with a starter Avro schema:
+
+```json
+{
+  "type": "record",
+  "name": "Event",
+  "namespace": "dev.app",
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "timestamp", "type": "long" },
+    { "name": "payload", "type": "string" }
+  ]
+}
+```
+
+Edit it to match what you want to publish, then click **Wire it up**:
+
+```
+Wrote 1 file(s): contracts/kafka.avsc · Avro producer codegen coming soon — schema saved, env vars injected
+```
+
+The schema is now at `~/.blissful-infra/clients/dev/app/contracts/kafka.avsc`, and `KAFKA_BOOTSTRAP_SERVERS=kafka:29092` is now in your service's compose.
+
+### 9. Add a service-to-service connection
+
+Click **New Service** (or run `blissful-infra service add dev api`). Pick `spring-boot` backend, no frontend.
+
+Back in **Graph**, drag from the **right handle of `app`** to the **left handle of `api`**. A new edge appears.
+
+Click it → **Contract** → **Start from template**. Edit the OpenAPI YAML to define the API:
+
+```yaml
+openapi: 3.0.3
+info:
+  title: api
+  version: 0.1.0
+paths:
+  /users/{id}:
+    get:
+      summary: Get user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:    { type: string }
+                  name:  { type: string }
+                  email: { type: string }
+```
+
+Click **Wire it up**:
+
+```
+Wrote 3 file(s): contracts/api.openapi.yaml,
+                 src/generated/api-client/index.ts,
+                 src/generated/api-client/client.ts
+```
+
+Import the typed client in `app`:
+
+```ts
+import { client } from "./generated/api-client/client";
+const { data } = await client.GET("/users/{id}", { params: { path: { id: "42" } } });
+```
+
+It's typed against the contract.
+
+### 10. Live-edit a service's compose file
+
+Click any node → **Config** tab. The service's `docker-compose.yaml` opens in Monaco. Change a memory limit, add an env var, save. Then:
+
+```bash
+blissful-infra service up dev app
+```
+
+### 11. Tear down
+
+```bash
+blissful-infra client down dev      # stop, keep data
+blissful-infra client up dev        # start back up
+blissful-infra client remove dev    # wipe everything
+```
+
+That's the full happy path. Where it usually breaks for first-timers: Docker not running, or port conflicts if another stack is on `3010+`. Both surface clear errors.
 
 ---
 
@@ -134,7 +320,7 @@ Your app is now running:
 A blissful-infra project is a directory with a `blissful-infra.yaml` config file and a generated `docker-compose.yaml`. Every service (backend, frontend, Kafka, databases, monitoring) is defined in that compose file and managed together.
 
 ```
-my-app/
+app/
 ├── backend/              # Spring Boot (Kotlin)
 │   └── Jenkinsfile       # CI/CD pipeline definition
 ├── frontend/             # React + Vite
@@ -164,7 +350,7 @@ blissful-infra ships with one full-stack template (Spring Boot + React + Vite) a
 | `react-vite`  | React + Vite + TypeScript + TailwindCSS        |
 
 ```bash
-blissful-infra start my-app --backend spring-boot --frontend react-vite
+blissful-infra start app --backend spring-boot --frontend react-vite
 ```
 
 ### Databases
@@ -178,10 +364,10 @@ blissful-infra start my-app --backend spring-boot --frontend react-vite
 
 ```bash
 # Postgres only
-blissful-infra start my-app --database postgres
+blissful-infra start app --database postgres
 
 # Postgres + Redis (recommended for production-like setups)
-blissful-infra start my-app --database postgres-redis
+blissful-infra start app --database postgres-redis
 ```
 
 With `postgres-redis` the generated backend includes a `ProductService` with `@Cacheable` on reads and `@CacheEvict` on writes, so you can see cache hit/miss patterns in Grafana from day one.
@@ -193,7 +379,7 @@ Every project includes Prometheus and Grafana by default. Prometheus scrapes you
 To disable monitoring:
 
 ```bash
-blissful-infra start my-app --no-monitoring
+blissful-infra start app --no-monitoring
 ```
 
 ### The Dashboard
@@ -243,10 +429,10 @@ Once connected, you can say things like:
 
 > "Create a new project called fraud-detector with postgres-redis"
 > "What's the health of all my running projects?"
-> "Show me ERROR logs from the backend service in my-app"
-> "Why is the backend in my-app restarting? Check the logs and diagnose."
-> "Deploy my-app to staging"
-> "Roll back my-app in production to the previous revision"
+> "Show me ERROR logs from the backend service in app"
+> "Why is the backend in app restarting? Check the logs and diagnose."
+> "Deploy app to staging"
+> "Roll back app in production to the previous revision"
 
 **Available MCP tools:**
 
@@ -389,7 +575,7 @@ Extend your project with optional plugins:
 
 ```bash
 # Add an AI/ML pipeline service
-blissful-infra start my-app --plugins ai-pipeline
+blissful-infra start app --plugins ai-pipeline
 ```
 
 | Plugin        | Description                                                                                                  |

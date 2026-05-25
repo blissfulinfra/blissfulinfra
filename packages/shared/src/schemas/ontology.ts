@@ -20,6 +20,13 @@ export const OntologyNodeTypeSchema = z.enum([
 
 export const OntologyEdgeTypeSchema = z.enum(["http", "kafka", "database", "custom"]);
 
+export const ContractFormatSchema = z.enum(["openapi", "avro", "sql"]);
+
+export const OntologyContractSchema = z.object({
+  format: ContractFormatSchema,
+  schema: z.string(),
+});
+
 export const OntologyPositionSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -41,6 +48,7 @@ export const OntologyEdgeSchema = z.object({
   type: OntologyEdgeTypeSchema,
   label: z.string().optional(),
   properties: z.record(z.string(), z.string()).optional(),
+  contract: OntologyContractSchema.optional(),
   wired: z.boolean().default(false),
 });
 
@@ -52,6 +60,8 @@ export const ClientOntologySchema = z.object({
 
 export type OntologyNodeType = z.infer<typeof OntologyNodeTypeSchema>;
 export type OntologyEdgeType = z.infer<typeof OntologyEdgeTypeSchema>;
+export type ContractFormat = z.infer<typeof ContractFormatSchema>;
+export type OntologyContract = z.infer<typeof OntologyContractSchema>;
 export type OntologyPosition = z.infer<typeof OntologyPositionSchema>;
 export type OntologyNode = z.infer<typeof OntologyNodeSchema>;
 export type OntologyEdge = z.infer<typeof OntologyEdgeSchema>;
