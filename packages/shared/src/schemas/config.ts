@@ -120,7 +120,7 @@ export const ApiConfigSchema = z.object({
 // Root project config (blissful-infra.yaml) — legacy flat model
 // ---------------------------------------------------------------------------
 
-export const ProjectConfigSchema = z.object({
+export const LegacyProjectConfigSchema = z.object({
   name: z.string(),
   backend: z.string().optional(),
   frontend: z.string().optional(),
@@ -301,7 +301,7 @@ export type ApiGenerateServer = z.infer<typeof ApiGenerateServerSchema>;
 export type ApiGenerateTypes = z.infer<typeof ApiGenerateTypesSchema>;
 export type ApiGenerate = z.infer<typeof ApiGenerateSchema>;
 export type ApiConfig = z.infer<typeof ApiConfigSchema>;
-export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+export type LegacyProjectConfig = z.infer<typeof LegacyProjectConfigSchema>;
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfigSchema>;
 export type PostgresInstance = z.infer<typeof PostgresInstanceSchema>;
 export type PostgresConfig = z.infer<typeof PostgresConfigSchema>;

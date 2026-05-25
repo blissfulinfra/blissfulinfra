@@ -4,6 +4,17 @@
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 
+> **Update 2026-05-14:** the underlying engine for the LocalStack-API-compatible
+> emulator has been swapped to [floci](https://github.com/floci-io/floci)
+> (Docker image `floci/floci:latest`). Floci is a drop-in replacement: same
+> port (4566), same SDK endpoint, same `/_localstack/health` healthcheck. The
+> `infrastructure.localstack` YAML key and the `LOCALSTACK_HOST` env var are
+> kept as-is for backwards compatibility with existing client configs. The
+> only behavioural change is `FLOCI_HOSTNAME=localstack` is now injected so
+> URLs returned by the emulator (presigned S3, SQS queue URLs) resolve to the
+> compose service name. Decision rationale unchanged — everything below still
+> applies, just substitute "floci" wherever "LocalStack" describes the engine.
+
 ## Context
 
 blissful-infra ships a `spring-boot` backend template, a long-running

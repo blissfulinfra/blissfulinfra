@@ -157,8 +157,24 @@ export function createApiServer(workingDir: string, port = 3002) {
       // live in the unified Grafana UI now). jaegerUrl is kept null for
       // back-compat with any older dashboard build still in the wild.
       if (req.method === "GET" && url.pathname === "/api/v1/links") {
+        // Read context for the current project (tenant mode).
+        let contextProject: string | null = null;
+        if (process.env.TENANT_NAME) {
+          try {
+            const raw = await fs.readFile("/blissful-home/context.json", "utf-8");
+            const parsed = JSON.parse(raw) as { tenant?: string; project?: string };
+            if (parsed.tenant === process.env.TENANT_NAME) {
+              contextProject = parsed.project ?? null;
+            }
+          } catch { /* no context */ }
+        }
         const links: Record<string, string | null> = {
-          clientName: process.env.CLIENT_NAME || null,
+          // The dashboard's `links.clientName` badge predates the rename. We
+          // populate it from either env so the existing UI shows the right
+          // label without a UI change.
+          clientName: process.env.TENANT_NAME || process.env.CLIENT_NAME || null,
+          tenantName: process.env.TENANT_NAME || null,
+          projectName: contextProject,
           tempoUrl: process.env.TEMPO_URL || null,
           jaegerUrl: null,
           grafanaUrl: process.env.GRAFANA_URL || null,
@@ -192,23 +208,51 @@ export function createApiServer(workingDir: string, port = 3002) {
       // POST /api/projects - Create new project
       if (req.method === "POST" && url.pathname === "/api/v1/projects") {
         const body = await readBody(req);
-        const { name, type, backend, frontend, database } = JSON.parse(body);
+        const { name, type, backend, frontend, database, plugins } = JSON.parse(body);
 
         if (!name) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Missing project name" }));
+          res.end(JSON.stringify({ error: "Missing service name" }));
           return;
         }
 
-        const result = await createProject(workingDir, {
-          name,
-          type: type || "fullstack",
-          backend: backend || "spring-boot",
-          frontend: frontend || "react-vite",
-          database,
-        });
+        // Three modes, in priority order:
+        //   1. TENANT_NAME set → new tenant/project/service flow (ADR-0017).
+        //      Project comes from context.json (written by `blissful-infra use`
+        //      or auto-set by tenant/project create).
+        //   2. CLIENT_NAME set → legacy client/service flow (scheduled for
+        //      deletion in phase 8).
+        //   3. neither → legacy flat-model create (scheduled for deletion).
+        const tenantForCreate = process.env.TENANT_NAME;
+        const clientForCreate = process.env.CLIENT_NAME;
 
-        res.writeHead(200, { "Content-Type": "application/json" });
+        let result: { success: boolean; error?: string };
+        if (tenantForCreate) {
+          result = await addServiceToTenant(tenantForCreate, {
+            name,
+            type: type || "backend",
+            backend,
+            frontend,
+            plugins,
+          });
+        } else if (clientForCreate) {
+          result = await addServiceToClient(clientForCreate, {
+            name,
+            backend: backend || "spring-boot",
+            frontend: frontend || "react-vite",
+            plugins,
+          });
+        } else {
+          result = await createProject(workingDir, {
+            name,
+            type: type || "fullstack",
+            backend: backend || "spring-boot",
+            frontend: frontend || "react-vite",
+            database,
+          });
+        }
+
+        res.writeHead(result.success ? 200 : 400, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
         return;
       }
@@ -276,7 +320,18 @@ export function createApiServer(workingDir: string, port = 3002) {
         const textFilter = url.searchParams.get("filter");
         const limit = url.searchParams.get("limit") || "200";
 
-        let logqlQuery = `{project="${projectName}"${serviceFilter ? `, service="${serviceFilter}"` : ""}}`;
+        // In tenant mode (ADR-0017): Promtail labels are {tenant, project,
+        // service} from the com.blissful.* compose labels. In legacy client
+        // mode: there was no `project` label, just `service`. We adapt the
+        // query shape based on what env we're running in.
+        let logqlQuery: string;
+        if (process.env.TENANT_NAME) {
+          const parts: string[] = [`tenant="${process.env.TENANT_NAME}"`, `project="${projectName}"`];
+          if (serviceFilter) parts.push(`service="${serviceFilter}"`);
+          logqlQuery = `{${parts.join(", ")}}`;
+        } else {
+          logqlQuery = `{project="${projectName}"${serviceFilter ? `, service="${serviceFilter}"` : ""}}`;
+        }
         if (textFilter) logqlQuery += ` |= \`${textFilter}\``;
 
         const nowNs = BigInt(Date.now()) * 1_000_000n;
@@ -319,7 +374,12 @@ export function createApiServer(workingDir: string, port = 3002) {
           const nowNs = BigInt(Date.now()) * 1_000_000n;
           const startNs = nowNs - 3_600_000_000_000n;
           const lokiUrl = new URL(`http://${lokiHost}:3100/loki/api/v1/label/service/values`);
-          lokiUrl.searchParams.set("query", `{project="${projectName}"}`);
+          // Match the relevant subset of logs so the dropdown only lists
+          // services that actually have lines indexed in Loki.
+          const scopeQuery = process.env.TENANT_NAME
+            ? `{tenant="${process.env.TENANT_NAME}", project="${projectName}"}`
+            : `{project="${projectName}"}`;
+          lokiUrl.searchParams.set("query", scopeQuery);
           lokiUrl.searchParams.set("start", startNs.toString());
           lokiUrl.searchParams.set("end", nowNs.toString());
           const lokiRes = await fetch(lokiUrl.toString(), { signal: AbortSignal.timeout(3000) });
@@ -1046,6 +1106,42 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // GET /api/v1/client/infra - Aggregate infra health for the current
+      // tenant (or legacy client). Returns infra components (dashboard,
+      // jenkins, prometheus, grafana, tempo, loki at the tenant level;
+      // kafka, postgres, gateway per project) with live container status.
+      if (req.method === "GET" && url.pathname === "/api/v1/client/infra") {
+        const tenantName = process.env.TENANT_NAME;
+        const clientName = process.env.CLIENT_NAME;
+
+        if (tenantName) {
+          const infra = await collectTenantInfraStatus(tenantName);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ client: tenantName, infra }));
+          return;
+        }
+        if (clientName) {
+          const clientDir = path.join(workingDir, clientName);
+          const graph = await loadOntology(clientDir, clientName);
+          const annotated = await annotateStatus(clientName, graph);
+          const infra = annotated.nodes
+            .filter(n => n.type !== "service")
+            .map(n => ({
+              id: n.id,
+              type: n.type,
+              label: n.label,
+              port: n.port,
+              status: n.status ?? "unknown",
+            }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ client: clientName, infra }));
+          return;
+        }
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not running in tenant/client mode" }));
+        return;
+      }
+
       // ── Ontology endpoints ─────────────────────────────────────────────
       // Resolution: when CLIENT_NAME is set (dashboard inside a client's
       // infra stack), the client dir is mounted at workingDir/<clientName>.
@@ -1058,6 +1154,25 @@ export function createApiServer(workingDir: string, port = 3002) {
       const ontologyGetMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)$/);
       if (req.method === "GET" && ontologyGetMatch) {
         const clientName = ontologyGetMatch[1];
+        const tenantName = process.env.TENANT_NAME;
+
+        // Tenant mode (ADR-0017): build the graph from the registry walked
+        // across tenant + every project + every service. Status comes from
+        // a single docker ps. Saved positions/edges (if any) overlay from
+        // ~/.blissful-infra/tenants/<tenant>/ontology.json.
+        if (tenantName) {
+          if (clientName !== tenantName) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Cross-tenant ontology access denied" }));
+            return;
+          }
+          const graph = await buildTenantOntology(tenantName);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(graph));
+          return;
+        }
+
+        // Legacy client-mode path.
         if (ontologyClient && clientName !== ontologyClient) {
           res.writeHead(403, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
@@ -1073,6 +1188,26 @@ export function createApiServer(workingDir: string, port = 3002) {
 
       if (req.method === "PUT" && ontologyGetMatch) {
         const clientName = ontologyGetMatch[1];
+        const tenantName = process.env.TENANT_NAME;
+
+        // Tenant mode: persist under ~/.blissful-infra/tenants/<tenant>/ontology.json
+        if (tenantName) {
+          if (clientName !== tenantName) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Cross-tenant ontology access denied" }));
+            return;
+          }
+          const body = await readBody(req);
+          const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
+          const tenantDir = path.join(home, "tenants", tenantName);
+          await fs.mkdir(tenantDir, { recursive: true });
+          await fs.writeFile(path.join(tenantDir, "ontology.json"), body);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true }));
+          return;
+        }
+
+        // Legacy client mode
         if (ontologyClient && clientName !== ontologyClient) {
           res.writeHead(403, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
@@ -1136,11 +1271,11 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
         try {
-          const wired = await wireEdge(clientDir, edge);
-          const updated = { ...graph, edges: graph.edges.map(e => e.id === wired.id ? wired : e) };
+          const result = await wireEdge(clientDir, edge);
+          const updated = { ...graph, edges: graph.edges.map(e => e.id === result.edge.id ? result.edge : e) };
           await saveOntology(clientDir, updated);
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(wired));
+          res.end(JSON.stringify({ ...result.edge, codegen: { written: result.written, warnings: result.warnings } }));
         } catch (error) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: toExecError(error).message }));
@@ -1298,11 +1433,17 @@ export function resolveProjectDir(workingDir: string, name: string): string {
 }
 
 async function listProjects(workingDir: string): Promise<ProjectStatus[]> {
-  // Client mode: the dashboard is running inside a client's infra stack and
-  // the working dir is the client's root. Each subdir with a service-type
-  // blissful-infra.yaml is a service. Container status is queried via
-  // `docker ps` filtered by the unified `<client>-<service>-` name prefix
-  // (the per-service compose can't be `ps`'d on its own — it's an include).
+  // Tenant mode (ADR-0017): registry lives at /blissful-home/registry.json
+  // (mounted into the container). Each project in the tenant becomes one
+  // sidebar item with its services listed underneath.
+  const tenantName = process.env.TENANT_NAME;
+  if (tenantName) {
+    return listTenantProjects(tenantName);
+  }
+
+  // Client mode (legacy): the dashboard is running inside a client's infra
+  // stack and the working dir is the client's root. Each subdir with a
+  // service-type blissful-infra.yaml is a service.
   const clientName = process.env.CLIENT_NAME;
   if (clientName) {
     return listClientServices(workingDir, clientName);
@@ -1392,6 +1533,327 @@ async function listClientServices(workingDir: string, clientName: string): Promi
   }
 
   return projects;
+}
+
+/**
+ * Tenant-mode listing for the new ADR-0017 hierarchy. Reads the registry
+ * (mounted at /blissful-home) and returns one ProjectStatus entry per project
+ * in the tenant. Each project's `services` field lists its services with
+ * live container status.
+ *
+ * This shape-preserves the legacy `/api/v1/projects` response so the existing
+ * dashboard sidebar renders the new model without UI changes. Phase 7b will
+ * do the proper 3-level tree view.
+ */
+async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> {
+  // Read the registry directly (no CLI subprocess). BLISSFUL_HOME is set on
+  // the dashboard container to point at the mounted host registry.
+  const registryPath = path.join(process.env.BLISSFUL_HOME ?? "/blissful-home", "registry.json");
+  let registry: { tenants?: Array<{
+    name: string;
+    projects: Array<{
+      name: string;
+      portBlock: { kafka: number; postgres: number; gateway: number };
+      services: Array<{ name: string; type: string; ports: { http?: number } }>;
+    }>;
+  }> };
+  try {
+    registry = JSON.parse(await fs.readFile(registryPath, "utf-8"));
+  } catch {
+    return [];
+  }
+
+  const tenant = registry.tenants?.find(t => t.name === tenantName);
+  if (!tenant) return [];
+
+  // One `docker ps` call gets everything in this tenant's project namespaces
+  let containers: { name: string; state: string }[] = [];
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "-a", "--no-trunc",
+      "--filter", `name=${tenantName}-`,
+      "--format", "{{.Names}}|{{.State}}",
+    ], { reject: false });
+    containers = stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [name, state] = line.split("|");
+      return { name, state };
+    });
+  } catch { /* docker unavailable */ }
+
+  return tenant.projects.map(p => {
+    // Service-level statuses
+    const services = p.services.map(s => {
+      const cName = `${tenantName}-${p.name}-${s.name}`;
+      const c = containers.find(x => x.name === cName);
+      const status: "running" | "stopped" | "starting" | "unhealthy" =
+        c?.state === "running" ? "running"
+        : c ? "stopped"
+        : "stopped";
+      return { name: s.name, status, port: s.ports.http };
+    });
+
+    // Project-level rollup: running if ANY service container is running
+    const anyRunning = services.some(s => s.status === "running");
+    const allStopped = services.every(s => s.status === "stopped");
+    const status: "running" | "stopped" | "unknown" =
+      services.length === 0 ? "unknown" : anyRunning ? "running" : allStopped ? "stopped" : "unknown";
+
+    return {
+      name: p.name,
+      path: `tenants/${tenantName}/projects/${p.name}`,
+      status,
+      type: "project",
+      services,
+    };
+  });
+}
+
+/**
+ * Collect every infrastructure container in a tenant — both tenant-level
+ * (dashboard, jenkins, observability) and project-level (kafka, postgres,
+ * gateway, per project) — annotated with live docker status. Used by the
+ * Client Overview view in the dashboard.
+ */
+async function collectTenantInfraStatus(tenantName: string): Promise<Array<{
+  id: string;
+  type: string;
+  label: string;
+  port?: number;
+  status: "running" | "stopped" | "unknown";
+}>> {
+  const registryPath = path.join(process.env.BLISSFUL_HOME ?? "/blissful-home", "registry.json");
+  let tenant: {
+    portBlock: { dashboard: number; jenkins: number; grafana: number; prometheus: number; tempo: number; loki: number; blockIndex: number };
+    projects: Array<{
+      name: string;
+      portBlock: { kafka: number; postgres: number; gateway: number };
+    }>;
+  } | undefined;
+  try {
+    const raw = JSON.parse(await fs.readFile(registryPath, "utf-8")) as {
+      tenants?: Array<{
+        name: string;
+        portBlock: { dashboard: number; jenkins: number; grafana: number; prometheus: number; tempo: number; loki: number; blockIndex: number };
+        projects: Array<{ name: string; portBlock: { kafka: number; postgres: number; gateway: number } }>;
+      }>;
+    };
+    tenant = raw.tenants?.find(t => t.name === tenantName);
+  } catch { /* no registry */ }
+  if (!tenant) return [];
+
+  // One docker ps call for all tenant-prefixed containers
+  let containers: { name: string; state: string }[] = [];
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "-a", "--no-trunc",
+      "--filter", `name=${tenantName}-`,
+      "--format", "{{.Names}}|{{.State}}",
+    ], { reject: false });
+    containers = stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [name, state] = line.split("|");
+      return { name, state };
+    });
+  } catch { /* docker unavailable */ }
+
+  const statusOf = (containerName: string): "running" | "stopped" | "unknown" => {
+    const c = containers.find(x => x.name === containerName);
+    if (!c) return "unknown";
+    return c.state === "running" ? "running" : "stopped";
+  };
+
+  const infra: Array<{ id: string; type: string; label: string; port?: number; status: "running" | "stopped" | "unknown" }> = [];
+
+  // Tenant-level
+  infra.push({ id: "tenant:dashboard",  type: "dashboard",  label: "Dashboard",  port: tenant.portBlock.dashboard,  status: statusOf(`${tenantName}-dashboard`) });
+  infra.push({ id: "tenant:jenkins",    type: "jenkins",    label: "Jenkins",    port: tenant.portBlock.jenkins,    status: statusOf(`${tenantName}-jenkins`) });
+  infra.push({ id: "tenant:prometheus", type: "prometheus", label: "Prometheus", port: tenant.portBlock.prometheus, status: statusOf(`${tenantName}-prometheus`) });
+  infra.push({ id: "tenant:grafana",    type: "grafana",    label: "Grafana",    port: tenant.portBlock.grafana,    status: statusOf(`${tenantName}-grafana`) });
+  infra.push({ id: "tenant:tempo",      type: "tempo",      label: "Tempo",      port: tenant.portBlock.tempo,      status: statusOf(`${tenantName}-tempo`) });
+  infra.push({ id: "tenant:loki",       type: "loki",       label: "Loki",       port: tenant.portBlock.loki,       status: statusOf(`${tenantName}-loki`) });
+
+  // Per-project infra
+  for (const p of tenant.projects) {
+    infra.push({ id: `project:${p.name}:kafka`,    type: "kafka",    label: `Kafka (${p.name})`,    port: p.portBlock.kafka,    status: statusOf(`${tenantName}-${p.name}-kafka`) });
+    infra.push({ id: `project:${p.name}:postgres`, type: "postgres", label: `Postgres (${p.name})`, port: p.portBlock.postgres, status: statusOf(`${tenantName}-${p.name}-postgres`) });
+    infra.push({ id: `project:${p.name}:gateway`,  type: "dashboard", label: `Gateway (${p.name})`, port: p.portBlock.gateway,  status: statusOf(`${tenantName}-${p.name}-gateway`) });
+  }
+
+  return infra;
+}
+
+/**
+ * Build a full tenant/project/service ontology graph from the registry +
+ * docker ps state. Emits:
+ *   - Tenant infra: dashboard, jenkins, prometheus, grafana, tempo, loki
+ *   - Per-project infra: kafka, postgres, gateway (positioned in a column
+ *     under the project header)
+ *   - Service nodes per project (positioned next to their project's infra)
+ *   - Auto edges:
+ *       service → kafka  (if project has kafka)
+ *       service → postgres (if the service has a database binding)
+ *
+ * Saved positions + user-drawn edges overlay from
+ * `~/.blissful-infra/tenants/<tenant>/ontology.json` so the user's manual
+ * tweaks persist across re-renders.
+ */
+async function buildTenantOntology(tenantName: string): Promise<{
+  clientName: string;
+  nodes: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+}> {
+  const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
+  const registryPath = path.join(home, "registry.json");
+
+  type RegProject = {
+    name: string;
+    portBlock: { kafka: number; postgres: number; gateway: number };
+    services: Array<{ name: string; type: string; ports: { http?: number } }>;
+  };
+  type RegTenant = {
+    name: string;
+    portBlock: { dashboard: number; jenkins: number; grafana: number; prometheus: number; tempo: number; loki: number };
+    projects: RegProject[];
+  };
+
+  let tenant: RegTenant | undefined;
+  try {
+    const raw = JSON.parse(await fs.readFile(registryPath, "utf-8")) as { tenants?: RegTenant[] };
+    tenant = raw.tenants?.find(t => t.name === tenantName);
+  } catch { /* no registry */ }
+
+  if (!tenant) {
+    return { clientName: tenantName, nodes: [], edges: [] };
+  }
+
+  // Saved overlay — preserves manual positions + user-drawn edges across runs.
+  let saved: { nodes?: Array<{ id: string; position?: { x: number; y: number } }>; edges?: Array<Record<string, unknown>> } = {};
+  try {
+    const tenantDir = path.join(home, "tenants", tenantName);
+    saved = JSON.parse(await fs.readFile(path.join(tenantDir, "ontology.json"), "utf-8"));
+  } catch { /* no saved ontology yet */ }
+  const savedPos = new Map<string, { x: number; y: number }>(
+    (saved.nodes ?? []).filter(n => n.position).map(n => [n.id, n.position!]),
+  );
+
+  // Container status — one docker ps for the whole tenant
+  let containers: { name: string; state: string }[] = [];
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "-a", "--no-trunc",
+      "--filter", `name=${tenantName}-`,
+      "--format", "{{.Names}}|{{.State}}",
+    ], { reject: false });
+    containers = stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [name, state] = line.split("|");
+      return { name, state };
+    });
+  } catch { /* docker unavailable */ }
+  const statusOf = (containerName: string): "running" | "stopped" | "unknown" => {
+    const c = containers.find(x => x.name === containerName);
+    if (!c) return "unknown";
+    return c.state === "running" ? "running" : "stopped";
+  };
+
+  // Layout: tenant infra in a top strip; each project gets a horizontal slot
+  // with its infra in the left column and services to the right.
+  const nodes: Array<Record<string, unknown>> = [];
+  const edges: Array<Record<string, unknown>> = [];
+
+  const place = (id: string, fallback: { x: number; y: number }) => savedPos.get(id) ?? fallback;
+
+  // Tenant infra strip — top of the canvas
+  const tenantInfra: Array<[string, string, string, number]> = [
+    [`tenant:dashboard`,  "dashboard",  "Dashboard",  tenant.portBlock.dashboard],
+    [`tenant:jenkins`,    "jenkins",    "Jenkins",    tenant.portBlock.jenkins],
+    [`tenant:prometheus`, "prometheus", "Prometheus", tenant.portBlock.prometheus],
+    [`tenant:grafana`,    "grafana",    "Grafana",    tenant.portBlock.grafana],
+    [`tenant:tempo`,      "tempo",      "Tempo",      tenant.portBlock.tempo],
+    [`tenant:loki`,       "loki",       "Loki",       tenant.portBlock.loki],
+  ];
+  tenantInfra.forEach(([id, type, label, port], i) => {
+    nodes.push({
+      id, type, label, port,
+      status: statusOf(`${tenantName}-${id.slice("tenant:".length)}`),
+      position: place(id, { x: 60 + i * 160, y: 40 }),
+    });
+  });
+
+  // Per-project lane — infra + services side by side
+  const PROJECT_LANE_HEIGHT = 240;
+  const PROJECT_LANE_TOP_PAD = 200;
+  tenant.projects.forEach((p, projectIdx) => {
+    const laneY = PROJECT_LANE_TOP_PAD + projectIdx * PROJECT_LANE_HEIGHT;
+
+    // Project infra in the left column of the lane
+    const projInfra: Array<[string, string, string, number]> = [
+      [`project:${p.name}:kafka`,    "kafka",    `Kafka (${p.name})`,    p.portBlock.kafka],
+      [`project:${p.name}:postgres`, "postgres", `Postgres (${p.name})`, p.portBlock.postgres],
+      [`project:${p.name}:gateway`,  "dashboard", `Gateway (${p.name})`, p.portBlock.gateway],
+    ];
+    projInfra.forEach(([id, type, label, port], i) => {
+      const role = id.split(":")[2];
+      nodes.push({
+        id, type, label, port,
+        status: statusOf(`${tenantName}-${p.name}-${role}`),
+        position: place(id, { x: 60 + i * 180, y: laneY }),
+      });
+    });
+
+    // Services to the right
+    p.services.forEach((s, sIdx) => {
+      const serviceId = `service:${p.name}:${s.name}`;
+      nodes.push({
+        id: serviceId,
+        type: "service",
+        label: `${s.name}`,
+        port: s.ports.http,
+        status: statusOf(`${tenantName}-${p.name}-${s.name}`),
+        position: place(serviceId, { x: 660 + Math.floor(sIdx / 3) * 200, y: laneY + (sIdx % 3) * 70 }),
+      });
+
+      // Auto-edge: service → kafka (if project has kafka and service isn't a frontend)
+      if (s.type !== "frontend") {
+        const kafkaId = `project:${p.name}:kafka`;
+        if (nodes.find(n => n.id === kafkaId)) {
+          edges.push({
+            id: `${serviceId}__kafka`,
+            source: serviceId,
+            target: kafkaId,
+            type: "kafka",
+            label: "events",
+            wired: false,
+          });
+        }
+      }
+
+      // Auto-edge: service → postgres if the service has a DB binding (we
+      // can't read service.yaml from here cheaply, so we approximate: every
+      // backend/worker gets one by default in the current scaffolder).
+      if (s.type === "backend" || s.type === "worker") {
+        const pgId = `project:${p.name}:postgres`;
+        if (nodes.find(n => n.id === pgId)) {
+          edges.push({
+            id: `${serviceId}__postgres`,
+            source: serviceId,
+            target: pgId,
+            type: "database",
+            label: "schema",
+            wired: false,
+          });
+        }
+      }
+    });
+  });
+
+  // Overlay any user-drawn edges from the saved file (de-duped by id)
+  const savedIds = new Set(edges.map(e => e.id as string));
+  for (const e of saved.edges ?? []) {
+    if (!savedIds.has(e.id as string)) {
+      edges.push(e);
+    }
+  }
+
+  return { clientName: tenantName, nodes, edges };
 }
 
 async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
@@ -1488,6 +1950,124 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
     database: config.database,
     services,
   };
+}
+
+/**
+ * Add a service to the current client by shelling out to the CLI's
+ * `service add` command. Runs inside the dashboard container, which has
+ * BLISSFUL_HOME mounted (see infra-compose.ts) so the CLI sees the real
+ * registry + client directories. The `--yes` flag skips all interactive
+ * prompts; missing infra deps get auto-enabled.
+ */
+/**
+ * Add a service in the new tenant/project/service model. The dashboard's
+ * "New Service" form sends a flat payload; we map it to a `service add`
+ * subprocess invocation against the CLI.
+ *
+ * Project comes from /blissful-home/context.json (mounted into the dashboard
+ * container). If no project is in context, returns a helpful error pointing
+ * the user at `blissful-infra use <tenant>/<project>` from the host shell.
+ *
+ * Type mapping from the legacy form fields:
+ *   - explicit type=backend|frontend|worker → use as-is
+ *   - type=fullstack → backend (frontend should be added as a second service)
+ */
+async function addServiceToTenant(
+  tenant: string,
+  options: {
+    name: string;
+    type: string;
+    backend?: string;
+    frontend?: string;
+    plugins?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  // Read the context to figure out which project the service belongs to.
+  // /blissful-home is mounted from the host's BLISSFUL_HOME (see tenant-compose.ts).
+  let project: string | undefined;
+  try {
+    const raw = await fs.readFile("/blissful-home/context.json", "utf-8");
+    const parsed = JSON.parse(raw) as { tenant?: string; project?: string };
+    if (parsed.tenant === tenant) project = parsed.project;
+  } catch {
+    // No context file or unreadable — we'll bail below.
+  }
+
+  if (!project) {
+    return {
+      success: false,
+      error: `No project selected for tenant '${tenant}'. Run on the host:\n  blissful-infra use ${tenant}/<project>`,
+    };
+  }
+
+  // Map the dashboard's flat type to the new model's service type.
+  let serviceType: "backend" | "frontend" | "worker";
+  let templateFlag: string[] = [];
+  if (options.type === "frontend") {
+    serviceType = "frontend";
+    if (options.frontend) templateFlag = ["--template", options.frontend];
+  } else if (options.type === "worker") {
+    serviceType = "worker";
+  } else {
+    // backend, fullstack, or anything else → backend
+    serviceType = "backend";
+    if (options.backend) templateFlag = ["--template", options.backend];
+  }
+
+  const cliPath = path.join(__dirname, "..", "index.js");
+  const args = [
+    cliPath, "service", "add", tenant, project, options.name,
+    "--type", serviceType,
+    "--skip-prompts",
+    ...templateFlag,
+  ];
+  if (options.plugins) args.push("--plugins", options.plugins);
+
+  try {
+    // BLISSFUL_HOME is already set on the dashboard container so the CLI sees
+    // the mounted registry. cwd is /app (where the CLI lives) so it's always
+    // a valid directory regardless of /projects layout.
+    await execa("node", args, { stdio: "pipe", cwd: __dirname });
+    return { success: true };
+  } catch (error) {
+    const execError = toExecError(error);
+    return {
+      success: false,
+      error: execError.stderr || execError.message || "Failed to add service",
+    };
+  }
+}
+
+async function addServiceToClient(
+  clientName: string,
+  options: {
+    name: string;
+    backend: string;
+    frontend: string;
+    plugins?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const cliPath = path.join(__dirname, "..", "index.js");
+  const args = [
+    cliPath, "service", "add", clientName, options.name,
+    "--backend", options.backend,
+    "--frontend", options.frontend,
+    "--yes",
+  ];
+  if (options.plugins) {
+    args.push("--plugins", options.plugins);
+  }
+
+  try {
+    await execa("node", args, { stdio: "pipe" });
+    return { success: true };
+  } catch (error) {
+    const execError = toExecError(error);
+    return {
+      success: false,
+      error: execError.stderr || execError.message || "Failed to add service",
+    };
+  }
 }
 
 async function createProject(

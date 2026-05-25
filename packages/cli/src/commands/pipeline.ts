@@ -4,7 +4,7 @@ import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir, type LegacyProjectConfig } from "../utils/config.js";
 
 interface PipelineOptions {
   local?: boolean;
@@ -112,7 +112,7 @@ function printStages(stages: PipelineStage[]): void {
 }
 
 async function runLocalPipeline(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   projectDir: string,
   opts: PipelineOptions
 ): Promise<void> {
@@ -334,7 +334,7 @@ async function isJenkinsRunning(): Promise<boolean> {
   }
 }
 
-async function showJenkinsPipelineStatus(config: ProjectConfig): Promise<void> {
+async function showJenkinsPipelineStatus(config: LegacyProjectConfig): Promise<void> {
   const spinner = ora("Fetching Jenkins pipeline status...").start();
 
   if (!(await isJenkinsRunning())) {

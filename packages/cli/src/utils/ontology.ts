@@ -11,6 +11,13 @@ import {
 } from "@blissful-infra/shared";
 import { getClientPortBlock } from "./client-registry.js";
 import { parseClientConfigYaml } from "./infra-compose.js";
+import { generateTypescriptClient } from "../codegen/typescript.js";
+
+export interface WireResult {
+  edge: OntologyEdge;
+  written: string[];
+  warnings: string[];
+}
 
 const ONTOLOGY_FILE = "ontology.json";
 
@@ -59,7 +66,7 @@ export async function discoverNodes(clientDir: string, clientName: string): Prom
   if (infrastructure.postgres)   infraNode("postgres", "Postgres", ports?.postgres);
   if (infrastructure.jenkins)    infraNode("jenkins", "Jenkins", ports?.jenkins);
   if (infrastructure.keycloak)   infraNode("keycloak", "Keycloak", ports?.keycloak);
-  if (infrastructure.localstack) infraNode("localstack", "LocalStack", ports?.localstack);
+  if (infrastructure.localstack) infraNode("localstack", "floci (AWS)", ports?.localstack);
   if (infrastructure.clickhouse) infraNode("clickhouse", "ClickHouse", ports?.clickhouse);
   if (infrastructure.mlflow)     infraNode("mlflow", "MLflow", ports?.mlflow);
   if (infrastructure.mage)       infraNode("mage", "Mage", ports?.mage);
@@ -195,11 +202,15 @@ export async function setNodeConfig(clientDir: string, nodeId: string, content: 
 }
 
 /**
- * Promote a visual edge to real compose wiring. For HTTP/database/kafka edges
- * we inject env vars + depends_on into the source service's compose file.
- * Returns the updated edge with wired=true.
+ * Promote a visual edge to real compose wiring. Two-step:
+ *   1. Inject env vars + depends_on into the source service's compose file.
+ *   2. If a contract is defined, write it to the source service's `contracts/`
+ *      directory and run codegen so the source service has a typed client/
+ *      producer it can import.
+ *
+ * Returns the updated edge plus a list of files written and any warnings.
  */
-export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<OntologyEdge> {
+export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<WireResult> {
   if (!edge.source.startsWith("service:")) {
     throw new Error("Wiring promotion currently only supported for service-originated edges");
   }
@@ -208,7 +219,8 @@ export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<O
     ? edge.target.slice("service:".length)
     : edge.target.slice("infra:".length);
 
-  const composePath = path.join(clientDir, sourceName, "docker-compose.yaml");
+  const sourceDir = path.join(clientDir, sourceName);
+  const composePath = path.join(sourceDir, "docker-compose.yaml");
   const raw = await fs.readFile(composePath, "utf-8");
   const doc = (yaml.load(raw) ?? {}) as Record<string, unknown>;
   const services = (doc.services ?? {}) as Record<string, Record<string, unknown>>;
@@ -251,5 +263,78 @@ export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<O
   doc.services = services;
 
   await fs.writeFile(composePath, yaml.dump(doc, { lineWidth: 120 }), "utf-8");
-  return { ...edge, wired: true };
+
+  const written: string[] = [];
+  const warnings: string[] = [];
+
+  if (edge.contract?.schema) {
+    const contractsDir = path.join(sourceDir, "contracts");
+    await fs.mkdir(contractsDir, { recursive: true });
+
+    if (edge.type === "http" && edge.contract.format === "openapi") {
+      const specRel = path.join("contracts", `${targetLocal}.openapi.yaml`);
+      const specAbs = path.join(sourceDir, specRel);
+      await fs.writeFile(specAbs, edge.contract.schema, "utf-8");
+      written.push(specRel);
+
+      const outputRel = path.join("src", "generated", `${targetLocal}-client`);
+      try {
+        await generateTypescriptClient(specRel, { language: "typescript", output: outputRel }, sourceDir);
+        written.push(path.join(outputRel, "index.ts"));
+        written.push(path.join(outputRel, "client.ts"));
+      } catch (error) {
+        warnings.push(`Codegen failed: ${(error as Error).message}`);
+      }
+    } else if (edge.type === "kafka" && edge.contract.format === "avro") {
+      const specRel = path.join("contracts", `${targetLocal}.avsc`);
+      await fs.writeFile(path.join(sourceDir, specRel), edge.contract.schema, "utf-8");
+      written.push(specRel);
+      warnings.push("Avro producer codegen coming soon — schema saved, env vars injected");
+    } else if (edge.type === "database" && edge.contract.format === "sql") {
+      const specRel = path.join("contracts", `${targetLocal}.sql`);
+      await fs.writeFile(path.join(sourceDir, specRel), edge.contract.schema, "utf-8");
+      written.push(specRel);
+      warnings.push("SQL migration codegen coming soon — schema saved, env vars injected");
+    }
+  }
+
+  return { edge: { ...edge, wired: true }, written, warnings };
+}
+
+/**
+ * Auto-wire helper: stamp a default kafka edge from `serviceName` → infra:kafka
+ * into the client's ontology. Used by `service add` when ai-pipeline is enabled
+ * so the data-pipeline shape appears in the Graph tab without user intervention.
+ * No-op if the edge already exists.
+ */
+export async function autoWireKafkaEdge(clientDir: string, clientName: string, serviceName: string): Promise<void> {
+  const graph = await loadOntology(clientDir, clientName);
+  const sourceId = `service:${serviceName}`;
+  const targetId = "infra:kafka";
+  if (!graph.nodes.find(n => n.id === targetId)) return;
+  if (graph.edges.find(e => e.source === sourceId && e.target === targetId)) return;
+
+  const defaultAvro = `{
+  "type": "record",
+  "name": "Event",
+  "namespace": "${clientName}.${serviceName}",
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "timestamp", "type": "long" },
+    { "name": "payload", "type": "string" }
+  ]
+}
+`;
+
+  graph.edges.push({
+    id: `${sourceId}__${targetId}__${Date.now()}`,
+    source: sourceId,
+    target: targetId,
+    type: "kafka",
+    label: "publishes events",
+    contract: { format: "avro", schema: defaultAvro },
+    wired: false,
+  });
+
+  await saveOntology(clientDir, graph);
 }

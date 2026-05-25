@@ -9,7 +9,7 @@ export default defineConfig({
     sitemap(),
     starlight({
       title: 'Blissful Infra',
-      description: 'Run a production-grade full-stack app locally with one command — Docker Compose, Kafka, Postgres, CI/CD, Prometheus, and an AI agent. Free to use.',
+      description: 'An enterprise sandbox on your laptop. Real Kafka, real Postgres, real observability and real CI, wired together by one command. For engineers who want to iterate on architecture patterns without a cloud bill.',
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/cavanpage/blissful-infra' },
         { icon: 'x.com', label: 'X', href: 'https://x.com/studiocavan' },
@@ -81,11 +81,12 @@ export default defineConfig({
           label: 'Choose your path',
           items: [
             { label: 'Start here', link: '/paths/start-here' },
-            { label: 'Learn', link: '/paths/learn' },
             { label: 'Build', link: '/paths/build' },
+            { label: 'Learn', link: '/paths/learn' },
             { label: 'Deliver', link: '/paths/deliver' },
           ],
         },
+        { label: 'Why I built this', link: '/about' },
         { label: 'Philosophy', link: '/philosophy' },
         {
           label: 'Guides',

@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import ora from "ora";
 import { execa } from "execa";
-import type { ProjectConfig } from "./config.js";
+import type { LegacyProjectConfig } from "./config.js";
 
 const LOCAL_REGISTRY_PORT = 5050;
 const LOCAL_REGISTRY_NAME = "blissful-registry";
@@ -90,7 +90,7 @@ export async function stopLocalRegistry(): Promise<void> {
 /**
  * Get registry URL from config
  */
-export function getRegistryUrl(config: ProjectConfig): string {
+export function getRegistryUrl(config: LegacyProjectConfig): string {
   if (config.deploy?.aws?.registry) {
     return config.deploy.aws.registry.url;
   }
@@ -102,7 +102,7 @@ export function getRegistryUrl(config: ProjectConfig): string {
 /**
  * Get full image name with registry
  */
-export function getImageName(config: ProjectConfig, tag = "latest"): string {
+export function getImageName(config: LegacyProjectConfig, tag = "latest"): string {
   const registryUrl = getRegistryUrl(config);
   return `${registryUrl}/${config.name}:${tag}`;
 }
@@ -110,7 +110,7 @@ export function getImageName(config: ProjectConfig, tag = "latest"): string {
 /**
  * Login to container registry
  */
-export async function loginToRegistry(config: ProjectConfig): Promise<void> {
+export async function loginToRegistry(config: LegacyProjectConfig): Promise<void> {
   const registry = config.deploy?.aws?.registry;
 
   if (!registry || registry.type === "local") {
@@ -213,7 +213,7 @@ export async function imageExists(imageName: string): Promise<boolean> {
 /**
  * Get available tags for an image in registry
  */
-export async function getImageTags(config: ProjectConfig): Promise<string[]> {
+export async function getImageTags(config: LegacyProjectConfig): Promise<string[]> {
   const registry = config.deploy?.aws?.registry;
 
   if (!registry || registry.type === "local") {
@@ -276,7 +276,7 @@ export async function getImageTags(config: ProjectConfig): Promise<string[]> {
 /**
  * Print registry info
  */
-export function printRegistryInfo(config: ProjectConfig): void {
+export function printRegistryInfo(config: LegacyProjectConfig): void {
   const registryUrl = getRegistryUrl(config);
   const registryType = config.deploy?.aws?.registry?.type || "local";
 

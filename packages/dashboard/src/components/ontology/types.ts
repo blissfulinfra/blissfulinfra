@@ -4,9 +4,58 @@ import type {
   OntologyEdge,
   OntologyNodeType,
   OntologyEdgeType,
+  OntologyContract,
+  ContractFormat,
 } from '@blissful-infra/shared'
 
-export type { ClientOntology, OntologyNode, OntologyEdge, OntologyNodeType, OntologyEdgeType }
+export type { ClientOntology, OntologyNode, OntologyEdge, OntologyNodeType, OntologyEdgeType, OntologyContract, ContractFormat }
+
+export const CONTRACT_FORMAT_BY_EDGE_TYPE: Record<OntologyEdgeType, ContractFormat | null> = {
+  http: 'openapi',
+  kafka: 'avro',
+  database: 'sql',
+  custom: null,
+}
+
+export const DEFAULT_CONTRACT_TEMPLATES: Record<ContractFormat, string> = {
+  openapi: `openapi: 3.0.3
+info:
+  title: Service Contract
+  version: 0.1.0
+paths:
+  /example:
+    get:
+      summary: Example endpoint
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+`,
+  avro: `{
+  "type": "record",
+  "name": "Event",
+  "namespace": "blissful",
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "timestamp", "type": "long" },
+    { "name": "payload", "type": "string" }
+  ]
+}
+`,
+  sql: `-- Contract: source service writes / target service reads
+CREATE TABLE example (
+  id           UUID PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload      JSONB NOT NULL
+);
+`,
+}
 
 export interface NodeConfigResponse {
   path: string

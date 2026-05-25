@@ -1,5 +1,5 @@
 import net from "node:net";
-import { ProjectConfig } from "./config.js";
+import { LegacyProjectConfig } from "./config.js";
 
 export interface PortCheck {
   port: number;
@@ -50,7 +50,7 @@ export async function checkPorts(
 /**
  * Get the default ports used by blissful-infra based on config
  */
-export function getRequiredPorts(config: ProjectConfig): { port: number; service: string }[] {
+export function getRequiredPorts(config: LegacyProjectConfig): { port: number; service: string }[] {
   const ports: { port: number; service: string }[] = [];
   const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
   const isFrontendOnly = derivedType === "frontend";

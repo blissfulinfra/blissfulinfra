@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
-import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir, type LegacyProjectConfig } from "../utils/config.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
 import { getClientDir, getClientPortBlock } from "../utils/client-registry.js";
@@ -44,7 +44,7 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function startEnvironment(config: ProjectConfig, projectDir: string): Promise<void> {
+async function startEnvironment(config: LegacyProjectConfig, projectDir: string): Promise<void> {
   const spinner = ora("Starting local environment...").start();
 
   // Check for docker-compose.yaml
@@ -142,7 +142,7 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
   }
 }
 
-async function generateDockerCompose(config: ProjectConfig, projectDir: string): Promise<void> {
+async function generateDockerCompose(config: LegacyProjectConfig, projectDir: string): Promise<void> {
   const services: Record<string, unknown> = {};
   const derivedType = config.backend ? "backend" : (config.frontend ? "frontend" : "fullstack");
   const isFrontendOnly = derivedType === "frontend";

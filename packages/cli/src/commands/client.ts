@@ -46,6 +46,10 @@ export interface ClientCreateOptions {
   mlflow?: boolean;
   mage?: boolean;
   yes?: boolean;
+  // Set by the `init` wizard, which owns the service-add prompt itself so we
+  // don't ask the user twice. Direct `client create` callers leave this unset
+  // and get the legacy inline service prompt for one-shot convenience.
+  skipServicePrompt?: boolean;
 }
 
 export async function clientCreateAction(clientName: string, opts: ClientCreateOptions): Promise<void> {
@@ -99,7 +103,7 @@ export async function clientCreateAction(clientName: string, opts: ClientCreateO
           { name: "Loki + Promtail (logs)", value: "loki", checked: flagObs },
           // Promoted to client-level platform services — opt-in (ADR-0008/0009/0010)
           { name: "ClickHouse warehouse (ADR-0008)", value: "clickhouse", checked: flagClickhouse },
-          { name: "LocalStack AWS emulation (ADR-0008)", value: "localstack", checked: flagLocalstack },
+          { name: "AWS emulator (floci, LocalStack-compatible)", value: "localstack", checked: flagLocalstack },
           { name: "Keycloak IAM (ADR-0009)", value: "keycloak", checked: flagKeycloak },
           { name: "MLflow model registry (ADR-0010)", value: "mlflow", checked: flagMlflow },
           { name: "Mage workflow orchestrator (ADR-0010)", value: "mage", checked: flagMage },
@@ -208,7 +212,7 @@ services: []
     await generateTempoConfig(clientDir);
   }
   if (obs.grafana && obs.prometheus) {
-    await generateGrafanaConfig(clientDir);
+    await generateGrafanaConfig(clientDir, clientName);
   }
   // ADR-0008/0009 init scripts for the promoted client-level services
   if (infrastructure.clickhouse || obs.clickhouse) {
@@ -285,7 +289,7 @@ services: []
     console.log(chalk.dim("  ClickHouse:  ") + chalk.cyan(`http://localhost:${ports.clickhouse}/play`));
   }
   if (infrastructure.localstack && ports.localstack) {
-    console.log(chalk.dim("  LocalStack:  ") + chalk.cyan(`http://localhost:${ports.localstack}`));
+    console.log(chalk.dim("  AWS (floci): ") + chalk.cyan(`http://localhost:${ports.localstack}`));
   }
   if (infrastructure.keycloak && ports.keycloak) {
     console.log(chalk.dim("  Keycloak:    ") + chalk.cyan(`http://localhost:${ports.keycloak}/admin`) + chalk.dim("  (admin / admin)"));
@@ -299,8 +303,9 @@ services: []
   console.log(chalk.dim("  Dashboard:   ") + chalk.cyan(`http://localhost:${ports.dashboard}`));
   console.log();
 
-  // Offer to scaffold the first service inline
-  if (!opts.yes && process.stdout.isTTY) {
+  // Offer to scaffold the first service inline — unless the caller (e.g. the
+  // init wizard) is going to drive that step itself.
+  if (!opts.skipServicePrompt && !opts.yes && process.stdout.isTTY) {
     const { addNow } = (await inquirer.prompt([
       {
         type: "confirm",
@@ -612,7 +617,7 @@ clientCommand
   .option("--no-kafka", "Skip Kafka")
   .option("--no-observability", "Skip Prometheus/Grafana/Jaeger/Loki")
   .option("--clickhouse", "Enable ClickHouse warehouse (ADR-0008)")
-  .option("--localstack", "Enable LocalStack AWS emulation (ADR-0008)")
+  .option("--localstack", "Enable the floci AWS emulator (LocalStack-compatible)")
   .option("--keycloak", "Enable Keycloak IAM (ADR-0009)")
   .option("--mlflow", "Enable MLflow model registry (ADR-0010)")
   .option("--mage", "Enable Mage workflow orchestrator (ADR-0010)")

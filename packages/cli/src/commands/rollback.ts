@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import { execa } from "execa";
-import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir, type LegacyProjectConfig } from "../utils/config.js";
 
 interface RollbackOptions {
   env: string;
@@ -50,7 +50,7 @@ async function getArgoCDHistory(appName: string): Promise<Array<{ id: string; re
 }
 
 async function rollbackWithArgoCD(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   opts: RollbackOptions
 ): Promise<void> {
   const appName = `${config.name}-${opts.env}`;
@@ -129,7 +129,7 @@ async function rollbackWithArgoCD(
 }
 
 async function rollbackWithKubectl(
-  config: ProjectConfig,
+  config: LegacyProjectConfig,
   opts: RollbackOptions
 ): Promise<void> {
   const namespace = `${config.name}-${opts.env}`;

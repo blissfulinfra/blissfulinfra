@@ -17,6 +17,7 @@ import {
   type InfraComponent,
 } from "../utils/infra-deps.js";
 import { setClientInfraFlag } from "../utils/client-config-edit.js";
+import { autoWireKafkaEdge } from "../utils/ontology.js";
 
 const BACKEND_CHOICES = ["spring-boot", "lambda-python", "none"];
 const FRONTEND_CHOICES = ["react-vite", "none"];
@@ -358,6 +359,13 @@ backend: ${backend}${frontendLine}${pluginLine}
   // service containers, leave existing ones running).
   await regenerateInfraCompose({ clientName, clientDir, ports });
 
+  // Auto-wire: if the user enabled ai-pipeline, draw a default kafka edge
+  // from this service to the client's Kafka so the data-pipeline shape shows
+  // up in the ontology immediately.
+  if (plugins.some(p => p.type === "ai-pipeline") && backend !== "none") {
+    await autoWireKafkaEdge(clientDir, clientName, serviceName);
+  }
+
   console.log(chalk.dim(`Starting ${serviceName} (via unified ${clientName} project)...`));
   console.log();
 
@@ -410,7 +418,7 @@ function printServiceUrls(
   console.log(chalk.dim(`  ${clientName}/${serviceName}`));
   if (isLambda) {
     console.log(chalk.dim("  Lambda runtime: ") + chalk.cyan(`http://localhost:${ports.localstack}`)
-      + chalk.dim(" (LocalStack)"));
+      + chalk.dim(" (floci)"));
     console.log(chalk.dim("  Invoke:         ") + chalk.cyan(
       `blissful-infra lambda invoke ${clientName} ${serviceName} --payload '{...}'`));
     return;
@@ -420,7 +428,7 @@ function printServiceUrls(
     console.log(chalk.dim("  Frontend:    ") + chalk.cyan(`http://localhost:${ports.frontend}`));
   }
   if (hasLocalStack) {
-    console.log(chalk.dim("  LocalStack:  ") + chalk.cyan(`http://localhost:${ports.localstack}`));
+    console.log(chalk.dim("  AWS (floci): ") + chalk.cyan(`http://localhost:${ports.localstack}`));
   }
 }
 
@@ -685,7 +693,7 @@ services:
     yaml += `
 
   ${localstackKey}:
-    image: localstack/localstack:3
+    image: floci/floci:latest
     container_name: ${clientName}-${serviceName}-localstack
     networks:
       ${internalNet}:
@@ -695,6 +703,7 @@ services:
     environment:
       SERVICES: "s3,sqs,dynamodb,sns,secretsmanager,lambda"
       DEFAULT_REGION: us-east-1
+      FLOCI_HOSTNAME: localstack
       LOCALSTACK_HOST: localstack
       # Allow browser preflight on presigned S3 URLs from any localhost frontend
       EXTRA_CORS_ALLOWED_ORIGINS: "*"

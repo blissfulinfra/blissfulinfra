@@ -384,17 +384,18 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     };
   });
 
-  // LocalStack — AWS cloud service emulator
+  // LocalStack-compatible AWS emulator (engine: floci/floci, drop-in)
   const localStacks = plugins.filter(p => p.type === "localstack");
   localStacks.forEach((plugin) => {
     services[plugin.instance] = {
-      image: "localstack/localstack:3",
+      image: "floci/floci:latest",
       container_name: `${name}-localstack`,
       ports: ["4566:4566"],
       environment: {
         SERVICES: "s3,sqs,dynamodb,sns,secretsmanager,lambda",
         DEFAULT_REGION: "us-east-1",
         DOCKER_HOST: "unix:///var/run/docker.sock",
+        FLOCI_HOSTNAME: "localstack",
         LOCALSTACK_HOST: "localstack",
       },
       volumes: [
@@ -734,7 +735,9 @@ export const startCommand = new Command("start")
     } catch { /* doesn't exist */ }
 
     if (!clientExists) {
-      await clientCreateAction(clientName, { yes: opts.yes });
+      // skipServicePrompt: start always follows up with serviceAddAction for
+      // the explicitly-named service, so don't ask the user twice.
+      await clientCreateAction(clientName, { yes: opts.yes, skipServicePrompt: true });
     }
 
     // Add the service

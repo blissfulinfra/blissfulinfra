@@ -1,15 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  ProjectConfigSchema,
+  LegacyProjectConfigSchema,
   PluginInstanceSchema,
-  type ProjectConfig,
+  type LegacyProjectConfig,
   type PluginInstance,
   type PluginConfig,
 } from "@blissful-infra/shared";
 
 export type {
-  ProjectConfig,
+  LegacyProjectConfig,
   PluginInstance,
   PluginConfig,
   PipelineConfig,
@@ -40,7 +40,7 @@ export function serializePluginSpecs(plugins: PluginInstance[]): string {
     .join(",");
 }
 
-export async function loadConfig(projectDir?: string): Promise<ProjectConfig | null> {
+export async function loadConfig(projectDir?: string): Promise<LegacyProjectConfig | null> {
   const configPath = path.join(projectDir || process.cwd(), "blissful-infra.yaml");
 
   try {
@@ -73,7 +73,7 @@ export async function findProjectDir(name?: string): Promise<string | null> {
   }
 }
 
-function parseYaml(content: string): ProjectConfig {
+function parseYaml(content: string): LegacyProjectConfig {
   const config: Record<string, string> = {};
 
   for (const line of content.split("\n")) {
@@ -99,7 +99,7 @@ function parseYaml(content: string): ProjectConfig {
     pluginConfigs: parsePluginConfigs(content),
   };
 
-  return ProjectConfigSchema.parse(raw);
+  return LegacyProjectConfigSchema.parse(raw);
 }
 
 function parsePluginConfigs(content: string): Record<string, PluginConfig> | undefined {

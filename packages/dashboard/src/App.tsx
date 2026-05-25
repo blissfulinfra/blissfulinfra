@@ -50,6 +50,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { GraphView } from './components/ontology/GraphView'
+import { ClientOverviewView } from './components/ClientOverviewView'
 
 interface Project {
   name: string
@@ -485,6 +486,12 @@ function PluginCard({ plugin }: { plugin: PluginStatus }) {
 function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  // When true, the main panel shows client-level infra health instead of a
+  // per-service detail view. Mutually exclusive with selectedProject — picking
+  // a service clears this, and clicking the Client entry clears the service.
+  const [showClientOverview, setShowClientOverview] = useState(false)
+  const [clientInfra, setClientInfra] = useState<Array<{ id: string; type: string; label: string; port?: number; status: 'running' | 'stopped' | 'unknown' }>>([])
+  const [clientInfraLoading, setClientInfraLoading] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -610,14 +617,40 @@ function App() {
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
 
-  // New project form state
+  // New service form state. `plugins` is a comma-separated list (matches the
+  // CLI's --plugins flag). `type` and `database` only matter in flat mode.
   const [newProject, setNewProject] = useState({
     name: '',
     type: 'fullstack',
     backend: 'spring-boot',
     frontend: 'react-vite',
     database: 'none',
+    plugins: '',
   })
+  const PLUGIN_OPTIONS = ['ai-pipeline', 'agent-service', 'gatling']
+
+  const fetchClientInfra = async () => {
+    setClientInfraLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/client/infra`)
+      if (res.ok) {
+        const data = await res.json() as { infra: Array<{ id: string; type: string; label: string; port?: number; status: 'running' | 'stopped' | 'unknown' }> }
+        setClientInfra(data.infra)
+      }
+    } catch (e) {
+      console.error('Failed to fetch client infra:', e)
+    } finally {
+      setClientInfraLoading(false)
+    }
+  }
+
+  // Poll client infra health when overview is visible
+  useEffect(() => {
+    if (!showClientOverview) return
+    fetchClientInfra()
+    const t = setInterval(fetchClientInfra, 5000)
+    return () => clearInterval(t)
+  }, [showClientOverview])
 
   const fetchProjects = async () => {
     try {
@@ -685,9 +718,13 @@ function App() {
       const lokiRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`)
       if (lokiRes.ok) {
         const data = await lokiRes.json()
-        if (data.source === 'loki') {
+        // Use Loki only if it actually returned something. An empty response
+        // usually means Promtail hasn't tagged matching labels yet (cold
+        // start, mismatched labels, etc.) — fall through to docker logs so
+        // the user always sees something.
+        if (data.source === 'loki' && (data.logs?.length ?? 0) > 0) {
           setLokiAvailable(true)
-          let entries: LogEntry[] = data.logs || []
+          let entries: LogEntry[] = data.logs
           if (lokiLevelFilter !== 'all') {
             entries = entries.filter(l => detectLogLevel(l.message) === lokiLevelFilter)
           }
@@ -1409,6 +1446,7 @@ function App() {
           backend: 'spring-boot',
           frontend: 'react-vite',
           database: 'none',
+          plugins: '',
         })
         await fetchProjects()
       } else {
@@ -1563,25 +1601,13 @@ function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {links.tempoUrl && (
-              <a
-                href={links.tempoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-purple-400"
-                title="Open distributed tracing in Grafana (Tempo)"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Traces
-              </a>
-            )}
             {links.grafanaUrl && (
               <a
                 href={links.grafanaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-orange-400"
-                title="Open Grafana Dashboards"
+                title="Open the client overview in Grafana (includes traces, logs, metrics)"
               >
                 <ExternalLink className="w-4 h-4" />
                 Grafana
@@ -1602,7 +1628,7 @@ function App() {
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
-              New Project
+              New Service
             </button>
             <button
               onClick={fetchProjects}
@@ -1616,17 +1642,34 @@ function App() {
       </header>
 
       <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar - Projects List */}
+        {/* Sidebar - Client overview + Services in this client */}
         <aside className="w-80 border-r border-gray-800 p-4 flex flex-col">
+          {links.clientName && (
+            <button
+              onClick={() => {
+                setShowClientOverview(true)
+                setSelectedProject(null)
+              }}
+              className={`mb-4 text-left bg-gray-800 rounded-lg p-3 transition-colors ${
+                showClientOverview ? 'ring-2 ring-blue-500' : 'hover:bg-gray-750'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" />
+                <span className="font-medium">Client overview</span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 font-mono">{links.clientName}</div>
+            </button>
+          )}
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">
-            Projects ({projects.length})
+            Services ({projects.length})
           </h2>
 
           {projects.length === 0 ? (
             <div className="text-gray-500 text-sm text-center py-8">
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No projects found</p>
-              <p className="text-xs mt-2">Click "New Project" to create one</p>
+              <p>No services in this client yet</p>
+              <p className="text-xs mt-2">Click "New Service" to add one</p>
             </div>
           ) : (
             <div className="space-y-2 overflow-auto flex-1">
@@ -1640,6 +1683,7 @@ function App() {
                   }`}
                   onClick={() => {
                     setSelectedProject(project)
+                    setShowClientOverview(false)
                     setMessages([]) // Clear chat when switching projects
                   }}
                 >
@@ -1667,7 +1711,7 @@ function App() {
                           handleDelete(project.name)
                         }}
                         className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-700 rounded transition-all"
-                        title="Delete project"
+                        title="Delete service"
                       >
                         <Trash2 className="w-4 h-4 text-red-400" />
                       </button>
@@ -1708,7 +1752,14 @@ function App() {
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col">
-          {selectedProject ? (
+          {showClientOverview ? (
+            <ClientOverviewView
+              clientName={links.clientName ?? ''}
+              infra={clientInfra}
+              loading={clientInfraLoading}
+              onRefresh={fetchClientInfra}
+            />
+          ) : selectedProject ? (
             <>
               {/* Project Header */}
               <div className="border-b border-gray-800 p-4">
@@ -2995,14 +3046,23 @@ function App() {
         </main>
       </div>
 
-      {/* Create Project Modal */}
+      {/* Create Service / Project Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-semibold mb-4">Create New Project</h2>
+            <h2 className="text-xl font-semibold mb-1">
+              {links.clientName ? 'Add Service' : 'Create Project'}
+            </h2>
+            {links.clientName && (
+              <p className="text-xs text-gray-400 mb-4">
+                Adds a new service to client <span className="font-mono text-blue-300">{links.clientName}</span>
+              </p>
+            )}
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Project Name</label>
+                <label className="block text-sm text-gray-400 mb-1">
+                  {links.clientName ? 'Service Name' : 'Project Name'}
+                </label>
                 <input
                   type="text"
                   value={newProject.name}
@@ -3013,20 +3073,22 @@ function App() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Project Type</label>
-                <select
-                  value={newProject.type}
-                  onChange={(e) => setNewProject({ ...newProject, type: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-                >
-                  {templates?.types.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!links.clientName && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Project Type</label>
+                  <select
+                    value={newProject.type}
+                    onChange={(e) => setNewProject({ ...newProject, type: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  >
+                    {templates?.types.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {newProject.type !== 'frontend' && (
                 <div>
@@ -3062,20 +3124,51 @@ function App() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Database</label>
-                <select
-                  value={newProject.database}
-                  onChange={(e) => setNewProject({ ...newProject, database: e.target.value })}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-                >
-                  {templates?.databases.map((d) => (
-                    <option key={d} value={d}>
-                      {d === 'none' ? 'None' : d}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!links.clientName && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Database</label>
+                  <select
+                    value={newProject.database}
+                    onChange={(e) => setNewProject({ ...newProject, database: e.target.value })}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  >
+                    {templates?.databases.map((d) => (
+                      <option key={d} value={d}>
+                        {d === 'none' ? 'None' : d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {links.clientName && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Plugins</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PLUGIN_OPTIONS.map((p) => {
+                      const selected = newProject.plugins.split(',').map(s => s.trim()).filter(Boolean)
+                      const isOn = selected.includes(p)
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => {
+                            const next = isOn ? selected.filter(s => s !== p) : [...selected, p]
+                            setNewProject({ ...newProject, plugins: next.join(',') })
+                          }}
+                          className={`px-3 py-1.5 rounded text-xs border ${
+                            isOn
+                              ? 'bg-purple-600 border-purple-500 text-white'
+                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button

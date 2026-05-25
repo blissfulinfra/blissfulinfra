@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import { watch } from "chokidar";
 import { execa } from "execa";
-import { loadConfig, type ProjectConfig } from "../utils/config.js";
+import { loadConfig, type LegacyProjectConfig } from "../utils/config.js";
 import { toExecError } from "../utils/errors.js";
 import { replaceVariables, isBinaryFile, getTemplateDir } from "../utils/template.js";
 
@@ -99,7 +99,7 @@ function getIgnorePaths(): string[] {
   ];
 }
 
-async function rebuildDockerApp(_config: ProjectConfig): Promise<void> {
+async function rebuildDockerApp(_config: LegacyProjectConfig): Promise<void> {
   const spinner = ora("Rebuilding application in Docker...").start();
 
   try {
@@ -126,7 +126,7 @@ async function hasDevComposeOverride(): Promise<boolean> {
   }
 }
 
-async function startDockerDevModeWithDevTools(_config: ProjectConfig): Promise<void> {
+async function startDockerDevModeWithDevTools(_config: LegacyProjectConfig): Promise<void> {
   console.log();
   console.log(chalk.bold.cyan("Spring Boot DevTools mode (Docker)"));
   console.log(chalk.dim("classes -t + bootRun inside the container — DevTools restarts the JVM on each recompile (~2-3 s)"));
@@ -183,7 +183,7 @@ async function ensureInfraRunning(includeApp: boolean): Promise<boolean> {
   }
 }
 
-async function startDockerDevMode(config: ProjectConfig): Promise<void> {
+async function startDockerDevMode(config: LegacyProjectConfig): Promise<void> {
   // If the project has a docker-compose.dev.yaml (Spring Boot DevTools), use the
   // fast path: source is volume-mounted and only the JVM restarts on change.
   if (await hasDevComposeOverride()) {
@@ -314,7 +314,7 @@ async function buildProject(projectType: string): Promise<boolean> {
   }
 }
 
-async function startApp(projectType: string, config: ProjectConfig): Promise<AppProcess | null> {
+async function startApp(projectType: string, config: LegacyProjectConfig): Promise<AppProcess | null> {
   console.log(chalk.cyan("Starting application..."));
 
   try {
@@ -375,7 +375,7 @@ async function stopApp(): Promise<void> {
   }
 }
 
-async function rebuild(projectType: string, config: ProjectConfig): Promise<void> {
+async function rebuild(projectType: string, config: LegacyProjectConfig): Promise<void> {
   if (state.isRebuilding) {
     state.pendingRebuild = true;
     return;
@@ -400,7 +400,7 @@ async function rebuild(projectType: string, config: ProjectConfig): Promise<void
   }
 }
 
-async function startGradleDevTools(config: ProjectConfig): Promise<void> {
+async function startGradleDevTools(config: LegacyProjectConfig): Promise<void> {
   console.log();
   console.log(chalk.bold.cyan("Spring Boot DevTools (local)"));
   console.log(chalk.dim("Incremental compiler (classes -t) + bootRun in parallel"));
@@ -464,7 +464,7 @@ async function startGradleDevTools(config: ProjectConfig): Promise<void> {
   await app;
 }
 
-async function startLocalDevMode(config: ProjectConfig): Promise<void> {
+async function startLocalDevMode(config: LegacyProjectConfig): Promise<void> {
   const projectType = await detectProjectType();
 
   // For Gradle (Spring Boot) use DevTools instead of the stop/build/restart cycle

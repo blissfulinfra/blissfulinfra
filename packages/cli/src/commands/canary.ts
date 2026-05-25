@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import path from "node:path";
-import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir, type LegacyProjectConfig } from "../utils/config.js";
 import {
   ensureRolloutsAvailable,
   getRolloutStatus,
@@ -13,11 +13,11 @@ import {
   resumeRollout,
 } from "../utils/rollouts.js";
 
-function getNamespace(config: ProjectConfig | null): string {
+function getNamespace(config: LegacyProjectConfig | null): string {
   return config?.name || "default";
 }
 
-function getProjectName(config: ProjectConfig | null, projectDir: string): string {
+function getProjectName(config: LegacyProjectConfig | null, projectDir: string): string {
   return config?.name || path.basename(projectDir);
 }
 
