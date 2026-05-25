@@ -534,6 +534,16 @@ function App() {
   // `currentHealth` can keep working without a rewrite. Refactor opportunistically.
   const currentHealth = selectedProject ? (healthByProject[selectedProject.name] || []) : []
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
+  const [showCreateTenantModal, setShowCreateTenantModal] = useState(false)
+  const [newProjectForm, setNewProjectForm] = useState({
+    name: '', kafka: true, postgres: true, redis: true, gateway: true,
+  })
+  const [newTenantForm, setNewTenantForm] = useState({
+    name: '', jenkins: true, prometheus: true, grafana: true, tempo: true, loki: true,
+  })
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [creatingTenant, setCreatingTenant] = useState(false)
   const [showGraph, setShowGraph] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -581,12 +591,14 @@ function App() {
   // honor the per-client port allocation when running in client mode.
   const [links, setLinks] = useState<{
     clientName: string | null
+    tenantName: string | null
+    projectName: string | null
     tempoUrl: string | null
     jaegerUrl: string | null
     grafanaUrl: string | null
     prometheusUrl: string | null
     jenkinsUrl: string | null
-  }>({ clientName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
+  }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
 
   useEffect(() => {
     fetch(`${API_BASE}/links`).then(r => r.ok ? r.json() : null).then(data => {
@@ -1466,6 +1478,65 @@ function App() {
     }
   }
 
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newProjectForm.name.trim() || !links.tenantName) return
+    setCreatingProject(true)
+    try {
+      const res = await fetch(`${API_BASE}/tenants/${links.tenantName}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProjectForm.name,
+          kafka: newProjectForm.kafka,
+          postgres: newProjectForm.postgres,
+          redis: newProjectForm.redis,
+          gateway: newProjectForm.gateway,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowCreateProjectModal(false)
+        setNewProjectForm({ name: '', kafka: true, postgres: true, redis: true, gateway: true })
+        await fetchProjects()
+      } else {
+        setErrorModal({ title: 'Failed to create project', message: data.error || 'Unknown error' })
+      }
+    } catch (e) {
+      setErrorModal({ title: 'Failed to create project', message: e instanceof Error ? e.message : 'Network error' })
+    } finally {
+      setCreatingProject(false)
+    }
+  }
+
+  const handleCreateTenant = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newTenantForm.name.trim()) return
+    setCreatingTenant(true)
+    try {
+      const res = await fetch(`${API_BASE}/tenants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTenantForm),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setShowCreateTenantModal(false)
+        setNewTenantForm({ name: '', jenkins: true, prometheus: true, grafana: true, tempo: true, loki: true })
+        setErrorModal({
+          title: 'Tenant created',
+          message: `Tenant '${newTenantForm.name}' is scaffolded. Run 'blissful-infra tenant up ${newTenantForm.name}' on the host to start it.`,
+        })
+      } else {
+        setErrorModal({ title: 'Failed to create tenant', message: data.error || 'Unknown error' })
+      }
+    } catch (e) {
+      setErrorModal({ title: 'Failed to create tenant', message: e instanceof Error ? e.message : 'Network error' })
+    } finally {
+      setCreatingTenant(false)
+    }
+  }
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -1623,6 +1694,26 @@ function App() {
                 Graph
               </button>
             )}
+            {links.tenantName && (
+              <button
+                onClick={() => setShowCreateTenantModal(true)}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-gray-200"
+                title="Create a new tenant environment"
+              >
+                <Plus className="w-4 h-4" />
+                New Tenant
+              </button>
+            )}
+            {links.tenantName && (
+              <button
+                onClick={() => setShowCreateProjectModal(true)}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-gray-200"
+                title={`Create a new project inside ${links.tenantName}`}
+              >
+                <Plus className="w-4 h-4" />
+                New Project
+              </button>
+            )}
             <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg transition-colors"
@@ -1727,18 +1818,51 @@ function App() {
                         // Read this project's live health from the shared map
                         const live = healthByProject[project.name]
                         const liveHealth = live?.find(h => h.name === service.name)
+                        const isRunning = liveHealth
+                          ? liveHealth.status === 'healthy'
+                          : service.status === 'running'
                         const dot = liveHealth
                           ? (liveHealth.status === 'healthy' ? 'bg-green-400' : liveHealth.status === 'unhealthy' ? 'bg-red-400' : 'bg-gray-500')
                           : (service.status === 'running' ? 'bg-green-400' : service.status === 'stopped' ? 'bg-red-400' : 'bg-gray-500')
                         const label = liveHealth ? liveHealth.status : service.status
+                        const openUrl = service.port ? serviceUrl(service.port) : null
+                        const tooltip = `${service.name}: ${label}${service.port ? ` (:${service.port})` : ''}${openUrl && isRunning ? ` — click to open ${openUrl}` : ''}`
+
+                        const content = (
+                          <>
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+                            {service.name}
+                            {openUrl && isRunning && (
+                              <ExternalLink className="w-3 h-3 opacity-60" />
+                            )}
+                          </>
+                        )
+
+                        // Running services with an HTTP port get a clickable
+                        // chip that opens the app in a new tab. Stops the
+                        // click from selecting the parent project.
+                        if (openUrl && isRunning) {
+                          return (
+                            <a
+                              key={service.name}
+                              href={openUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-300 transition-colors"
+                              title={tooltip}
+                            >
+                              {content}
+                            </a>
+                          )
+                        }
                         return (
                           <span
                             key={service.name}
                             className="flex items-center gap-1 text-xs text-gray-400"
-                            title={`${service.name}: ${label}${service.port ? ` (:${service.port})` : ''}`}
+                            title={tooltip}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
-                            {service.name}
+                            {content}
                           </span>
                         )
                       })}
@@ -3045,6 +3169,119 @@ function App() {
           )}
         </main>
       </div>
+
+      {/* Create Project Modal (tenant mode) */}
+      {showCreateProjectModal && links.tenantName && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-semibold mb-1">Create Project</h2>
+            <p className="text-xs text-gray-400 mb-4">
+              Inside tenant <span className="font-mono text-blue-300">{links.tenantName}</span>
+            </p>
+            <form onSubmit={handleCreateProject} className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Project Name</label>
+                <input
+                  type="text"
+                  value={newProjectForm.name}
+                  onChange={e => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
+                  placeholder="ecommerce"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Infrastructure</label>
+                <div className="flex flex-wrap gap-2">
+                  {(['kafka', 'postgres', 'redis', 'gateway'] as const).map(k => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setNewProjectForm({ ...newProjectForm, [k]: !newProjectForm[k] })}
+                      className={`px-3 py-1.5 rounded text-xs border ${
+                        newProjectForm[k]
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >{k}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateProjectModal(false)}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors"
+                >Cancel</button>
+                <button
+                  type="submit"
+                  disabled={!newProjectForm.name.trim() || creatingProject}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {creatingProject ? <><Loader2 className="w-4 h-4 animate-spin" />Creating...</> : 'Create Project'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Tenant Modal */}
+      {showCreateTenantModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-semibold mb-1">Create Tenant</h2>
+            <p className="text-xs text-gray-400 mb-4">
+              A new isolated environment with its own dashboard + observability.
+              You'll need to run <code className="text-blue-300">blissful-infra tenant up {newTenantForm.name || '<name>'}</code> on the host to start it.
+            </p>
+            <form onSubmit={handleCreateTenant} className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Tenant Name</label>
+                <input
+                  type="text"
+                  value={newTenantForm.name}
+                  onChange={e => setNewTenantForm({ ...newTenantForm, name: e.target.value })}
+                  placeholder="staging"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Tenant Infrastructure</label>
+                <div className="flex flex-wrap gap-2">
+                  {(['jenkins', 'prometheus', 'grafana', 'tempo', 'loki'] as const).map(k => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setNewTenantForm({ ...newTenantForm, [k]: !newTenantForm[k] })}
+                      className={`px-3 py-1.5 rounded text-xs border ${
+                        newTenantForm[k]
+                          ? 'bg-purple-600 border-purple-500 text-white'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >{k}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateTenantModal(false)}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors"
+                >Cancel</button>
+                <button
+                  type="submit"
+                  disabled={!newTenantForm.name.trim() || creatingTenant}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {creatingTenant ? <><Loader2 className="w-4 h-4 animate-spin" />Creating...</> : 'Create Tenant'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Create Service / Project Modal */}
       {showCreateModal && (

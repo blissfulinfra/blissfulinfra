@@ -257,6 +257,52 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // POST /api/v1/tenants — create a new tenant from the dashboard. Routes
+      // through the CLI subprocess with --skip-prompts. Only works when the
+      // dashboard has BLISSFUL_HOME mounted (which it does in tenant mode).
+      if (req.method === "POST" && url.pathname === "/api/v1/tenants") {
+        const body = await readBody(req);
+        const { name, jenkins, prometheus, grafana, tempo, loki } = JSON.parse(body) as {
+          name?: string; jenkins?: boolean; prometheus?: boolean; grafana?: boolean;
+          tempo?: boolean; loki?: boolean;
+        };
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing tenant name" }));
+          return;
+        }
+        const tenantResult = await createTenantViaCli(name, { jenkins, prometheus, grafana, tempo, loki });
+        res.writeHead(tenantResult.success ? 200 : 400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(tenantResult));
+        return;
+      }
+
+      // POST /api/v1/tenants/:tenant/projects — create a project inside a
+      // tenant. Tenant in the path is just for routing clarity; we still
+      // verify it matches the dashboard's TENANT_NAME for safety.
+      const tenantProjectsMatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects$/);
+      if (req.method === "POST" && tenantProjectsMatch) {
+        const tenantArg = tenantProjectsMatch[1];
+        if (process.env.TENANT_NAME && tenantArg !== process.env.TENANT_NAME) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-tenant project creation denied" }));
+          return;
+        }
+        const body = await readBody(req);
+        const { name, kafka, postgres, redis, gateway } = JSON.parse(body) as {
+          name?: string; kafka?: boolean; postgres?: boolean; redis?: boolean; gateway?: boolean;
+        };
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing project name" }));
+          return;
+        }
+        const projectResult = await createProjectViaCli(tenantArg, name, { kafka, postgres, redis, gateway });
+        res.writeHead(projectResult.success ? 200 : 400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(projectResult));
+        return;
+      }
+
       // POST /api/projects/:name/up - Start project
       const upMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/up$/);
       if (req.method === "POST" && upMatch) {
@@ -1972,6 +2018,54 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
  *   - explicit type=backend|frontend|worker → use as-is
  *   - type=fullstack → backend (frontend should be added as a second service)
  */
+/**
+ * Spawn `blissful-infra tenant create <name>` from inside the dashboard
+ * container. Same trick as addServiceToTenant: the CLI lives in /app, the
+ * registry is mounted at /blissful-home, no cwd dependency.
+ */
+async function createTenantViaCli(
+  name: string,
+  opts: { jenkins?: boolean; prometheus?: boolean; grafana?: boolean; tempo?: boolean; loki?: boolean },
+): Promise<{ success: boolean; error?: string }> {
+  const cliPath = path.join(__dirname, "..", "index.js");
+  const args = [cliPath, "tenant", "create", name, "--skip-prompts"];
+  if (opts.jenkins    === false) args.push("--no-jenkins");
+  if (opts.prometheus === false) args.push("--no-prometheus");
+  if (opts.grafana    === false) args.push("--no-grafana");
+  if (opts.tempo      === false) args.push("--no-tempo");
+  if (opts.loki       === false) args.push("--no-loki");
+
+  try {
+    await execa("node", args, { stdio: "pipe", cwd: __dirname });
+    return { success: true };
+  } catch (error) {
+    const execError = toExecError(error);
+    return { success: false, error: execError.stderr || execError.message || "Failed to create tenant" };
+  }
+}
+
+/** `blissful-infra project create <tenant> <project>` via subprocess. */
+async function createProjectViaCli(
+  tenant: string,
+  project: string,
+  opts: { kafka?: boolean; postgres?: boolean; redis?: boolean; gateway?: boolean },
+): Promise<{ success: boolean; error?: string }> {
+  const cliPath = path.join(__dirname, "..", "index.js");
+  const args = [cliPath, "project", "create", tenant, project, "--skip-prompts"];
+  if (opts.kafka    === false) args.push("--no-kafka");
+  if (opts.postgres === false) args.push("--no-postgres");
+  if (opts.redis    === false) args.push("--no-redis");
+  if (opts.gateway  === false) args.push("--no-gateway");
+
+  try {
+    await execa("node", args, { stdio: "pipe", cwd: __dirname });
+    return { success: true };
+  } catch (error) {
+    const execError = toExecError(error);
+    return { success: false, error: execError.stderr || execError.message || "Failed to create project" };
+  }
+}
+
 async function addServiceToTenant(
   tenant: string,
   options: {

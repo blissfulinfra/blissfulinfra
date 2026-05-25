@@ -35,13 +35,11 @@ Those tools orchestrate services you already wrote. blissful-infra also *creates
 
 ## Why I built this
 
-I spent a few years at Intuit on the Identity / Auth team. Most of the infrastructure you work with at that scale is already provided for you. Auth, observability, deploy pipelines, message buses, datastores. Productive, but layered. Internal platforms exist for good reasons (resource caps, standardization, blast-radius limits) and they do their job well. The trade off is that several layers of abstraction sit between you and the technology underneath.
+I spent a few years at Intuit on the Identity / Auth team. At that scale most of the infrastructure is already wired up for you. That is productive, but it puts a few layers between you and the technology underneath.
 
-I wanted to go deeper on the enterprise patterns I used every day. I wanted to wire Kafka up by hand, watch a JWT round trip through Keycloak, swap Redis for a Postgres read replica and benchmark the difference. The frustrating part was that none of the interesting work started with the experiment. It started with two hours of `docker-compose.yaml` and an evening of "why is Kafka not reachable from the JVM container".
+I wanted to go deeper on the architecture. I also wanted to just spin it up: no two hour `docker-compose.yaml` detour, no cloud bill creeping up while I learn.
 
-blissful-infra is the tool I wanted. Spin up real infrastructure fast, focus on the fun parts: building apps, services and products. For enterprise engineers it is a sandbox that mirrors what real teams run. For solo developers and small studios it is enterprise-shape infrastructure without the enterprise bill (a managed Kafka, Postgres, observability stack and CI runner across two or three client projects adds up to real money every month).
-
-Longer version on the site: [Why I built this →](https://blissful-infra.com/about)
+blissful-infra is the tool I wanted. One command, real infrastructure, all local. More: [Why I built this →](https://blissful-infra.com/about)
 
 ---
 

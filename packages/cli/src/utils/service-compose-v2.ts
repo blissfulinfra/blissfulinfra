@@ -62,6 +62,18 @@ export function buildServiceComposeYaml(input: GenerateServiceComposeInput): str
   environment.PROJECT_NAME = service.project;
   environment.TENANT_NAME = service.tenant;
 
+  // Frontends ship an nginx reverse-proxy that needs to forward /api/ to a
+  // real backend hostname. We auto-discover the first backend in the project
+  // and inject its name + container port. The nginx template uses these via
+  // envsubst at container start. NGINX_ENVSUBST_FILTER keeps the rewrite
+  // scoped so nginx's own $http_upgrade / $host variables aren't clobbered.
+  if (service.serviceType === "frontend") {
+    const firstBackend = project.services.find(s => s.type === "backend");
+    environment.BACKEND_HOST = firstBackend?.name ?? "api";
+    environment.BACKEND_PORT = "8080";
+    environment.NGINX_ENVSUBST_FILTER = "^BACKEND_";
+  }
+
   const depends: Record<string, { condition: string }> = {};
   if (service.database && project.infrastructure.postgres) {
     depends.postgres = { condition: "service_healthy" };
@@ -69,11 +81,23 @@ export function buildServiceComposeYaml(input: GenerateServiceComposeInput): str
   if (project.infrastructure.kafka && service.serviceType !== "frontend") {
     depends.kafka = { condition: "service_healthy" };
   }
+  // Frontend nginx config references the backend's hostname; wait for it to
+  // start so DNS resolution works on first boot. `service_started` (not
+  // `service_healthy`) since we don't want to gate on backend readiness.
+  if (service.serviceType === "frontend") {
+    const firstBackend = project.services.find(s => s.type === "backend");
+    if (firstBackend) {
+      depends[firstBackend.name] = { condition: "service_started" };
+    }
+  }
 
-  // Port mappings — backend/frontend expose HTTP; workers don't.
+  // Port mappings — backend/frontend expose HTTP; workers don't. Container
+  // ports differ by stack: Spring Boot listens on 8080, the React-vite
+  // template's nginx listens on 80.
   const portMappings: string[] = [];
   if (ports.http && (service.serviceType === "backend" || service.serviceType === "frontend")) {
-    portMappings.push(`${ports.http}:8080`);
+    const containerPort = service.serviceType === "frontend" ? 80 : 8080;
+    portMappings.push(`${ports.http}:${containerPort}`);
   }
 
   const serviceDef: Record<string, unknown> = {

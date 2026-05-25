@@ -440,9 +440,66 @@ export function buildTenantOverviewDashboard(tenantName: string): string {
       },
       {
         id: 6,
+        type: "timeseries",
+        title: "Postgres — active connections by project",
+        gridPos: { h: 8, w: 12, x: 0, y: 16 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [{
+          refId: "A",
+          expr: "sum by (project, datname) (pg_stat_activity_count)",
+          legendFormat: "{{project}} / {{datname}}",
+        }],
+      },
+      {
+        id: 7,
+        type: "timeseries",
+        title: "Postgres — transaction commit/rollback rate",
+        gridPos: { h: 8, w: 12, x: 12, y: 16 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [
+          {
+            refId: "A",
+            expr: "sum by (project) (rate(pg_stat_database_xact_commit[1m]))",
+            legendFormat: "{{project}} commits/s",
+          },
+          {
+            refId: "B",
+            expr: "sum by (project) (rate(pg_stat_database_xact_rollback[1m]))",
+            legendFormat: "{{project}} rollbacks/s",
+          },
+        ],
+      },
+      {
+        id: 8,
+        type: "timeseries",
+        title: "Kafka — messages in / out per second",
+        gridPos: { h: 8, w: 12, x: 0, y: 24 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [
+          {
+            refId: "A",
+            expr: "sum by (project, topic) (rate(kafka_topic_partition_current_offset[1m]))",
+            legendFormat: "{{project}}/{{topic}} offset/s",
+          },
+        ],
+      },
+      {
+        id: 9,
+        type: "timeseries",
+        title: "Kafka — consumer group lag",
+        gridPos: { h: 8, w: 12, x: 12, y: 24 },
+        datasource: { type: "prometheus", uid: "prometheus" },
+        targets: [{
+          refId: "A",
+          expr: "sum by (project, consumergroup, topic) (kafka_consumergroup_lag)",
+          legendFormat: "{{project}}/{{consumergroup}}/{{topic}}",
+        }],
+      },
+      {
+        id: 10,
         type: "logs",
         title: "Recent logs (all services in tenant)",
-        gridPos: { h: 10, w: 24, x: 0, y: 16 },
+        gridPos: { h: 10, w: 24, x: 0, y: 32 },
         datasource: { type: "loki", uid: "loki" },
         targets: [{
           refId: "A",

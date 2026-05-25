@@ -53,7 +53,7 @@ describe("port math (pure)", () => {
   describe("projectPortBlock", () => {
     it("tenant 0 project 0 uses base ports", () => {
       const b = projectPortBlock("acme", "ecommerce", 0, 0);
-      expect(b).toMatchObject({ kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080 });
+      expect(b).toMatchObject({ kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080, postgresExporter: 9187, kafkaExporter: 9308 });
     });
 
     it("project index offsets ports by 1 within the same tenant", () => {
