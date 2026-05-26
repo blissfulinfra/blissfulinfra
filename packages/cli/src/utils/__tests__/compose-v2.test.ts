@@ -66,14 +66,12 @@ const backendPorts: ServicePorts = servicePorts("acme", "ecommerce", "orders-api
 // ─── Pure YAML structure assertions ─────────────────────────────────────────
 
 describe("tenant compose — structure", () => {
-  it("emits the dashboard service on the tenant network", () => {
+  it("does NOT emit a dashboard service (host-level control plane lives outside the tenant)", () => {
     const out = buildTenantComposeYaml({ config: tenantConfig, ports: tenantPorts, projectComposeIncludes: [] });
     const doc = yaml.load(out) as Record<string, unknown>;
     expect(doc.name).toBe("acme");
-    const services = doc.services as Record<string, { networks?: string[]; ports?: string[] }>;
-    expect(services.dashboard).toBeDefined();
-    expect(services.dashboard.networks).toContain("tenant");
-    expect(services.dashboard.ports).toContain("3010:3002");
+    const services = doc.services as Record<string, unknown>;
+    expect(services.dashboard).toBeUndefined();
   });
 
   it("includes every observability component when all flags are on", () => {
@@ -81,11 +79,11 @@ describe("tenant compose — structure", () => {
     const doc = yaml.load(out) as Record<string, unknown>;
     const services = doc.services as Record<string, unknown>;
     expect(Object.keys(services)).toEqual(expect.arrayContaining([
-      "dashboard", "jenkins", "prometheus", "grafana", "tempo", "loki", "promtail",
+      "jenkins", "prometheus", "grafana", "tempo", "loki", "promtail",
     ]));
   });
 
-  it("declares no observability services when all flags are off", () => {
+  it("emits no services when every infra flag is off", () => {
     const minimal = TenantConfigSchema.parse({
       type: "tenant",
       name: "bare",
@@ -97,7 +95,7 @@ describe("tenant compose — structure", () => {
     const out = buildTenantComposeYaml({ config: minimal, ports: tenantPortBlock("bare", 0), projectComposeIncludes: [] });
     const doc = yaml.load(out) as Record<string, unknown>;
     const services = doc.services as Record<string, unknown>;
-    expect(Object.keys(services)).toEqual(["dashboard"]);
+    expect(Object.keys(services)).toEqual([]);
   });
 
   it("includes project compose paths when provided", () => {

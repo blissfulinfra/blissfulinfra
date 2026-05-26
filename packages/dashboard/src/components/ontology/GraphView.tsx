@@ -198,28 +198,38 @@ function GraphInner({ clientName, onClose }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative" style={{ width: '100%', height: 'calc(100vh - 56px)' }}>
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-gray-500">
             <Loader2 className="w-6 h-6 animate-spin" />
           </div>
+        ) : !graph || graph.nodes.length === 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-2">
+            <span className="text-sm">No nodes returned for <code className="text-blue-300">{clientName}</code>.</span>
+            <span className="text-xs">Check that the tenant has at least one project + service registered.</span>
+          </div>
         ) : (
-          <ReactFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onEdgeClick={onEdgeClick}
-            fitView
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background color="#374151" />
-            <Controls className="!bg-gray-800 !border-gray-700" />
-            <MiniMap className="!bg-gray-900 !border-gray-700" maskColor="rgba(0,0,0,0.6)" nodeColor="#60a5fa" />
-          </ReactFlow>
+          <div style={{ width: '100%', height: '100%' }}>
+            <ReactFlow
+              nodes={flowNodes}
+              edges={flowEdges}
+              nodeTypes={nodeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              onEdgeClick={onEdgeClick}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+              minZoom={0.1}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background color="#374151" />
+              <Controls className="!bg-gray-800 !border-gray-700" />
+              <MiniMap className="!bg-gray-900 !border-gray-700" maskColor="rgba(0,0,0,0.6)" nodeColor="#60a5fa" />
+            </ReactFlow>
+          </div>
         )}
 
         {selectedNode && (

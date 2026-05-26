@@ -7,7 +7,7 @@ import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
-import { getTenant } from "../utils/tenant-registry.js";
+import { getTenant, listTenants } from "../utils/tenant-registry.js";
 import {
   loadOntology,
   saveOntology,
@@ -151,36 +151,48 @@ export function createApiServer(workingDir: string, port = 3002) {
       return;
     }
 
+    // Tenant resolution: control-plane mode (no env binding) reads ?tenant=
+    // from the query string. Legacy single-tenant mode (TENANT_NAME env set)
+    // ignores the query string. This is how one dashboard manages every tenant.
+    const tenantFromRequest = (): string | null => {
+      return process.env.TENANT_NAME ?? url.searchParams.get("tenant") ?? null;
+    };
+
     try {
       // GET /api/links - Tool URLs (Tempo/Grafana/etc) for the current
-      // client. Empty when running in flat-model mode without env injection.
-      // ADR-0016: tempoUrl points at Grafana's trace explorer (since traces
-      // live in the unified Grafana UI now). jaegerUrl is kept null for
-      // back-compat with any older dashboard build still in the wild.
+      // tenant. The dashboard sends ?tenant=<name> in control-plane mode so
+      // links resolve to the right tenant's ports.
       if (req.method === "GET" && url.pathname === "/api/v1/links") {
-        // Read context for the current project (tenant mode).
+        const currentTenant = tenantFromRequest();
         let contextProject: string | null = null;
-        if (process.env.TENANT_NAME) {
+        if (currentTenant) {
           try {
             const raw = await fs.readFile("/blissful-home/context.json", "utf-8");
             const parsed = JSON.parse(raw) as { tenant?: string; project?: string };
-            if (parsed.tenant === process.env.TENANT_NAME) {
+            if (parsed.tenant === currentTenant) {
               contextProject = parsed.project ?? null;
             }
           } catch { /* no context */ }
+        }
+        // Look up host ports for the requested tenant so observability links
+        // point at the right port block.
+        let tenantPorts: { grafana?: number; prometheus?: number; tempo?: number; jenkins?: number } = {};
+        if (currentTenant) {
+          const t = await getTenant(currentTenant);
+          if (t) tenantPorts = t.portBlock;
         }
         const links: Record<string, string | null> = {
           // The dashboard's `links.clientName` badge predates the rename. We
           // populate it from either env so the existing UI shows the right
           // label without a UI change.
-          clientName: process.env.TENANT_NAME || process.env.CLIENT_NAME || null,
-          tenantName: process.env.TENANT_NAME || null,
+          clientName: currentTenant || process.env.CLIENT_NAME || null,
+          tenantName: currentTenant,
           projectName: contextProject,
-          tempoUrl: process.env.TEMPO_URL || null,
+          tempoUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/explore?left=${encodeURIComponent('{"datasource":"Tempo","queries":[{"refId":"A"}]}')}` : null,
           jaegerUrl: null,
-          grafanaUrl: process.env.GRAFANA_URL || null,
-          prometheusUrl: process.env.PROMETHEUS_URL || null,
-          jenkinsUrl: process.env.JENKINS_URL || null,
+          grafanaUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/d/tenant-overview` : null,
+          prometheusUrl: tenantPorts.prometheus ? `http://localhost:${tenantPorts.prometheus}` : null,
+          jenkinsUrl: tenantPorts.jenkins ? `http://localhost:${tenantPorts.jenkins}` : null,
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(links));
@@ -189,7 +201,7 @@ export function createApiServer(workingDir: string, port = 3002) {
 
       // GET /api/projects - List all projects in working directory
       if (req.method === "GET" && url.pathname === "/api/v1/projects") {
-        const projects = await listProjects(workingDir);
+        const projects = await listProjects(workingDir, tenantFromRequest());
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ projects }));
         return;
@@ -218,13 +230,13 @@ export function createApiServer(workingDir: string, port = 3002) {
         }
 
         // Three modes, in priority order:
-        //   1. TENANT_NAME set → new tenant/project/service flow (ADR-0017).
-        //      Project comes from context.json (written by `blissful-infra use`
-        //      or auto-set by tenant/project create).
+        //   1. tenant resolvable (env or ?tenant=) → new tenant/project/service
+        //      flow (ADR-0017). Project comes from context.json or the
+        //      ?project= query param when the control plane sends it.
         //   2. CLIENT_NAME set → legacy client/service flow (scheduled for
         //      deletion in phase 8).
         //   3. neither → legacy flat-model create (scheduled for deletion).
-        const tenantForCreate = process.env.TENANT_NAME;
+        const tenantForCreate = tenantFromRequest();
         const clientForCreate = process.env.CLIENT_NAME;
 
         let result: { success: boolean; error?: string; project?: string };
@@ -267,6 +279,34 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
         res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      // GET /api/v1/tenants — list every tenant in the registry with quick
+      // status. Used by the dashboard's tenant-management drawer so the user
+      // can see + clean up failed-create leftovers.
+      if (req.method === "GET" && url.pathname === "/api/v1/tenants") {
+        const summaries = await listAllTenantSummaries();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ tenants: summaries }));
+        return;
+      }
+
+      // DELETE /api/v1/tenants/:name — remove a tenant entirely (down + dir
+      // wipe + registry deregister). Same effect as `blissful-infra tenant
+      // remove <name> --skip-prompts`. Refuses to delete the tenant the
+      // dashboard itself is running inside (self-removal would orphan us).
+      const tenantDeleteMatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)$/);
+      if (req.method === "DELETE" && tenantDeleteMatch) {
+        const name = tenantDeleteMatch[1];
+        if (process.env.TENANT_NAME && name === process.env.TENANT_NAME) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Cannot remove tenant '${name}': dashboard is running inside it. Run on the host: blissful-infra tenant remove ${name}` }));
+          return;
+        }
+        const result = await removeTenantViaCli(name);
+        res.writeHead(result.success ? 200 : 400, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
         return;
       }
@@ -435,7 +475,19 @@ export function createApiServer(workingDir: string, port = 3002) {
       const lokiLogsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/loki$/);
       if (req.method === "GET" && lokiLogsMatch) {
         const projectName = lokiLogsMatch[1];
-        const lokiHost = DOCKER_MODE ? "loki" : "localhost";
+        // Control-plane mode: Loki lives inside the *tenant's* network, so we
+        // reach it via the host port. Legacy single-tenant mode shares the
+        // network so `loki:3100` resolves directly.
+        const queryTenantForLoki = url.searchParams.get("tenant");
+        let lokiHost = DOCKER_MODE ? "loki" : "localhost";
+        let lokiPort = 3100;
+        if (DOCKER_MODE && queryTenantForLoki && !process.env.TENANT_NAME) {
+          const t = await getTenant(queryTenantForLoki);
+          if (t) {
+            lokiHost = "host.docker.internal";
+            lokiPort = t.portBlock.loki;
+          }
+        }
         const serviceFilter = url.searchParams.get("service");
         const textFilter = url.searchParams.get("filter");
         const levelFilter = url.searchParams.get("level");
@@ -445,9 +497,10 @@ export function createApiServer(workingDir: string, port = 3002) {
         // service} from the com.blissful.* compose labels. In legacy client
         // mode: there was no `project` label, just `service`. We adapt the
         // query shape based on what env we're running in.
+        const currentTenantForLogs = tenantFromRequest();
         let logqlQuery: string;
-        if (process.env.TENANT_NAME) {
-          const parts: string[] = [`tenant="${process.env.TENANT_NAME}"`, `project="${projectName}"`];
+        if (currentTenantForLogs) {
+          const parts: string[] = [`tenant="${currentTenantForLogs}"`, `project="${projectName}"`];
           if (serviceFilter) parts.push(`service="${serviceFilter}"`);
           logqlQuery = `{${parts.join(", ")}}`;
         } else {
@@ -469,7 +522,7 @@ export function createApiServer(workingDir: string, port = 3002) {
         const nowNs = BigInt(Date.now()) * 1_000_000n;
         const startNs = nowNs - 3_600_000_000_000n; // 1 hour ago
 
-        const lokiUrl = new URL(`http://${lokiHost}:3100/loki/api/v1/query_range`);
+        const lokiUrl = new URL(`http://${lokiHost}:${lokiPort}/loki/api/v1/query_range`);
         lokiUrl.searchParams.set("query", logqlQuery);
         lokiUrl.searchParams.set("limit", limit);
         lokiUrl.searchParams.set("start", startNs.toString());
@@ -504,15 +557,24 @@ export function createApiServer(workingDir: string, port = 3002) {
       const lokiServicesMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/loki\/services$/);
       if (req.method === "GET" && lokiServicesMatch) {
         const projectName = lokiServicesMatch[1];
-        const lokiHost = DOCKER_MODE ? "loki" : "localhost";
+        const currentTenantForLogs = tenantFromRequest();
+        let lokiHost = DOCKER_MODE ? "loki" : "localhost";
+        let lokiPort = 3100;
+        if (DOCKER_MODE && currentTenantForLogs && !process.env.TENANT_NAME) {
+          const t = await getTenant(currentTenantForLogs);
+          if (t) {
+            lokiHost = "host.docker.internal";
+            lokiPort = t.portBlock.loki;
+          }
+        }
         try {
           const nowNs = BigInt(Date.now()) * 1_000_000n;
           const startNs = nowNs - 3_600_000_000_000n;
-          const lokiUrl = new URL(`http://${lokiHost}:3100/loki/api/v1/label/service/values`);
+          const lokiUrl = new URL(`http://${lokiHost}:${lokiPort}/loki/api/v1/label/service/values`);
           // Match the relevant subset of logs so the dropdown only lists
           // services that actually have lines indexed in Loki.
-          const scopeQuery = process.env.TENANT_NAME
-            ? `{tenant="${process.env.TENANT_NAME}", project="${projectName}"}`
+          const scopeQuery = currentTenantForLogs
+            ? `{tenant="${currentTenantForLogs}", project="${projectName}"}`
             : `{project="${projectName}"}`;
           lokiUrl.searchParams.set("query", scopeQuery);
           lokiUrl.searchParams.set("start", startNs.toString());
@@ -1567,11 +1629,12 @@ export function resolveProjectDir(workingDir: string, name: string): string {
   return path.join(workingDir, name);
 }
 
-async function listProjects(workingDir: string): Promise<ProjectStatus[]> {
+async function listProjects(workingDir: string, currentTenant?: string | null): Promise<ProjectStatus[]> {
   // Tenant mode (ADR-0017): registry lives at /blissful-home/registry.json
   // (mounted into the container). Each project in the tenant becomes one
-  // sidebar item with its services listed underneath.
-  const tenantName = process.env.TENANT_NAME;
+  // sidebar item with its services listed underneath. `currentTenant` lets
+  // the control-plane dashboard scope to a tenant via ?tenant=<name>.
+  const tenantName = currentTenant ?? process.env.TENANT_NAME;
   if (tenantName) {
     return listTenantProjects(tenantName);
   }
@@ -2182,6 +2245,60 @@ async function startTenantViaCompose(
     dashboardPort: tenant.portBlock.dashboard,
     dashboardUrl: `http://localhost:${tenant.portBlock.dashboard}`,
   };
+}
+
+/**
+ * Snapshot every tenant in the registry with enough detail for the dashboard
+ * to render a "switch / clean up" list. Status comes from a single docker ps
+ * filtered by the per-tenant dashboard container.
+ */
+async function listAllTenantSummaries(): Promise<Array<{
+  name: string;
+  blockIndex: number;
+  dashboardPort: number;
+  projectCount: number;
+  serviceCount: number;
+  status: "running" | "stopped" | "unknown";
+  isCurrent: boolean;
+}>> {
+  const tenants = await listTenants();
+  let running = new Set<string>();
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "--filter", "name=-dashboard$", "--format", "{{.Names}}",
+    ], { reject: false });
+    running = new Set(stdout.trim().split("\n").filter(Boolean).map(n => n.replace(/-dashboard$/, "")));
+  } catch { /* docker unavailable */ }
+
+  const currentTenant = process.env.TENANT_NAME ?? null;
+  return tenants.map(t => ({
+    name: t.name,
+    blockIndex: t.portBlock.blockIndex,
+    dashboardPort: t.portBlock.dashboard,
+    projectCount: t.projects.length,
+    serviceCount: t.projects.reduce((sum, p) => sum + p.services.length, 0),
+    status: running.has(t.name) ? "running" as const : "stopped" as const,
+    isCurrent: currentTenant === t.name,
+  }));
+}
+
+/**
+ * `blissful-infra tenant remove <name> --skip-prompts` via subprocess.
+ * Includes a best-effort `docker compose down` so containers don't linger
+ * after the registry entry + dir are wiped.
+ */
+async function removeTenantViaCli(name: string): Promise<{ success: boolean; error?: string }> {
+  const cliPath = path.join(__dirname, "..", "index.js");
+  try {
+    await execa("node", [cliPath, "tenant", "remove", name, "--skip-prompts"], {
+      stdio: "pipe",
+      cwd: __dirname,
+    });
+    return { success: true };
+  } catch (error) {
+    const e = toExecError(error);
+    return { success: false, error: e.stderr || e.message || `Failed to remove tenant '${name}'` };
+  }
 }
 
 /**

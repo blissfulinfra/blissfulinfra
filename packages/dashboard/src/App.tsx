@@ -544,6 +544,12 @@ function App() {
   })
   const [creatingProject, setCreatingProject] = useState(false)
   const [creatingTenant, setCreatingTenant] = useState(false)
+  const [tenantList, setTenantList] = useState<Array<{
+    name: string; blockIndex: number; dashboardPort: number;
+    projectCount: number; serviceCount: number;
+    status: 'running' | 'stopped' | 'unknown'; isCurrent: boolean;
+  }>>([])
+  const [removingTenant, setRemovingTenant] = useState<string | null>(null)
   const [showGraph, setShowGraph] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -587,8 +593,31 @@ function App() {
   const [lokiLevelFilter, setLokiLevelFilter] = useState<string>('all')
   const [lokiSearch, setLokiSearch] = useState('')
 
+  // Current tenant in control-plane mode. Persists across reloads via
+  // localStorage so the user lands in the same place. Falls back to the
+  // first tenant returned by /api/v1/tenants when nothing's stored yet.
+  const [currentTenant, setCurrentTenant] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem('blissful.currentTenant')
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (currentTenant) window.localStorage.setItem('blissful.currentTenant', currentTenant)
+    else window.localStorage.removeItem('blissful.currentTenant')
+  }, [currentTenant])
+
+  // Append ?tenant=<current> to any URL when in control-plane mode (the
+  // server falls through to the env-pinned tenant in legacy single-tenant
+  // mode). Keeps every fetch tenant-scoped without touching call sites.
+  const withTenant = (path: string): string => {
+    if (!currentTenant) return path
+    const sep = path.includes('?') ? '&' : '?'
+    return `${path}${sep}tenant=${encodeURIComponent(currentTenant)}`
+  }
+
   // Tool URLs (Jaeger, Grafana, etc.) — populated from /api/links so they
-  // honor the per-client port allocation when running in client mode.
+  // honor the per-tenant port allocation. Refetched whenever the user
+  // switches tenants so observability links point at the right host port.
   const [links, setLinks] = useState<{
     clientName: string | null
     tenantName: string | null
@@ -601,10 +630,10 @@ function App() {
   }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
 
   useEffect(() => {
-    fetch(`${API_BASE}/links`).then(r => r.ok ? r.json() : null).then(data => {
+    fetch(withTenant(`${API_BASE}/links`)).then(r => r.ok ? r.json() : null).then(data => {
       if (data) setLinks(data)
     }).catch(() => { /* fall back to defaults below */ })
-  }, [])
+  }, [currentTenant])
 
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -666,7 +695,7 @@ function App() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE}/projects`)
+      const res = await fetch(withTenant(`${API_BASE}/projects`))
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects || [])
@@ -728,7 +757,7 @@ function App() {
       if (lokiLevelFilter !== 'all') params.set('level', lokiLevelFilter)
       if (lokiSearch) params.set('filter', lokiSearch)
       params.set('limit', '300')
-      const lokiRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`)
+      const lokiRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`))
       if (lokiRes.ok) {
         const data = await lokiRes.json()
         // Use Loki only if it actually returned something. An empty response
@@ -761,7 +790,7 @@ function App() {
   const fetchLokiServices = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki/services`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/loki/services`))
       if (res.ok) {
         const data = await res.json()
         setLokiServices(data.services || [])
@@ -1525,6 +1554,49 @@ function App() {
     }
   }
 
+  const fetchTenants = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/tenants`)
+      if (res.ok) {
+        const data = await res.json()
+        const list = data.tenants || []
+        setTenantList(list)
+        // Seed currentTenant on first load: prefer the env-bound tenant,
+        // otherwise fall through to the first registry entry.
+        if (!currentTenant && list.length > 0) {
+          const envBound = list.find((t: { isCurrent: boolean }) => t.isCurrent)
+          setCurrentTenant((envBound ?? list[0]).name)
+        }
+      }
+    } catch { /* leave list empty; non-fatal */ }
+  }
+
+  useEffect(() => { fetchTenants() }, [])
+
+  const handleRemoveTenant = async (name: string) => {
+    if (!confirm(`Remove tenant '${name}'? This stops its containers and deletes its directory.`)) return
+    setRemovingTenant(name)
+    try {
+      const res = await fetch(`${API_BASE}/tenants/${name}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        await fetchTenants()
+      } else {
+        setErrorModal({ title: 'Failed to remove tenant', message: data.error || 'Unknown error' })
+      }
+    } catch (e) {
+      setErrorModal({ title: 'Failed to remove tenant', message: e instanceof Error ? e.message : 'Network error' })
+    } finally {
+      setRemovingTenant(null)
+    }
+  }
+
+  // Refresh the tenant list whenever the create modal opens so the user sees
+  // any leftover failed creates and can clean them up before retrying.
+  useEffect(() => {
+    if (showCreateTenantModal) fetchTenants()
+  }, [showCreateTenantModal])
+
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTenantForm.name.trim()) return
@@ -1685,8 +1757,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
-      {showGraph && links.clientName && (
-        <GraphView clientName={links.clientName} onClose={() => setShowGraph(false)} />
+      {showGraph && (links.tenantName || links.clientName) && (
+        <GraphView clientName={(links.tenantName || links.clientName)!} onClose={() => setShowGraph(false)} />
       )}
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
@@ -1713,7 +1785,21 @@ function App() {
                 Grafana
               </a>
             )}
-            {links.clientName && (
+            {tenantList.length > 0 && (
+              <select
+                value={currentTenant ?? ''}
+                onChange={e => setCurrentTenant(e.target.value || null)}
+                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-2 rounded-lg text-sm text-gray-100 font-mono cursor-pointer focus:outline-none focus:border-blue-500"
+                title="Switch tenant"
+              >
+                {tenantList.map(t => (
+                  <option key={t.name} value={t.name}>
+                    {t.name} {t.status === 'running' ? '●' : '○'}
+                  </option>
+                ))}
+              </select>
+            )}
+            {(links.tenantName || links.clientName) && (
               <button
                 onClick={() => setShowGraph(true)}
                 className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-blue-300"
@@ -3258,12 +3344,54 @@ function App() {
       {/* Create Tenant Modal */}
       {showCreateTenantModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-semibold mb-1">Create Tenant</h2>
             <p className="text-xs text-gray-400 mb-4">
               A new isolated environment with its own dashboard + observability.
               We'll scaffold it and boot the containers. First start can take ~30s.
             </p>
+            {tenantList.length > 0 && (
+              <div className="mb-4 border border-gray-700 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-gray-900 text-xs text-gray-400 font-medium">
+                  Existing tenants
+                </div>
+                <div className="divide-y divide-gray-700">
+                  {tenantList.map(t => (
+                    <div key={t.name} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          t.status === 'running' ? 'bg-green-500' :
+                          t.status === 'stopped' ? 'bg-gray-500' : 'bg-yellow-500'
+                        }`} />
+                        <span className="font-mono truncate">{t.name}</span>
+                        {t.isCurrent && <span className="text-[10px] text-blue-300 bg-blue-900/40 border border-blue-700 px-1.5 rounded">current</span>}
+                        <span className="text-xs text-gray-500">:{t.dashboardPort}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {t.status === 'running' && (
+                          <a
+                            href={`http://localhost:${t.dashboardPort}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-blue-300 hover:text-blue-200"
+                          >open</a>
+                        )}
+                        {!t.isCurrent && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTenant(t.name)}
+                            disabled={removingTenant === t.name}
+                            className="text-xs text-red-300 hover:text-red-200 disabled:text-gray-500"
+                          >
+                            {removingTenant === t.name ? 'removing…' : 'remove'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <form onSubmit={handleCreateTenant} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Tenant Name</label>

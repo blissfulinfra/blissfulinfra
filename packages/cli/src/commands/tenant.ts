@@ -18,7 +18,7 @@ import {
   getTenantDir,
 } from "../utils/tenant-registry.js";
 import { writeTenantCompose, projectComposeIncludePath } from "../utils/tenant-compose.js";
-import { ensureDashboardImage, ensureJenkinsImage } from "../utils/infra-images.js";
+import { ensureJenkinsImage } from "../utils/infra-images.js";
 import { toExecError } from "../utils/errors.js";
 import { resolveOrExit, writeContext } from "../utils/context.js";
 
@@ -251,9 +251,8 @@ export async function tenantUpAction(name: string): Promise<void> {
     process.exit(1);
   }
 
-  // Ensure the locally-built images the compose file references exist.
-  // First-run builds the dashboard (~30s) and Jenkins (~2min) once.
-  await ensureDashboardImage();
+  // Dashboard image is no longer in the tenant compose (host-level control
+  // plane lives separately). Only Jenkins still needs a one-time local build.
   const tenantYamlPath = path.join(getTenantDir(name), "tenant.yaml");
   try {
     const cfg = TenantConfigSchema.parse(yaml.load(await fs.readFile(tenantYamlPath, "utf-8")));
