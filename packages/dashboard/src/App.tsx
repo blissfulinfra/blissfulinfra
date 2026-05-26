@@ -725,6 +725,7 @@ function App() {
     try {
       const params = new URLSearchParams()
       if (lokiServiceFilter !== 'all') params.set('service', lokiServiceFilter)
+      if (lokiLevelFilter !== 'all') params.set('level', lokiLevelFilter)
       if (lokiSearch) params.set('filter', lokiSearch)
       params.set('limit', '300')
       const lokiRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`)
@@ -1442,12 +1443,13 @@ function App() {
     e.preventDefault()
     if (!newProject.name.trim()) return
 
+    const serviceName = newProject.name.trim()
     setCreating(true)
     try {
       const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProject),
+        body: JSON.stringify({ ...newProject, autoStart: true }),
       })
       const data = await res.json()
       if (data.success) {
@@ -1461,16 +1463,22 @@ function App() {
           plugins: '',
         })
         await fetchProjects()
+        if (data.started === false || (data.error && !data.started)) {
+          setErrorModal({
+            title: 'Service scaffolded — start failed',
+            message: `${data.error || 'Unknown error'}\n\nRetry from the host:\n  blissful-infra service up ${links.tenantName}/<project>/${serviceName}`,
+          })
+        }
       } else {
         setErrorModal({
-          title: 'Failed to create project',
+          title: 'Failed to create service',
           message: data.error || 'An unknown error occurred',
         })
       }
     } catch (e) {
       console.error('Failed to create project:', e)
       setErrorModal({
-        title: 'Failed to create project',
+        title: 'Failed to create service',
         message: e instanceof Error ? e.message : 'Network error - could not reach server',
       })
     } finally {
@@ -1481,17 +1489,19 @@ function App() {
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newProjectForm.name.trim() || !links.tenantName) return
+    const projectName = newProjectForm.name.trim()
     setCreatingProject(true)
     try {
       const res = await fetch(`${API_BASE}/tenants/${links.tenantName}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newProjectForm.name,
+          name: projectName,
           kafka: newProjectForm.kafka,
           postgres: newProjectForm.postgres,
           redis: newProjectForm.redis,
           gateway: newProjectForm.gateway,
+          autoStart: true,
         }),
       })
       const data = await res.json()
@@ -1499,6 +1509,12 @@ function App() {
         setShowCreateProjectModal(false)
         setNewProjectForm({ name: '', kafka: true, postgres: true, redis: true, gateway: true })
         await fetchProjects()
+        if (data.started === false || (data.error && !data.started)) {
+          setErrorModal({
+            title: 'Project scaffolded — start failed',
+            message: `${data.error || 'Unknown error'}\n\nRetry from the host:\n  blissful-infra project up ${links.tenantName}/${projectName}`,
+          })
+        }
       } else {
         setErrorModal({ title: 'Failed to create project', message: data.error || 'Unknown error' })
       }
@@ -1512,21 +1528,34 @@ function App() {
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTenantForm.name.trim()) return
+    const tenantName = newTenantForm.name.trim()
     setCreatingTenant(true)
     try {
       const res = await fetch(`${API_BASE}/tenants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTenantForm),
+        body: JSON.stringify({ ...newTenantForm, autoStart: true }),
       })
       const data = await res.json()
       if (data.success) {
         setShowCreateTenantModal(false)
         setNewTenantForm({ name: '', jenkins: true, prometheus: true, grafana: true, tempo: true, loki: true })
-        setErrorModal({
-          title: 'Tenant created',
-          message: `Tenant '${newTenantForm.name}' is scaffolded. Run 'blissful-infra tenant up ${newTenantForm.name}' on the host to start it.`,
-        })
+        if (data.started && data.dashboardUrl) {
+          setErrorModal({
+            title: 'Tenant running',
+            message: `Tenant '${tenantName}' is up. Dashboard: ${data.dashboardUrl}`,
+          })
+        } else if (data.error) {
+          setErrorModal({
+            title: 'Tenant scaffolded — start failed',
+            message: `${data.error}\n\nRetry with: blissful-infra tenant up ${tenantName}`,
+          })
+        } else {
+          setErrorModal({
+            title: 'Tenant scaffolded',
+            message: `Run 'blissful-infra tenant up ${tenantName}' on the host to start it.`,
+          })
+        }
       } else {
         setErrorModal({ title: 'Failed to create tenant', message: data.error || 'Unknown error' })
       }
@@ -3218,7 +3247,7 @@ function App() {
                   disabled={!newProjectForm.name.trim() || creatingProject}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
-                  {creatingProject ? <><Loader2 className="w-4 h-4 animate-spin" />Creating...</> : 'Create Project'}
+                  {creatingProject ? <><Loader2 className="w-4 h-4 animate-spin" />Starting project...</> : 'Create + Start Project'}
                 </button>
               </div>
             </form>
@@ -3233,7 +3262,7 @@ function App() {
             <h2 className="text-xl font-semibold mb-1">Create Tenant</h2>
             <p className="text-xs text-gray-400 mb-4">
               A new isolated environment with its own dashboard + observability.
-              You'll need to run <code className="text-blue-300">blissful-infra tenant up {newTenantForm.name || '<name>'}</code> on the host to start it.
+              We'll scaffold it and boot the containers. First start can take ~30s.
             </p>
             <form onSubmit={handleCreateTenant} className="space-y-4">
               <div>
@@ -3275,7 +3304,7 @@ function App() {
                   disabled={!newTenantForm.name.trim() || creatingTenant}
                   className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
-                  {creatingTenant ? <><Loader2 className="w-4 h-4 animate-spin" />Creating...</> : 'Create Tenant'}
+                  {creatingTenant ? <><Loader2 className="w-4 h-4 animate-spin" />Starting tenant...</> : 'Create + Start Tenant'}
                 </button>
               </div>
             </form>
@@ -3423,10 +3452,10 @@ function App() {
                   {creating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Creating...
+                      Starting service...
                     </>
                   ) : (
-                    'Create'
+                    'Create + Start'
                   )}
                 </button>
               </div>

@@ -173,14 +173,37 @@ async function updateTenantProjectsList(tenantName: string, projectName: string)
 }
 
 /** Regenerate the tenant's docker-compose.tenant.yaml so it `include:`s every
- *  currently-registered project. Called whenever projects are added/removed. */
+ *  currently-registered project. Called whenever projects are added/removed.
+ *  Also rebuilds the Grafana overview dashboard with only the panels that
+ *  match the actually-enabled infrastructure across all projects. */
 async function regenerateTenantCompose(tenantName: string): Promise<void> {
   const tenant = await getTenant(tenantName);
   if (!tenant) return;
   const yamlPath = path.join(getTenantDir(tenantName), "tenant.yaml");
   const parsed = TenantConfigSchema.parse(yaml.load(await fs.readFile(yamlPath, "utf-8")));
   const includes = tenant.projects.map(p => projectComposeIncludePath(p.name));
-  await writeTenantCompose(parsed, tenant.portBlock, includes);
+
+  // Walk each project's YAML to know which DB/broker panels to render. A
+  // missing file just means "no infra info" — we treat that as everything off
+  // for the dashboard rather than crashing the regen.
+  const projectsForDashboard = await Promise.all(
+    tenant.projects.map(async p => {
+      try {
+        const ppath = path.join(getProjectDir(tenantName, p.name), "project.yaml");
+        const pcfg = ProjectConfigSchema.parse(yaml.load(await fs.readFile(ppath, "utf-8")));
+        return {
+          name: p.name,
+          hasKafka: pcfg.infrastructure.kafka === true,
+          hasPostgres: pcfg.infrastructure.postgres === true,
+          hasRedis: pcfg.infrastructure.redis === true,
+        };
+      } catch {
+        return { name: p.name, hasKafka: false, hasPostgres: false, hasRedis: false };
+      }
+    }),
+  );
+
+  await writeTenantCompose(parsed, tenant.portBlock, includes, projectsForDashboard);
 }
 
 // ─── project list ───────────────────────────────────────────────────────────

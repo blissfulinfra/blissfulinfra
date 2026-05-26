@@ -1,10 +1,10 @@
 ---
 title: Blissful Infra
-description: An enterprise sandbox on your laptop. Iterate on architecture patterns at the speed of one command. Real Kafka, real Postgres, real observability, real CI.
+description: From idea to running POC in one command. Real Kafka, real Postgres, real CI on your laptop. The plumbing is handled so you can prove out the architecture today.
 template: splash
 hero:
-  tagline: An enterprise sandbox on your laptop. Iterate on architecture patterns at the speed of one command.
-  title: The local playground for enterprise engineers
+  tagline: One command spins up real Kafka, real Postgres and real CI on your laptop. The plumbing is handled so you can prove out the architecture today.
+  title: From idea to running POC, one command.
   actions:
     - text: Get Started
       link: /getting-started
@@ -22,16 +22,37 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-At a big company most of the infrastructure is already provided for you. Auth, observability, deploy pipelines, message buses, datastores. Productive, but layered. Several abstractions sit between you and the technology underneath. blissful-infra is the opposite. One command and the layers are gone. Real Kafka, real Postgres, real Grafana, real Jenkins, wired together on your laptop. Yours to break, swap and rebuild.
+blissful-infra is built for fast POCs on enterprise-shape infrastructure. One command and the plumbing is gone. Compose files, ports, networks, observability and a CI pipeline are generated for you. What you get back is a real Kafka, real Postgres, real Jenkins, real Grafana stack on your laptop, ready to validate the experiment in your head.
 
 ```bash
 npm install -g @blissful-infra/cli
 blissful-infra start my-app
 ```
 
-Under a minute later your stack is running. Try an architecture pattern, throw it away, try the next one. No cloud account, no billing surprise, no YAML to hand write.
+Under a minute later your stack is running. Prove out the idea, throw it away, prove out the next one. No cloud account, no billing surprise.
 
 [Why I built this →](/about)
+
+## Built for POCs. Real infrastructure underneath.
+
+<CardGrid>
+  <Card title="Off the boilerplate" icon="rocket">
+    The plumbing is handled. One command scaffolds compose, ports, networks, schemas and a fresh git repo.
+
+    Observability (Prometheus scrape, Grafana dashboards, Loki, Tempo) is wired in from the start. Jenkins pipeline pre-configured. Local Docker registry pre-allocated. AI agent connected over MCP.
+
+    The POC is the first thing you touch and not the last.
+  </Card>
+  <Card title="Closer to the infrastructure" icon="open-book">
+    The pieces are real. Real Kafka, real Postgres, real Jenkins. Nothing is mocked when an OSS equivalent exists.
+
+    Config files are plain (`docker-compose.yaml`, `Jenkinsfile`, `application.yml`). Read them, modify them, fork them. Watch a consumer group actually rebalance. Inspect a JWT round trip. Profile a JPA cascade.
+
+    When the POC raises a question about the architecture, the answer is right there in the repo.
+  </Card>
+</CardGrid>
+
+The system handles the parts you do not want to think about. The infrastructure underneath stays real, so the POC tells you something true.
 
 ## Choose your path
 
@@ -39,40 +60,23 @@ One toolchain. Pick the entry point that matches what you are trying to do.
 
 <CardGrid>
   <Card title="Build" icon="rocket">
-    Enterprise engineers and indie builders who want to try architecture patterns fast. One command to a real stack you can actually pull apart. Skip the boilerplate, get to the interesting part.
+    **POC-first.** You have an architecture experiment or a product idea you need to validate. One command to a real stack you can pull apart. Skip the wiring, prove out the idea today.
 
     [Start the Build path →](/paths/build)
   </Card>
   <Card title="Learn" icon="open-book">
-    Students, new grads and engineers who want to understand how production systems work without an AWS bill. A guided course through Kafka, Postgres, Keycloak, CI/CD and observability. The same stack real teams run.
+    **Go deeper.** Students, new grads and engineers who want to understand how production systems work without an AWS bill. A guided course through Kafka, Postgres, Keycloak, CI/CD and observability. The same stack real teams run.
 
     [Start the Learn path →](/paths/learn)
   </Card>
   <Card title="Deliver" icon="puzzle">
-    Indie studios and small teams shipping real products for clients. Per-client isolated stacks with Kafka, Postgres, observability, CI/CD and local AI inference. No cloud overhead, no SaaS bill stacking up per client.
+    **Per client.** Indie studios and small teams running multiple client projects on one laptop. Per-client isolated stacks with their own Kafka, Postgres, observability and CI. No SaaS bill stacking up per client.
 
     [Start the Deliver path →](/paths/deliver)
   </Card>
 </CardGrid>
 
 Curious why blissful-infra runs real open-source services instead of bundling managed-service emulators? [Read the philosophy →](/philosophy)
-
-## Features
-
-<CardGrid>
-  <Card title="Sandbox in seconds" icon="setting">
-    One command scaffolds and boots a complete Docker Compose stack: Spring Boot API, React frontend, Kafka, Postgres, Redis, Tempo tracing, Prometheus, Grafana, Loki, and nginx, isolated on your machine, ready to break and rebuild.
-  </Card>
-  <Card title="Full-Stack Templates" icon="document">
-    Choose from battle-tested templates for your backend (Spring Boot, FastAPI, Express, Go Chi) and frontend (React+Vite, Next.js). Each generated project is immediately yours, modify, delete, and recreate as many times as you want.
-  </Card>
-  <Card title="AI-Powered Development" icon="star">
-    A built-in AI debugging agent connects to your running sandbox via MCP. Ask Claude to diagnose errors, check service health, read logs, trigger builds, and deploy, without leaving your chat window.
-  </Card>
-  <Card title="Developer Dashboard" icon="laptop">
-    A local web UI gives you real-time log streaming, CPU/memory/latency metrics, Jenkins pipeline status, deployment history, and AI chat in one place at `http://localhost:3002`. Your own mission control, running offline.
-  </Card>
-</CardGrid>
 
 ## What gets created
 
