@@ -7,6 +7,7 @@ import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
+import { getTenant } from "../utils/tenant-registry.js";
 import {
   loadOntology,
   saveOntology,
@@ -208,7 +209,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       // POST /api/projects - Create new project
       if (req.method === "POST" && url.pathname === "/api/v1/projects") {
         const body = await readBody(req);
-        const { name, type, backend, frontend, database, plugins } = JSON.parse(body);
+        const { name, type, backend, frontend, database, plugins, autoStart } = JSON.parse(body);
 
         if (!name) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -226,7 +227,7 @@ export function createApiServer(workingDir: string, port = 3002) {
         const tenantForCreate = process.env.TENANT_NAME;
         const clientForCreate = process.env.CLIENT_NAME;
 
-        let result: { success: boolean; error?: string };
+        let result: { success: boolean; error?: string; project?: string };
         if (tenantForCreate) {
           result = await addServiceToTenant(tenantForCreate, {
             name,
@@ -252,8 +253,127 @@ export function createApiServer(workingDir: string, port = 3002) {
           });
         }
 
-        res.writeHead(result.success ? 200 : 400, { "Content-Type": "application/json" });
+        if (!result.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        // Auto-start: only in tenant mode (the other branches still own their
+        // own lifecycle). Defaults to on; pass autoStart=false to skip.
+        if (tenantForCreate && result.project && autoStart !== false) {
+          const startResult = await startProjectCompose(tenantForCreate, result.project, name);
+          res.writeHead(startResult.success ? 200 : 207, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ...result, ...startResult }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
+        return;
+      }
+
+      // POST /api/v1/tenants — create a new tenant from the dashboard. Routes
+      // through the CLI subprocess with --skip-prompts. Only works when the
+      // dashboard has BLISSFUL_HOME mounted (which it does in tenant mode).
+      // Pass `autoStart: true` (default) to also boot the tenant once
+      // scaffolding succeeds. The response includes `dashboardUrl` and
+      // `dashboardPort` when the start succeeds so the UI can deep link.
+      if (req.method === "POST" && url.pathname === "/api/v1/tenants") {
+        const body = await readBody(req);
+        const { name, jenkins, prometheus, grafana, tempo, loki, autoStart } = JSON.parse(body) as {
+          name?: string; jenkins?: boolean; prometheus?: boolean; grafana?: boolean;
+          tempo?: boolean; loki?: boolean; autoStart?: boolean;
+        };
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing tenant name" }));
+          return;
+        }
+        const tenantResult = await createTenantViaCli(name, { jenkins, prometheus, grafana, tempo, loki });
+        if (!tenantResult.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(tenantResult));
+          return;
+        }
+        if (autoStart === false) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ...tenantResult, started: false }));
+          return;
+        }
+        const startResult = await startTenantViaCompose(name);
+        res.writeHead(startResult.success ? 200 : 207, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ...tenantResult, ...startResult }));
+        return;
+      }
+
+      // POST /api/v1/tenants/:name/up — boot a tenant that's already been
+      // scaffolded. Exposed separately from create so the UI can retry a
+      // failed start without re-creating the tenant.
+      const tenantUpMatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/up$/);
+      if (req.method === "POST" && tenantUpMatch) {
+        const startResult = await startTenantViaCompose(tenantUpMatch[1]);
+        res.writeHead(startResult.success ? 200 : 400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(startResult));
+        return;
+      }
+
+      // POST /api/v1/tenants/:tenant/projects — create a project inside a
+      // tenant. Tenant in the path is just for routing clarity; we still
+      // verify it matches the dashboard's TENANT_NAME for safety.
+      const tenantProjectsMatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects$/);
+      if (req.method === "POST" && tenantProjectsMatch) {
+        const tenantArg = tenantProjectsMatch[1];
+        if (process.env.TENANT_NAME && tenantArg !== process.env.TENANT_NAME) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Cross-tenant project creation denied" }));
+          return;
+        }
+        const body = await readBody(req);
+        const { name, kafka, postgres, redis, gateway, autoStart } = JSON.parse(body) as {
+          name?: string; kafka?: boolean; postgres?: boolean; redis?: boolean; gateway?: boolean;
+          autoStart?: boolean;
+        };
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing project name" }));
+          return;
+        }
+        const projectResult = await createProjectViaCli(tenantArg, name, { kafka, postgres, redis, gateway });
+        if (!projectResult.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(projectResult));
+          return;
+        }
+        if (autoStart === false) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ...projectResult, started: false }));
+          return;
+        }
+        const startResult = await startProjectCompose(tenantArg, name);
+        res.writeHead(startResult.success ? 200 : 207, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ...projectResult, ...startResult }));
+        return;
+      }
+
+      // POST /api/v1/tenants/:tenant/projects/:project/up — boot a scaffolded
+      // project. Same as the create endpoint's auto-start branch but
+      // standalone so the UI can retry after a failed start.
+      const projectUpMatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/up$/);
+      if (req.method === "POST" && projectUpMatch) {
+        const startResult = await startProjectCompose(projectUpMatch[1], projectUpMatch[2]);
+        res.writeHead(startResult.success ? 200 : 400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(startResult));
+        return;
+      }
+
+      // POST /api/v1/tenants/:tenant/projects/:project/services/:service/up
+      // — boot just one service inside an already-scaffolded project.
+      const serviceUpMatch = url.pathname.match(
+        /^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/services\/([^/]+)\/up$/,
+      );
+      if (req.method === "POST" && serviceUpMatch) {
+        const startResult = await startProjectCompose(serviceUpMatch[1], serviceUpMatch[2], serviceUpMatch[3]);
+        res.writeHead(startResult.success ? 200 : 400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(startResult));
         return;
       }
 
@@ -318,6 +438,7 @@ export function createApiServer(workingDir: string, port = 3002) {
         const lokiHost = DOCKER_MODE ? "loki" : "localhost";
         const serviceFilter = url.searchParams.get("service");
         const textFilter = url.searchParams.get("filter");
+        const levelFilter = url.searchParams.get("level");
         const limit = url.searchParams.get("limit") || "200";
 
         // In tenant mode (ADR-0017): Promtail labels are {tenant, project,
@@ -332,6 +453,17 @@ export function createApiServer(workingDir: string, port = 3002) {
         } else {
           logqlQuery = `{project="${projectName}"${serviceFilter ? `, service="${serviceFilter}"` : ""}}`;
         }
+        // Push level filtering into LogQL so `limit` applies to matching
+        // lines, not to total traffic. Without this, a chatty service can
+        // exhaust the line budget before any error reaches the client.
+        const levelPattern: Record<string, string> = {
+          error: "(?i)error|exception|fatal|severe",
+          warn: "(?i)warn",
+          debug: "(?i)debug|trace",
+        };
+        if (levelFilter && levelPattern[levelFilter]) {
+          logqlQuery += ` |~ \`${levelPattern[levelFilter]}\``;
+        }
         if (textFilter) logqlQuery += ` |= \`${textFilter}\``;
 
         const nowNs = BigInt(Date.now()) * 1_000_000n;
@@ -342,7 +474,10 @@ export function createApiServer(workingDir: string, port = 3002) {
         lokiUrl.searchParams.set("limit", limit);
         lokiUrl.searchParams.set("start", startNs.toString());
         lokiUrl.searchParams.set("end", nowNs.toString());
-        lokiUrl.searchParams.set("direction", "forward");
+        // Newest-first so a small `limit` keeps the most-recent N lines instead
+        // of being drained by chatty services. We re-sort ascending below so
+        // the UI still renders oldest→newest.
+        lokiUrl.searchParams.set("direction", "backward");
 
         try {
           const lokiRes = await fetch(lokiUrl.toString(), { signal: AbortSignal.timeout(5000) });
@@ -1972,6 +2107,153 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
  *   - explicit type=backend|frontend|worker → use as-is
  *   - type=fullstack → backend (frontend should be added as a second service)
  */
+/**
+ * Spawn `blissful-infra tenant create <name>` from inside the dashboard
+ * container. Same trick as addServiceToTenant: the CLI lives in /app, the
+ * registry is mounted at /blissful-home, no cwd dependency.
+ */
+async function createTenantViaCli(
+  name: string,
+  opts: { jenkins?: boolean; prometheus?: boolean; grafana?: boolean; tempo?: boolean; loki?: boolean },
+): Promise<{ success: boolean; error?: string }> {
+  const cliPath = path.join(__dirname, "..", "index.js");
+  const args = [cliPath, "tenant", "create", name, "--skip-prompts"];
+  if (opts.jenkins    === false) args.push("--no-jenkins");
+  if (opts.prometheus === false) args.push("--no-prometheus");
+  if (opts.grafana    === false) args.push("--no-grafana");
+  if (opts.tempo      === false) args.push("--no-tempo");
+  if (opts.loki       === false) args.push("--no-loki");
+
+  try {
+    await execa("node", args, { stdio: "pipe", cwd: __dirname });
+    return { success: true };
+  } catch (error) {
+    const execError = toExecError(error);
+    return { success: false, error: execError.stderr || execError.message || "Failed to create tenant" };
+  }
+}
+
+/**
+ * Boot a tenant by shelling out to `docker compose up -d` against the host
+ * daemon. Used by the dashboard's POST /tenants/:name/up endpoint and by the
+ * auto-start branch of POST /tenants.
+ *
+ * Bind mounts in the tenant compose file are relative (e.g. `./prometheus`),
+ * so we set `--project-directory` to the *host* path of the tenant's dir.
+ * That way compose resolves bind mounts against the host filesystem, which
+ * is the only view the daemon has. HOST_BLISSFUL_HOME is injected by
+ * tenant-compose.ts when generating the parent tenant's dashboard service.
+ */
+async function startTenantViaCompose(
+  name: string,
+): Promise<{ success: boolean; started?: boolean; dashboardPort?: number; dashboardUrl?: string; error?: string }> {
+  const tenant = await getTenant(name);
+  if (!tenant) return { success: false, error: `Tenant '${name}' not found` };
+
+  const containerTenantDir = path.join(process.env.BLISSFUL_HOME ?? "/blissful-home", "tenants", name);
+  const composeFilePath = path.join(containerTenantDir, "docker-compose.tenant.yaml");
+  try {
+    await fs.access(composeFilePath);
+  } catch {
+    return { success: false, error: `Compose file missing for tenant '${name}'` };
+  }
+
+  const hostBlissfulHome = process.env.HOST_BLISSFUL_HOME ?? process.env.BLISSFUL_HOME;
+  if (!hostBlissfulHome) {
+    return { success: false, error: "HOST_BLISSFUL_HOME not set: dashboard cannot resolve host bind-mount paths" };
+  }
+  const hostTenantDir = path.join(hostBlissfulHome, "tenants", name);
+
+  try {
+    await execa("docker", [
+      "compose",
+      "--project-directory", hostTenantDir,
+      "-f", composeFilePath,
+      "up", "-d",
+    ], { stdio: "pipe" });
+  } catch (error) {
+    const e = toExecError(error);
+    return { success: false, error: e.stderr || e.message || "docker compose up failed" };
+  }
+
+  return {
+    success: true,
+    started: true,
+    dashboardPort: tenant.portBlock.dashboard,
+    dashboardUrl: `http://localhost:${tenant.portBlock.dashboard}`,
+  };
+}
+
+/**
+ * Bring up a project (or just one of its services) by shelling out to
+ * `docker compose up -d` against the host daemon. Same host-path trick as
+ * startTenantViaCompose: --project-directory points at the *host* path of
+ * the project dir so relative bind mounts resolve correctly.
+ *
+ * When `service` is provided, only that service (+ its depends_on) is
+ * started. Otherwise the whole project compose comes up.
+ */
+async function startProjectCompose(
+  tenant: string,
+  project: string,
+  service?: string,
+): Promise<{ success: boolean; started?: boolean; error?: string }> {
+  const containerProjectDir = path.join(
+    process.env.BLISSFUL_HOME ?? "/blissful-home",
+    "tenants", tenant, "projects", project,
+  );
+  const composeFilePath = path.join(containerProjectDir, "docker-compose.project.yaml");
+  try {
+    await fs.access(composeFilePath);
+  } catch {
+    return { success: false, error: `Compose file missing for ${tenant}/${project}` };
+  }
+
+  const hostBlissfulHome = process.env.HOST_BLISSFUL_HOME ?? process.env.BLISSFUL_HOME;
+  if (!hostBlissfulHome) {
+    return { success: false, error: "HOST_BLISSFUL_HOME not set: dashboard cannot resolve host bind-mount paths" };
+  }
+  const hostProjectDir = path.join(hostBlissfulHome, "tenants", tenant, "projects", project);
+
+  const composeArgs = [
+    "compose",
+    "--project-directory", hostProjectDir,
+    "-f", composeFilePath,
+    "up", "-d", "--build",
+  ];
+  if (service) composeArgs.push(service);
+
+  try {
+    await execa("docker", composeArgs, { stdio: "pipe" });
+  } catch (error) {
+    const e = toExecError(error);
+    return { success: false, error: e.stderr || e.message || "docker compose up failed" };
+  }
+  return { success: true, started: true };
+}
+
+/** `blissful-infra project create <tenant> <project>` via subprocess. */
+async function createProjectViaCli(
+  tenant: string,
+  project: string,
+  opts: { kafka?: boolean; postgres?: boolean; redis?: boolean; gateway?: boolean },
+): Promise<{ success: boolean; error?: string }> {
+  const cliPath = path.join(__dirname, "..", "index.js");
+  const args = [cliPath, "project", "create", tenant, project, "--skip-prompts"];
+  if (opts.kafka    === false) args.push("--no-kafka");
+  if (opts.postgres === false) args.push("--no-postgres");
+  if (opts.redis    === false) args.push("--no-redis");
+  if (opts.gateway  === false) args.push("--no-gateway");
+
+  try {
+    await execa("node", args, { stdio: "pipe", cwd: __dirname });
+    return { success: true };
+  } catch (error) {
+    const execError = toExecError(error);
+    return { success: false, error: execError.stderr || execError.message || "Failed to create project" };
+  }
+}
+
 async function addServiceToTenant(
   tenant: string,
   options: {
@@ -1981,7 +2263,7 @@ async function addServiceToTenant(
     frontend?: string;
     plugins?: string;
   }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; project?: string }> {
   // Read the context to figure out which project the service belongs to.
   // /blissful-home is mounted from the host's BLISSFUL_HOME (see tenant-compose.ts).
   let project: string | undefined;
@@ -2028,7 +2310,7 @@ async function addServiceToTenant(
     // the mounted registry. cwd is /app (where the CLI lives) so it's always
     // a valid directory regardless of /projects layout.
     await execa("node", args, { stdio: "pipe", cwd: __dirname });
-    return { success: true };
+    return { success: true, project };
   } catch (error) {
     const execError = toExecError(error);
     return {

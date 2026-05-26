@@ -19,7 +19,11 @@ FROM nginx:alpine
 
 RUN apk add --no-cache curl
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Templates in /etc/nginx/templates/ get envsubst'd at container start
+# (the nginx image runs /docker-entrypoint.d/20-envsubst-on-templates.sh).
+# BACKEND_HOST and BACKEND_PORT are injected by service-compose so the
+# frontend points at the actual backend service inside the project network.
+COPY default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80

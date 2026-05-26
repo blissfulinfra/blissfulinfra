@@ -24,7 +24,7 @@ describe("TenantRegistrySchema", () => {
               name: "ecommerce",
               portBlock: {
                 tenant: "acme", project: "ecommerce", projectIndex: 0,
-                kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080,
+                kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080, postgresExporter: 9187, kafkaExporter: 9308, redisExporter: 9121,
               },
               services: [
                 {

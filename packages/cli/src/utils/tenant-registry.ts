@@ -72,6 +72,10 @@ const PROJECT_BASES = {
   postgres: 5432,
   redis:    6379,
   gateway:  8080,
+  // Exporter sidecars — chosen at the standard upstream ports for each.
+  postgresExporter: 9187,
+  kafkaExporter:    9308,
+  redisExporter:    9121,
 } as const;
 
 const SERVICE_BASES = {
@@ -113,6 +117,9 @@ export function projectPortBlock(
     postgres: PROJECT_BASES.postgres + offset,
     redis:    PROJECT_BASES.redis    + offset,
     gateway:  PROJECT_BASES.gateway  + offset,
+    postgresExporter: PROJECT_BASES.postgresExporter + offset,
+    kafkaExporter:    PROJECT_BASES.kafkaExporter    + offset,
+    redisExporter:    PROJECT_BASES.redisExporter    + offset,
   };
 }
 

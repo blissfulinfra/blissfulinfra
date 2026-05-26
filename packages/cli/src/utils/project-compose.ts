@@ -79,6 +79,23 @@ export function buildProjectComposeYaml(input: GenerateProjectComposeInput): str
       },
       labels: { ...blissfulLabels, "com.blissful.service": "kafka" },
     };
+
+    // kafka_exporter sidecar — broker / topic / consumer group metrics.
+    // Uses the Kafka protocol (not JMX) so no agent wiring inside the broker.
+    services[`kafka-exporter`] = {
+      image: "danielqsj/kafka-exporter:v1.7.0",
+      container_name: `${config.tenant}-${config.name}-kafka-exporter`,
+      networks: ["project"],
+      ports: [`${ports.kafkaExporter}:9308`],
+      command: ["--kafka.server=kafka:9092"],
+      depends_on: { kafka: { condition: "service_healthy" } },
+      labels: {
+        ...blissfulLabels,
+        "com.blissful.service": "kafka-exporter",
+        "com.blissful.metrics_port": String(ports.kafkaExporter),
+        "com.blissful.metrics_path": "/metrics",
+      },
+    };
   }
 
   if (config.infrastructure.postgres) {
@@ -108,6 +125,26 @@ export function buildProjectComposeYaml(input: GenerateProjectComposeInput): str
       labels: { ...blissfulLabels, "com.blissful.service": "postgres" },
     };
     volumes[volName] = null;
+
+    // postgres_exporter sidecar — translates Postgres internals into
+    // Prometheus metrics (connection counts, query timings, table sizes,
+    // replication lag). Prometheus discovers it via the metrics_port label.
+    services[`postgres-exporter`] = {
+      image: "prometheuscommunity/postgres-exporter:v0.15.0",
+      container_name: `${config.tenant}-${config.name}-postgres-exporter`,
+      networks: ["project"],
+      ports: [`${ports.postgresExporter}:9187`],
+      environment: {
+        DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/app?sslmode=disable",
+      },
+      depends_on: { postgres: { condition: "service_healthy" } },
+      labels: {
+        ...blissfulLabels,
+        "com.blissful.service": "postgres-exporter",
+        "com.blissful.metrics_port": String(ports.postgresExporter),
+        "com.blissful.metrics_path": "/metrics",
+      },
+    };
   }
 
   if (config.infrastructure.redis) {
@@ -132,6 +169,25 @@ export function buildProjectComposeYaml(input: GenerateProjectComposeInput): str
       labels: { ...blissfulLabels, "com.blissful.service": "redis" },
     };
     volumes[volName] = null;
+
+    // redis_exporter sidecar — translates Redis INFO output into Prometheus
+    // metrics (memory usage, command rate, key count, hit/miss ratio, replication).
+    services[`redis-exporter`] = {
+      image: "oliver006/redis_exporter:v1.58.0",
+      container_name: `${config.tenant}-${config.name}-redis-exporter`,
+      networks: ["project"],
+      ports: [`${ports.redisExporter}:9121`],
+      environment: {
+        REDIS_ADDR: "redis://redis:6379",
+      },
+      depends_on: { redis: { condition: "service_healthy" } },
+      labels: {
+        ...blissfulLabels,
+        "com.blissful.service": "redis-exporter",
+        "com.blissful.metrics_port": String(ports.redisExporter),
+        "com.blissful.metrics_path": "/metrics",
+      },
+    };
   }
 
   if (config.infrastructure.gateway) {

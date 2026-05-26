@@ -6,12 +6,12 @@ import { projectCreateAction } from "./project.js";
 import { serviceAddV2Action } from "./service-v2.js";
 import { listTenants, listProjects, getTenantDir, getProjectDir, getService, getTenant } from "../utils/tenant-registry.js";
 import { writeContext } from "../utils/context.js";
-import type { ServiceType } from "@blissful-infra/shared";
 import fs from "node:fs/promises";
 
 interface InitOptions {
   skipPrompts?: boolean;
-  noStart?: boolean;
+  // Commander parses `--no-start` into `start: false` (truthy by default).
+  start?: boolean;
 }
 
 /**
@@ -36,29 +36,13 @@ export const initCommand = new Command("init")
     console.log();
     console.log(chalk.dim("This will set up:"));
     console.log(chalk.dim("  · a tenant (your isolated environment — owns dashboard + observability)"));
-    console.log(chalk.dim("  · a project (a domain inside the tenant — owns Kafka, Postgres, gateway)"));
-    console.log(chalk.dim("  · optionally, a first service (one process inside the project)"));
+    console.log(chalk.dim("  · a project (a domain inside the tenant — owns Kafka, Postgres, Redis, gateway)"));
+    console.log(chalk.dim("  · a full-stack pair of services: a backend API and a frontend UI"));
     console.log();
 
     const tenantName = await pickOrCreateTenant(opts);
     const projectName = await pickOrCreateProject(tenantName, opts);
-    const wantsService = await askWantsService(opts);
-
-    let serviceName: string | undefined;
-    if (wantsService) {
-      const spec = await collectServiceSpec(opts);
-      serviceName = spec.serviceName;
-
-      console.log();
-      console.log(chalk.dim(`Adding service '${serviceName}' to ${tenantName}/${projectName}...`));
-      console.log();
-      await serviceAddV2Action(tenantName, projectName, serviceName, {
-        type: spec.serviceType,
-        template: spec.template,
-        runtime: spec.runtime,
-        skipPrompts: opts.skipPrompts,
-      });
-    }
+    const addedServices = await addDefaultFullStack(tenantName, projectName, opts);
 
     // serviceAddV2Action doesn't touch context; reassert.
     await writeContext({ tenant: tenantName, project: projectName });
@@ -73,14 +57,114 @@ export const initCommand = new Command("init")
       console.log(chalk.dim("First run takes a few minutes (image builds + pulls). Subsequent runs are seconds."));
       console.log();
       await tenantUpAction(tenantName);
-      printNextStepsRunning(tenantName, projectName, serviceName);
+      printNextStepsRunning(tenantName, projectName, addedServices);
     } else {
-      printNextStepsScaffoldedOnly(tenantName, projectName, serviceName);
+      printNextStepsScaffoldedOnly(tenantName, projectName, addedServices);
     }
   });
 
+/**
+ * Default full-stack scaffold: one backend + one frontend. Asks before each
+ * (default yes for both) so the user can opt out of either; with
+ * --skip-prompts both are created with conventional names + templates.
+ */
+async function addDefaultFullStack(
+  tenant: string,
+  project: string,
+  opts: InitOptions,
+): Promise<string[]> {
+  const added: string[] = [];
+
+  // Backend
+  const addBackend = opts.skipPrompts ? true : await confirm("Add a backend service?", true);
+  if (addBackend) {
+    const backend = await collectBackendSpec(opts);
+    console.log();
+    console.log(chalk.dim(`Adding backend '${backend.name}' to ${tenant}/${project}...`));
+    console.log();
+    await serviceAddV2Action(tenant, project, backend.name, {
+      type: "backend",
+      template: backend.template,
+      skipPrompts: opts.skipPrompts,
+    });
+    added.push(backend.name);
+  }
+
+  // Frontend
+  const addFrontend = opts.skipPrompts ? true : await confirm("Add a frontend service?", true);
+  if (addFrontend) {
+    const frontend = await collectFrontendSpec(opts);
+    console.log();
+    console.log(chalk.dim(`Adding frontend '${frontend.name}' to ${tenant}/${project}...`));
+    console.log();
+    await serviceAddV2Action(tenant, project, frontend.name, {
+      type: "frontend",
+      template: frontend.template,
+      skipPrompts: opts.skipPrompts,
+    });
+    added.push(frontend.name);
+  }
+
+  return added;
+}
+
+async function confirm(message: string, defaultValue: boolean): Promise<boolean> {
+  const { answer } = (await inquirer.prompt([
+    { type: "confirm", name: "answer", message, default: defaultValue },
+  ] as never)) as { answer: boolean };
+  return answer;
+}
+
+async function collectBackendSpec(opts: InitOptions): Promise<{ name: string; template: string }> {
+  if (opts.skipPrompts) return { name: "api", template: "spring-boot" };
+  const { name, template } = (await inquirer.prompt([
+    {
+      type: "input",
+      name: "name",
+      message: "Backend service name:",
+      default: "api",
+      validate: (v: string) => /^[a-z0-9-]+$/.test(v) || "Lowercase alphanumeric and hyphens only",
+    },
+    {
+      type: "list",
+      name: "template",
+      message: "Backend template:",
+      default: "spring-boot",
+      choices: [
+        { name: "spring-boot   — Kotlin + Spring Boot + Kafka + JPA",         value: "spring-boot" },
+        { name: "lambda-python — Python serverless on floci/LocalStack",       value: "lambda-python" },
+      ],
+    },
+  ] as never)) as { name: string; template: string };
+  return { name, template };
+}
+
+async function collectFrontendSpec(opts: InitOptions): Promise<{ name: string; template: string }> {
+  if (opts.skipPrompts) return { name: "web", template: "react-vite" };
+  const { name, template } = (await inquirer.prompt([
+    {
+      type: "input",
+      name: "name",
+      message: "Frontend service name:",
+      default: "web",
+      validate: (v: string) => /^[a-z0-9-]+$/.test(v) || "Lowercase alphanumeric and hyphens only",
+    },
+    {
+      type: "list",
+      name: "template",
+      message: "Frontend template:",
+      default: "react-vite",
+      choices: [
+        { name: "react-vite — React 19 + Vite + TypeScript + Tailwind", value: "react-vite" },
+      ],
+    },
+  ] as never)) as { name: string; template: string };
+  return { name, template };
+}
+
 async function askWantsToStart(opts: InitOptions): Promise<boolean> {
-  if (opts.noStart) return false;
+  // Commander sets `opts.start = false` when the user passes `--no-start`.
+  if (opts.start === false) return false;
   if (opts.skipPrompts) return true;
   const { start } = (await inquirer.prompt([
     {
@@ -207,87 +291,6 @@ async function pickOrCreateProject(tenantName: string, opts: InitOptions): Promi
   return chosen;
 }
 
-async function askWantsService(opts: InitOptions): Promise<boolean> {
-  if (opts.skipPrompts) return true;
-  const { add } = (await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "add",
-      message: "Add a first service now?",
-      default: true,
-    },
-  ] as never)) as { add: boolean };
-  return add;
-}
-
-interface ServiceSpec {
-  serviceName: string;
-  serviceType: ServiceType;
-  template?: string;
-  runtime?: "python" | "node" | "go";
-}
-
-async function collectServiceSpec(opts: InitOptions): Promise<ServiceSpec> {
-  if (opts.skipPrompts) {
-    return { serviceName: "api", serviceType: "backend", template: "spring-boot" };
-  }
-
-  const { serviceName, serviceType } = (await inquirer.prompt([
-    {
-      type: "input",
-      name: "serviceName",
-      message: "Service name:",
-      default: "api",
-      validate: (v: string) => /^[a-z0-9-]+$/.test(v) || "Lowercase alphanumeric and hyphens only",
-    },
-    {
-      type: "list",
-      name: "serviceType",
-      message: "Service type:",
-      default: "backend",
-      choices: [
-        { name: "backend  — API / server process",         value: "backend" },
-        { name: "frontend — UI / web app",                  value: "frontend" },
-        { name: "worker   — headless event / job processor", value: "worker" },
-      ],
-    },
-  ] as never)) as { serviceName: string; serviceType: ServiceType };
-
-  let template: string | undefined;
-  let runtime: "python" | "node" | "go" | undefined;
-
-  if (serviceType === "backend") {
-    const { t } = (await inquirer.prompt([
-      {
-        type: "list",
-        name: "t",
-        message: "Backend template:",
-        default: "spring-boot",
-        choices: [
-          { name: "spring-boot   — Kotlin + Spring Boot + Kafka",        value: "spring-boot" },
-          { name: "lambda-python — Python serverless on floci/LocalStack", value: "lambda-python" },
-        ],
-      },
-    ] as never)) as { t: string };
-    template = t;
-  } else if (serviceType === "frontend") {
-    template = "react-vite";
-  } else if (serviceType === "worker") {
-    const { r } = (await inquirer.prompt([
-      {
-        type: "list",
-        name: "r",
-        message: "Worker runtime:",
-        default: "python",
-        choices: ["python", "node", "go"],
-      },
-    ] as never)) as { r: "python" | "node" | "go" };
-    runtime = r;
-  }
-
-  return { serviceName, serviceType, template, runtime };
-}
-
 async function tenantExists(name: string): Promise<boolean> {
   try {
     await fs.access(getTenantDir(name));
@@ -309,7 +312,7 @@ async function projectExists(tenant: string, project: string): Promise<boolean> 
 // Suppress unused — kept exported for callers (none yet).
 void getService;
 
-async function printNextStepsRunning(tenant: string, project: string, service?: string): Promise<void> {
+async function printNextStepsRunning(tenant: string, project: string, services: string[]): Promise<void> {
   const t = await getTenant(tenant);
   console.log();
   console.log(chalk.green.bold("✓ Your POC is running."));
@@ -317,6 +320,9 @@ async function printNextStepsRunning(tenant: string, project: string, service?: 
   console.log(chalk.dim("Current context:"));
   console.log(chalk.dim("  tenant  ") + chalk.cyan(tenant));
   console.log(chalk.dim("  project ") + chalk.cyan(project));
+  if (services.length > 0) {
+    console.log(chalk.dim("  services ") + chalk.cyan(services.join(", ")));
+  }
   console.log();
   if (t) {
     console.log(chalk.dim("URLs:"));
@@ -324,9 +330,11 @@ async function printNextStepsRunning(tenant: string, project: string, service?: 
     console.log(chalk.dim("  Grafana   ") + chalk.cyan(`http://localhost:${t.portBlock.grafana}`));
     console.log();
   }
-  if (service) {
+  if (services.length > 0) {
     console.log(chalk.dim("Tail logs:"));
-    console.log(chalk.cyan(`  blissful-infra service logs ${service}`));
+    for (const s of services) {
+      console.log(chalk.cyan(`  blissful-infra service logs ${s}`));
+    }
     console.log();
   }
   console.log(chalk.dim("Stop everything when you're done:"));
@@ -334,9 +342,10 @@ async function printNextStepsRunning(tenant: string, project: string, service?: 
   console.log();
 }
 
-function printNextStepsScaffoldedOnly(tenant: string, project: string, service?: string): void {
+function printNextStepsScaffoldedOnly(tenant: string, project: string, services: string[]): void {
+  const summary = services.length > 0 ? ` with ${services.join(" + ")}` : "";
   console.log();
-  console.log(chalk.green.bold(`✓ ${tenant}/${project}${service ? `/${service}` : ""} is scaffolded.`));
+  console.log(chalk.green.bold(`✓ ${tenant}/${project}${summary} scaffolded.`));
   console.log();
   console.log(chalk.dim("Current context:"));
   console.log(chalk.dim("  tenant  ") + chalk.cyan(tenant));

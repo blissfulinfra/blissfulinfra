@@ -56,7 +56,7 @@ describe("ProjectPortBlockSchema", () => {
   it("accepts a complete project port block", () => {
     const block = ProjectPortBlockSchema.parse({
       tenant: "acme", project: "ecommerce", projectIndex: 0,
-      kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080,
+      kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080, postgresExporter: 9187, kafkaExporter: 9308, redisExporter: 9121,
     });
     expect(block.project).toBe("ecommerce");
   });
@@ -64,7 +64,7 @@ describe("ProjectPortBlockSchema", () => {
   it("rejects when projectIndex is negative", () => {
     expect(() => ProjectPortBlockSchema.parse({
       tenant: "acme", project: "ecommerce", projectIndex: -1,
-      kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080,
+      kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080, postgresExporter: 9187, kafkaExporter: 9308, redisExporter: 9121,
     })).toThrow();
   });
 });

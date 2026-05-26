@@ -32,7 +32,13 @@ export function buildTenantComposeYaml(input: GenerateTenantComposeInput): strin
   const { config, ports } = input;
   const tenantNet = `${config.name}_tenant`;
   const obs = config.infrastructure.observability;
-  const hostBlissfulHome = process.env.BLISSFUL_HOME ?? path.join(os.homedir(), ".blissful-infra");
+  // Bind mounts pass through to the host's docker daemon, so the path must
+  // be the host path even when this code is running inside a container.
+  // HOST_BLISSFUL_HOME is set on the dashboard service for exactly this case;
+  // fall back to BLISSFUL_HOME (host shells) and then the default ~/.
+  const hostBlissfulHome = process.env.HOST_BLISSFUL_HOME
+    ?? process.env.BLISSFUL_HOME
+    ?? path.join(os.homedir(), ".blissful-infra");
 
   const services: Record<string, unknown> = {};
   const volumes: Record<string, null> = {};
@@ -47,6 +53,10 @@ export function buildTenantComposeYaml(input: GenerateTenantComposeInput): strin
     environment: {
       TENANT_NAME: config.name,
       BLISSFUL_HOME: "/blissful-home",
+      // Host equivalent of /blissful-home — required when the dashboard
+      // shells out to docker compose to start sibling tenants, since the
+      // daemon resolves bind mounts against the host filesystem.
+      HOST_BLISSFUL_HOME: hostBlissfulHome,
       DASHBOARD_PORT: "3002",
       DASHBOARD_DIST_DIR: "/app/dashboard-dist",
       DOCKER_MODE: "true",
@@ -59,10 +69,19 @@ export function buildTenantComposeYaml(input: GenerateTenantComposeInput): strin
       PROMETHEUS_URL: obs.prometheus ? `http://localhost:${ports.prometheus}` : "",
       TEMPO_URL: obs.tempo ? `http://localhost:${ports.grafana}/explore?left=${encodeURIComponent('{"datasource":"Tempo","queries":[{"refId":"A"}]}')}` : "",
     },
-    volumes: [
-      "/var/run/docker.sock:/var/run/docker.sock",
-      `${hostBlissfulHome}:/blissful-home:rw`,
-    ],
+    volumes: (() => {
+      const v = [
+        "/var/run/docker.sock:/var/run/docker.sock",
+        `${hostBlissfulHome}:/blissful-home:rw`,
+      ];
+      // Also expose at the host path so the dashboard can `docker compose
+      // --project-directory <host-path>` for sibling tenants without
+      // compose's path-existence check failing.
+      if (hostBlissfulHome !== "/blissful-home") {
+        v.push(`${hostBlissfulHome}:${hostBlissfulHome}:rw`);
+      }
+      return v;
+    })(),
   };
 
   if (config.infrastructure.jenkins) {
@@ -89,6 +108,11 @@ export function buildTenantComposeYaml(input: GenerateTenantComposeInput): strin
       container_name: `${config.name}-prometheus`,
       networks: ["tenant"],
       ports: [`${ports.prometheus}:9090`],
+      // Run as root so the container can read /var/run/docker.sock. The
+      // upstream image defaults to uid 65534 (nobody) which can't read the
+      // socket on most Linux hosts — discovery silently returns zero
+      // containers. Same fix Promtail bakes in.
+      user: "root",
       volumes: [
         "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
         "/var/run/docker.sock:/var/run/docker.sock",
@@ -223,8 +247,11 @@ export function buildPrometheusYml(): string {
     "        target_label: instance",
     "      # Scrape via host.docker.internal:<host_port> — sidesteps the",
     "      # cross-network problem (Prometheus sits on the tenant network;",
-    "      # services live on their project's isolated network).",
+    "      # services live on their project's isolated network). The `regex`",
+    "      # captures the port value into $1 — without it Prometheus passes",
+    "      # `$1` through literally and every scrape fails with `invalid host`.",
     "      - source_labels: [__meta_docker_container_label_com_blissful_metrics_port]",
+    "        regex: (.+)",
     "        target_label: __address__",
     "        replacement: host.docker.internal:$1",
     "      - source_labels: [__meta_docker_container_label_com_blissful_metrics_path]",
@@ -354,19 +381,244 @@ export function buildGrafanaDatasources(): string {
 }
 
 /**
- * The default "Tenant Overview" dashboard. Surfaces what's actually wired up
- * today — Prometheus scraping Spring Boot via host.docker.internal, plus
- * Loki log volume — so users see real data the moment they `tenant up`.
- *
- * Panels:
- *   1. Services scraped (count of `up == 1` from Prometheus)
- *   2. HTTP request rate per service (Spring Boot's http_server_requests_seconds_count)
- *   3. HTTP p95 latency per service
- *   4. JVM heap used per service
- *   5. Log volume per service (Loki, log lines / minute)
- *   6. Recent logs panel (Loki, all tenant services)
+ * Per-project summary fed into the dashboard generator. The dashboard panels
+ * are conditional on what's actually enabled across the tenant — if no
+ * project has kafka, the kafka panels don't render.
  */
-export function buildTenantOverviewDashboard(tenantName: string): string {
+export interface ProjectInfraSummary {
+  name: string;
+  hasKafka: boolean;
+  hasPostgres: boolean;
+  hasRedis: boolean;
+}
+
+/**
+ * The default "Tenant Overview" dashboard. Generated dynamically from the
+ * tenant + its projects — only emits panels for infrastructure that's
+ * actually enabled, and adds a Grafana `$project` template variable so the
+ * user can drill into one project at a time.
+ *
+ * Regenerated whenever projects are added/removed (see project.ts).
+ */
+export function buildTenantOverviewDashboard(
+  tenantName: string,
+  projects: ProjectInfraSummary[] = [],
+): string {
+  const anyPostgres = projects.some(p => p.hasPostgres);
+  const anyKafka    = projects.some(p => p.hasKafka);
+  const anyRedis    = projects.some(p => p.hasRedis);
+
+  // Build panels with stable IDs and a running y-cursor so optional sections
+  // don't leave gaps in the grid layout.
+  type Panel = Record<string, unknown>;
+  const panels: Panel[] = [];
+  let panelId = 1;
+  const nextId = () => panelId++;
+  let cursorY = 0;
+
+  // ─── Row: services + HTTP ─────────────────────────────────────────────────
+  panels.push({
+    id: nextId(),
+    type: "stat",
+    title: "Services scraped",
+    gridPos: { h: 4, w: 4, x: 0, y: cursorY },
+    datasource: { type: "prometheus", uid: "prometheus" },
+    targets: [{ refId: "A", expr: 'sum(up{tenant=~".+", project=~"$project"})' }],
+    options: { reduceOptions: { calcs: ["last"] }, colorMode: "value" },
+    fieldConfig: { defaults: { color: { mode: "thresholds" }, thresholds: {
+      mode: "absolute",
+      steps: [{ color: "red", value: 0 }, { color: "green", value: 1 }],
+    }}},
+  });
+  panels.push({
+    id: nextId(),
+    type: "timeseries",
+    title: "HTTP request rate (req/s) by service",
+    gridPos: { h: 8, w: 10, x: 4, y: cursorY },
+    datasource: { type: "prometheus", uid: "prometheus" },
+    targets: [{
+      refId: "A",
+      expr: 'sum by (project, service) (rate(http_server_requests_seconds_count{project=~"$project"}[1m]))',
+      legendFormat: "{{project}}/{{service}}",
+    }],
+  });
+  panels.push({
+    id: nextId(),
+    type: "timeseries",
+    title: "HTTP p95 latency by service (s)",
+    gridPos: { h: 8, w: 10, x: 14, y: cursorY },
+    datasource: { type: "prometheus", uid: "prometheus" },
+    targets: [{
+      refId: "A",
+      expr: 'histogram_quantile(0.95, sum by (le, project, service) (rate(http_server_requests_seconds_bucket{project=~"$project"}[5m])))',
+      legendFormat: "{{project}}/{{service}}",
+    }],
+  });
+  cursorY += 8;
+
+  // ─── Row: JVM + logs ──────────────────────────────────────────────────────
+  panels.push({
+    id: nextId(),
+    type: "timeseries",
+    title: "JVM heap used (MB) by service",
+    gridPos: { h: 8, w: 10, x: 0, y: cursorY },
+    datasource: { type: "prometheus", uid: "prometheus" },
+    targets: [{
+      refId: "A",
+      expr: 'sum by (project, service) (jvm_memory_used_bytes{area="heap", project=~"$project"}) / 1024 / 1024',
+      legendFormat: "{{project}}/{{service}}",
+    }],
+  });
+  panels.push({
+    id: nextId(),
+    type: "timeseries",
+    title: "Log lines / minute by service",
+    gridPos: { h: 8, w: 14, x: 10, y: cursorY },
+    datasource: { type: "loki", uid: "loki" },
+    targets: [{
+      refId: "A",
+      // Use $project directly (no :regex format) so the multi-select "All"
+      // value (.*) is passed through as a regex, not escaped to literal "\.\*".
+      expr: `sum by (project, service) (count_over_time({tenant="${tenantName}", project=~"$project"}[1m]))`,
+      legendFormat: "{{project}}/{{service}}",
+    }],
+  });
+  cursorY += 8;
+
+  // ─── Row: Postgres (conditional) ──────────────────────────────────────────
+  if (anyPostgres) {
+    panels.push({
+      id: nextId(),
+      type: "timeseries",
+      title: "Postgres — active connections by project",
+      gridPos: { h: 8, w: 12, x: 0, y: cursorY },
+      datasource: { type: "prometheus", uid: "prometheus" },
+      targets: [{
+        refId: "A",
+        expr: 'sum by (project, datname) (pg_stat_activity_count{project=~"$project"})',
+        legendFormat: "{{project}} / {{datname}}",
+      }],
+    });
+    panels.push({
+      id: nextId(),
+      type: "timeseries",
+      title: "Postgres — transaction commit/rollback rate",
+      gridPos: { h: 8, w: 12, x: 12, y: cursorY },
+      datasource: { type: "prometheus", uid: "prometheus" },
+      targets: [
+        {
+          refId: "A",
+          expr: 'sum by (project) (rate(pg_stat_database_xact_commit{project=~"$project"}[1m]))',
+          legendFormat: "{{project}} commits/s",
+        },
+        {
+          refId: "B",
+          expr: 'sum by (project) (rate(pg_stat_database_xact_rollback{project=~"$project"}[1m]))',
+          legendFormat: "{{project}} rollbacks/s",
+        },
+      ],
+    });
+    cursorY += 8;
+  }
+
+  // ─── Row: Kafka (conditional) ─────────────────────────────────────────────
+  if (anyKafka) {
+    panels.push({
+      id: nextId(),
+      type: "timeseries",
+      title: "Kafka — partition offset rate (events/s)",
+      gridPos: { h: 8, w: 12, x: 0, y: cursorY },
+      datasource: { type: "prometheus", uid: "prometheus" },
+      targets: [{
+        refId: "A",
+        expr: 'sum by (project, topic) (rate(kafka_topic_partition_current_offset{project=~"$project"}[1m]))',
+        legendFormat: "{{project}}/{{topic}}",
+      }],
+    });
+    panels.push({
+      id: nextId(),
+      type: "timeseries",
+      title: "Kafka — consumer group lag",
+      gridPos: { h: 8, w: 12, x: 12, y: cursorY },
+      datasource: { type: "prometheus", uid: "prometheus" },
+      targets: [{
+        refId: "A",
+        expr: 'sum by (project, consumergroup, topic) (kafka_consumergroup_lag{project=~"$project"})',
+        legendFormat: "{{project}}/{{consumergroup}}/{{topic}}",
+      }],
+    });
+    cursorY += 8;
+  }
+
+  // ─── Row: Redis (conditional) ─────────────────────────────────────────────
+  if (anyRedis) {
+    panels.push({
+      id: nextId(),
+      type: "timeseries",
+      title: "Redis — commands processed per second",
+      gridPos: { h: 8, w: 12, x: 0, y: cursorY },
+      datasource: { type: "prometheus", uid: "prometheus" },
+      targets: [{
+        refId: "A",
+        expr: 'sum by (project) (rate(redis_commands_processed_total{project=~"$project"}[1m]))',
+        legendFormat: "{{project}}",
+      }],
+    });
+    panels.push({
+      id: nextId(),
+      type: "timeseries",
+      title: "Redis — memory used (MB) + key count",
+      gridPos: { h: 8, w: 12, x: 12, y: cursorY },
+      datasource: { type: "prometheus", uid: "prometheus" },
+      targets: [
+        {
+          refId: "A",
+          expr: 'redis_memory_used_bytes{project=~"$project"} / 1024 / 1024',
+          legendFormat: "{{project}} MB",
+        },
+        {
+          refId: "B",
+          expr: 'sum by (project) (redis_db_keys{project=~"$project"})',
+          legendFormat: "{{project}} keys",
+        },
+      ],
+    });
+    cursorY += 8;
+  }
+
+  // ─── Always-on: recent logs ───────────────────────────────────────────────
+  panels.push({
+    id: nextId(),
+    type: "logs",
+    title: "Recent logs",
+    gridPos: { h: 10, w: 24, x: 0, y: cursorY },
+    datasource: { type: "loki", uid: "loki" },
+    targets: [{
+      refId: "A",
+      expr: `{tenant="${tenantName}", project=~"$project"}`,
+    }],
+    options: { showTime: true, wrapLogMessage: false, sortOrder: "Descending" },
+  });
+
+  // Template variable — Grafana queries Prometheus for available projects.
+  // Defaults to ".*" (all). Multi-select with "All" option.
+  const templating = {
+    list: [
+      {
+        name: "project",
+        label: "Project",
+        type: "query",
+        datasource: { type: "prometheus", uid: "prometheus" },
+        query: "label_values(up, project)",
+        refresh: 1, // on dashboard load
+        multi: true,
+        includeAll: true,
+        allValue: ".*",
+        current: { selected: false, text: "All", value: "$__all" },
+      },
+    ],
+  };
+
   const dashboard = {
     title: `${tenantName} — Tenant Overview`,
     uid: "tenant-overview",
@@ -376,81 +628,8 @@ export function buildTenantOverviewDashboard(tenantName: string): string {
     version: 1,
     refresh: "30s",
     time: { from: "now-30m", to: "now" },
-    panels: [
-      {
-        id: 1,
-        type: "stat",
-        title: "Services scraped",
-        gridPos: { h: 4, w: 4, x: 0, y: 0 },
-        datasource: { type: "prometheus", uid: "prometheus" },
-        targets: [{ refId: "A", expr: "sum(up{tenant=~\".+\"})" }],
-        options: { reduceOptions: { calcs: ["last"] }, colorMode: "value" },
-        fieldConfig: { defaults: { color: { mode: "thresholds" }, thresholds: {
-          mode: "absolute",
-          steps: [{ color: "red", value: 0 }, { color: "green", value: 1 }],
-        }}},
-      },
-      {
-        id: 2,
-        type: "timeseries",
-        title: "HTTP request rate (req/s) by service",
-        gridPos: { h: 8, w: 10, x: 4, y: 0 },
-        datasource: { type: "prometheus", uid: "prometheus" },
-        targets: [{
-          refId: "A",
-          expr: "sum by (service) (rate(http_server_requests_seconds_count[1m]))",
-          legendFormat: "{{service}}",
-        }],
-      },
-      {
-        id: 3,
-        type: "timeseries",
-        title: "HTTP p95 latency by service (s)",
-        gridPos: { h: 8, w: 10, x: 14, y: 0 },
-        datasource: { type: "prometheus", uid: "prometheus" },
-        targets: [{
-          refId: "A",
-          expr: "histogram_quantile(0.95, sum by (le, service) (rate(http_server_requests_seconds_bucket[5m])))",
-          legendFormat: "{{service}}",
-        }],
-      },
-      {
-        id: 4,
-        type: "timeseries",
-        title: "JVM heap used (MB) by service",
-        gridPos: { h: 8, w: 10, x: 0, y: 8 },
-        datasource: { type: "prometheus", uid: "prometheus" },
-        targets: [{
-          refId: "A",
-          expr: "jvm_memory_used_bytes{area=\"heap\"} / 1024 / 1024",
-          legendFormat: "{{service}}",
-        }],
-      },
-      {
-        id: 5,
-        type: "timeseries",
-        title: "Log lines / minute by service",
-        gridPos: { h: 8, w: 14, x: 10, y: 8 },
-        datasource: { type: "loki", uid: "loki" },
-        targets: [{
-          refId: "A",
-          expr: `sum by (service) (count_over_time({tenant="${tenantName}"}[1m]))`,
-          legendFormat: "{{service}}",
-        }],
-      },
-      {
-        id: 6,
-        type: "logs",
-        title: "Recent logs (all services in tenant)",
-        gridPos: { h: 10, w: 24, x: 0, y: 16 },
-        datasource: { type: "loki", uid: "loki" },
-        targets: [{
-          refId: "A",
-          expr: `{tenant="${tenantName}"}`,
-        }],
-        options: { showTime: true, wrapLogMessage: false, sortOrder: "Descending" },
-      },
-    ],
+    templating,
+    panels,
   };
   return JSON.stringify(dashboard, null, 2);
 }
@@ -478,6 +657,9 @@ export async function writeTenantCompose(
   config: TenantConfig,
   ports: TenantPortBlock,
   projectComposeIncludes: string[],
+  /** Per-project infra summary used to render only the relevant Grafana
+   *  panels. Empty array = no project-specific sections (yet). */
+  projectsForDashboard: ProjectInfraSummary[] = [],
 ): Promise<void> {
   TenantConfigSchema.parse(config);
 
@@ -516,7 +698,10 @@ export async function writeTenantCompose(
     await fs.writeFile(path.join(provDash, "dashboards.yaml"), buildGrafanaDashboardProvider());
     // The tenant overview dashboard ships pre-populated so the user lands
     // on real charts the moment they open Grafana.
-    await fs.writeFile(path.join(dashDir, "tenant-overview.json"), buildTenantOverviewDashboard(config.name));
+    await fs.writeFile(
+      path.join(dashDir, "tenant-overview.json"),
+      buildTenantOverviewDashboard(config.name, projectsForDashboard),
+    );
   }
 
   const yamlOut = buildTenantComposeYaml({ config, ports, projectComposeIncludes });
