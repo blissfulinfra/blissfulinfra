@@ -42,7 +42,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph client["Client (network: &lt;client&gt;_infra)"]
-      subgraph default["Default init"]
+      subgraph defaults["Default init"]
         sb[Service: spring-boot<br/>backend]
         pg2[(Postgres<br/>default)]
         kafka2[(Kafka<br/>default)]
