@@ -760,13 +760,16 @@ function App() {
       const lokiRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`))
       if (lokiRes.ok) {
         const data = await lokiRes.json()
-        // Use Loki only if it actually returned something. An empty response
-        // usually means Promtail hasn't tagged matching labels yet (cold
-        // start, mismatched labels, etc.) — fall through to docker logs so
-        // the user always sees something.
-        if (data.source === 'loki' && (data.logs?.length ?? 0) > 0) {
+        // 200 + source=loki means Loki responded. An empty logs array just
+        // means the active filters (service / level / search) did not match
+        // anything in the time window. Do NOT fall through to docker here, or
+        // selecting a service from the dropdown that has no matching lines
+        // will silently hide the Loki controls and lock the user into the
+        // docker fallback. Loki being genuinely unavailable surfaces as 503
+        // (handled below) or a network error (handled by catch).
+        if (data.source === 'loki') {
           setLokiAvailable(true)
-          let entries: LogEntry[] = data.logs
+          let entries: LogEntry[] = data.logs ?? []
           if (lokiLevelFilter !== 'all') {
             entries = entries.filter(l => detectLogLevel(l.message) === lokiLevelFilter)
           }
