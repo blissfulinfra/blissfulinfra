@@ -8,7 +8,7 @@ import { projectCreateAction } from "./project.js";
 import { serviceAddV2Action } from "./service-v2.js";
 import { listTenants, listProjects, getTenantDir, getProjectDir, getService, getTenant } from "../utils/tenant-registry.js";
 import { writeContext } from "../utils/context.js";
-import { writeHostDashboardCompose, HOST_DASHBOARD_PORT, HOST_DASHBOARD_CONTAINER } from "../utils/host-dashboard-compose.js";
+import { writeHostDashboardCompose, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
 import { ensureDashboardImage } from "../utils/infra-images.js";
 import fs from "node:fs/promises";
 
@@ -348,19 +348,18 @@ async function printNextStepsRunning(tenant: string, project: string, services: 
 }
 
 async function ensureHostDashboardRunning(): Promise<void> {
-  try {
-    const { stdout } = await execa("docker", [
-      "ps", "--filter", `name=${HOST_DASHBOARD_CONTAINER}`, "--format", "{{.Status}}",
-    ], { stdio: "pipe" });
-    if (stdout.includes("Up")) return;
-  } catch {
-    // docker unreachable — let the dashboard up attempt surface the real error
-  }
+  // Always force-recreate so a dashboard from a previous session can't keep
+  // a stale bind mount to a freshly-wiped/repopulated ~/.blissful-infra.
+  // Docker Desktop pins the inode when the source dir is empty at mount
+  // time; the container then sees an empty /blissful-home even after the
+  // registry is rewritten on the host. Recreating is the only reliable cure.
   const spinner = ora("Starting host dashboard...").start();
   try {
     await ensureDashboardImage();
     const composePath = await writeHostDashboardCompose();
-    await execa("docker", ["compose", "-f", composePath, "up", "-d"], { stdio: "pipe" });
+    await execa("docker", [
+      "compose", "-f", composePath, "up", "-d", "--force-recreate",
+    ], { stdio: "pipe" });
     spinner.succeed(`Dashboard running at http://localhost:${HOST_DASHBOARD_PORT}`);
   } catch (err) {
     spinner.fail("Failed to start dashboard");

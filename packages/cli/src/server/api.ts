@@ -1369,6 +1369,19 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
 
+        // Control-plane mode (no env binding): if the path param matches a
+        // tenant in the registry, treat it as tenant mode. Otherwise fall
+        // through to legacy client mode.
+        if (!ontologyClient) {
+          const t = await getTenant(clientName);
+          if (t) {
+            const graph = await buildTenantOntology(clientName);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(graph));
+            return;
+          }
+        }
+
         // Legacy client-mode path.
         if (ontologyClient && clientName !== ontologyClient) {
           res.writeHead(403, { "Content-Type": "application/json" });
@@ -1402,6 +1415,22 @@ export function createApiServer(workingDir: string, port = 3002) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true }));
           return;
+        }
+
+        // Control-plane mode: same tenant-dir persistence, picking the
+        // tenant from the path param.
+        if (!ontologyClient) {
+          const t = await getTenant(clientName);
+          if (t) {
+            const body = await readBody(req);
+            const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
+            const tenantDir = path.join(home, "tenants", clientName);
+            await fs.mkdir(tenantDir, { recursive: true });
+            await fs.writeFile(path.join(tenantDir, "ontology.json"), body);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true }));
+            return;
+          }
         }
 
         // Legacy client mode
