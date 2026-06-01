@@ -1,11 +1,15 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import chalk from "chalk";
+import ora from "ora";
+import { execa } from "execa";
 import { tenantCreateAction, tenantUpAction } from "./tenant.js";
 import { projectCreateAction } from "./project.js";
 import { serviceAddV2Action } from "./service-v2.js";
 import { listTenants, listProjects, getTenantDir, getProjectDir, getService, getTenant } from "../utils/tenant-registry.js";
 import { writeContext } from "../utils/context.js";
+import { writeHostDashboardCompose, HOST_DASHBOARD_PORT, HOST_DASHBOARD_CONTAINER } from "../utils/host-dashboard-compose.js";
+import { ensureDashboardImage } from "../utils/infra-images.js";
 import fs from "node:fs/promises";
 
 interface InitOptions {
@@ -57,6 +61,7 @@ export const initCommand = new Command("init")
       console.log(chalk.dim("First run takes a few minutes (image builds + pulls). Subsequent runs are seconds."));
       console.log();
       await tenantUpAction(tenantName);
+      await ensureHostDashboardRunning();
       printNextStepsRunning(tenantName, projectName, addedServices);
     } else {
       printNextStepsScaffoldedOnly(tenantName, projectName, addedServices);
@@ -326,7 +331,7 @@ async function printNextStepsRunning(tenant: string, project: string, services: 
   console.log();
   if (t) {
     console.log(chalk.dim("URLs:"));
-    console.log(chalk.dim("  Dashboard ") + chalk.cyan(`http://localhost:${t.portBlock.dashboard}`));
+    console.log(chalk.dim("  Dashboard ") + chalk.cyan(`http://localhost:${HOST_DASHBOARD_PORT}`) + chalk.dim("  (manages every tenant)"));
     console.log(chalk.dim("  Grafana   ") + chalk.cyan(`http://localhost:${t.portBlock.grafana}`));
     console.log();
   }
@@ -340,6 +345,27 @@ async function printNextStepsRunning(tenant: string, project: string, services: 
   console.log(chalk.dim("Stop everything when you're done:"));
   console.log(chalk.cyan("  blissful-infra tenant down"));
   console.log();
+}
+
+async function ensureHostDashboardRunning(): Promise<void> {
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "--filter", `name=${HOST_DASHBOARD_CONTAINER}`, "--format", "{{.Status}}",
+    ], { stdio: "pipe" });
+    if (stdout.includes("Up")) return;
+  } catch {
+    // docker unreachable — let the dashboard up attempt surface the real error
+  }
+  const spinner = ora("Starting host dashboard...").start();
+  try {
+    await ensureDashboardImage();
+    const composePath = await writeHostDashboardCompose();
+    await execa("docker", ["compose", "-f", composePath, "up", "-d"], { stdio: "pipe" });
+    spinner.succeed(`Dashboard running at http://localhost:${HOST_DASHBOARD_PORT}`);
+  } catch (err) {
+    spinner.fail("Failed to start dashboard");
+    if (err instanceof Error) console.error(chalk.red(err.message));
+  }
 }
 
 function printNextStepsScaffoldedOnly(tenant: string, project: string, services: string[]): void {

@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
 import yaml from "js-yaml";
 import {
   TenantConfigSchema,
@@ -32,57 +31,15 @@ export function buildTenantComposeYaml(input: GenerateTenantComposeInput): strin
   const { config, ports } = input;
   const tenantNet = `${config.name}_tenant`;
   const obs = config.infrastructure.observability;
-  // Bind mounts pass through to the host's docker daemon, so the path must
-  // be the host path even when this code is running inside a container.
-  // HOST_BLISSFUL_HOME is set on the dashboard service for exactly this case;
-  // fall back to BLISSFUL_HOME (host shells) and then the default ~/.
-  const hostBlissfulHome = process.env.HOST_BLISSFUL_HOME
-    ?? process.env.BLISSFUL_HOME
-    ?? path.join(os.homedir(), ".blissful-infra");
 
   const services: Record<string, unknown> = {};
   const volumes: Record<string, null> = {};
 
-  // Dashboard — always on. Mounts the host registry + docker socket so the
-  // dashboard's API server can shell out to the CLI for service add / wiring.
-  services.dashboard = {
-    image: "blissful-infra-dashboard:latest",
-    container_name: `${config.name}-dashboard`,
-    networks: ["tenant"],
-    ports: [`${ports.dashboard}:3002`],
-    environment: {
-      TENANT_NAME: config.name,
-      BLISSFUL_HOME: "/blissful-home",
-      // Host equivalent of /blissful-home — required when the dashboard
-      // shells out to docker compose to start sibling tenants, since the
-      // daemon resolves bind mounts against the host filesystem.
-      HOST_BLISSFUL_HOME: hostBlissfulHome,
-      DASHBOARD_PORT: "3002",
-      DASHBOARD_DIST_DIR: "/app/dashboard-dist",
-      DOCKER_MODE: "true",
-      PROJECTS_DIR: "/projects",
-      // Deep link to the provisioned "Tenant Overview" dashboard so the
-      // Grafana button in the dashboard header drops the user straight into
-      // charts (HTTP rate, p95 latency, JVM heap, log volume) instead of
-      // Grafana's empty home page.
-      GRAFANA_URL: obs.grafana ? `http://localhost:${ports.grafana}/d/tenant-overview` : "",
-      PROMETHEUS_URL: obs.prometheus ? `http://localhost:${ports.prometheus}` : "",
-      TEMPO_URL: obs.tempo ? `http://localhost:${ports.grafana}/explore?left=${encodeURIComponent('{"datasource":"Tempo","queries":[{"refId":"A"}]}')}` : "",
-    },
-    volumes: (() => {
-      const v = [
-        "/var/run/docker.sock:/var/run/docker.sock",
-        `${hostBlissfulHome}:/blissful-home:rw`,
-      ];
-      // Also expose at the host path so the dashboard can `docker compose
-      // --project-directory <host-path>` for sibling tenants without
-      // compose's path-existence check failing.
-      if (hostBlissfulHome !== "/blissful-home") {
-        v.push(`${hostBlissfulHome}:${hostBlissfulHome}:rw`);
-      }
-      return v;
-    })(),
-  };
+  // No per-tenant dashboard — the dashboard is now a host-level control
+  // plane (ADR-0017 update, 2026-05-26). One dashboard manages every tenant
+  // from `<BLISSFUL_HOME>/docker-compose.dashboard.yaml`. Tenants reference
+  // it externally via `host.docker.internal:3002` when their pipelines need
+  // to call the API.
 
   if (config.infrastructure.jenkins) {
     services.jenkins = {
@@ -132,11 +89,10 @@ export function buildTenantComposeYaml(input: GenerateTenantComposeInput): strin
       image: "grafana/tempo:2.5.0",
       container_name: `${config.name}-tempo`,
       networks: ["tenant"],
-      ports: [
-        `${ports.tempo}:3200`,
-        "4317:4317",
-        "4318:4318",
-      ],
+      // OTLP receivers 4317/4318 stay container-only (reached as tempo:4317
+      // from services on the tenant network). Exposing them on the host
+      // collided across tenants and nothing on the host sends OTLP anyway.
+      ports: [`${ports.tempo}:3200`],
       command: ["-config.file=/etc/tempo.yaml"],
       volumes: [
         "./tempo/tempo.yaml:/etc/tempo.yaml:ro",

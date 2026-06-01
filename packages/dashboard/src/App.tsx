@@ -544,6 +544,12 @@ function App() {
   })
   const [creatingProject, setCreatingProject] = useState(false)
   const [creatingTenant, setCreatingTenant] = useState(false)
+  const [tenantList, setTenantList] = useState<Array<{
+    name: string; blockIndex: number; dashboardPort: number;
+    projectCount: number; serviceCount: number;
+    status: 'running' | 'stopped' | 'unknown'; isCurrent: boolean;
+  }>>([])
+  const [removingTenant, setRemovingTenant] = useState<string | null>(null)
   const [showGraph, setShowGraph] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -587,8 +593,31 @@ function App() {
   const [lokiLevelFilter, setLokiLevelFilter] = useState<string>('all')
   const [lokiSearch, setLokiSearch] = useState('')
 
+  // Current tenant in control-plane mode. Persists across reloads via
+  // localStorage so the user lands in the same place. Falls back to the
+  // first tenant returned by /api/v1/tenants when nothing's stored yet.
+  const [currentTenant, setCurrentTenant] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem('blissful.currentTenant')
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (currentTenant) window.localStorage.setItem('blissful.currentTenant', currentTenant)
+    else window.localStorage.removeItem('blissful.currentTenant')
+  }, [currentTenant])
+
+  // Append ?tenant=<current> to any URL when in control-plane mode (the
+  // server falls through to the env-pinned tenant in legacy single-tenant
+  // mode). Keeps every fetch tenant-scoped without touching call sites.
+  const withTenant = (path: string): string => {
+    if (!currentTenant) return path
+    const sep = path.includes('?') ? '&' : '?'
+    return `${path}${sep}tenant=${encodeURIComponent(currentTenant)}`
+  }
+
   // Tool URLs (Jaeger, Grafana, etc.) — populated from /api/links so they
-  // honor the per-client port allocation when running in client mode.
+  // honor the per-tenant port allocation. Refetched whenever the user
+  // switches tenants so observability links point at the right host port.
   const [links, setLinks] = useState<{
     clientName: string | null
     tenantName: string | null
@@ -601,10 +630,10 @@ function App() {
   }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
 
   useEffect(() => {
-    fetch(`${API_BASE}/links`).then(r => r.ok ? r.json() : null).then(data => {
+    fetch(withTenant(`${API_BASE}/links`)).then(r => r.ok ? r.json() : null).then(data => {
       if (data) setLinks(data)
     }).catch(() => { /* fall back to defaults below */ })
-  }, [])
+  }, [currentTenant])
 
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -666,7 +695,7 @@ function App() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE}/projects`)
+      const res = await fetch(withTenant(`${API_BASE}/projects`))
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects || [])
@@ -728,7 +757,7 @@ function App() {
       if (lokiLevelFilter !== 'all') params.set('level', lokiLevelFilter)
       if (lokiSearch) params.set('filter', lokiSearch)
       params.set('limit', '300')
-      const lokiRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`)
+      const lokiRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/loki?${params}`))
       if (lokiRes.ok) {
         const data = await lokiRes.json()
         // Use Loki only if it actually returned something. An empty response
@@ -748,7 +777,7 @@ function App() {
     } catch { /* fall through */ }
     setLokiAvailable(false)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs`))
       if (res.ok) {
         const data = await res.json()
         setLogs(data.logs || [])
@@ -761,7 +790,7 @@ function App() {
   const fetchLokiServices = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/loki/services`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/loki/services`))
       if (res.ok) {
         const data = await res.json()
         setLokiServices(data.services || [])
@@ -782,7 +811,7 @@ function App() {
   // so we can call this for sidebar-visible non-selected projects too.
   const fetchHealthFor = async (projectName: string) => {
     try {
-      const res = await fetch(`${API_BASE}/projects/${projectName}/health`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${projectName}/health`))
       if (!res.ok) return
       const data: HealthResponse = await res.json()
       dispatchHealth({ type: 'set', project: projectName, services: data.services })
@@ -808,7 +837,7 @@ function App() {
   const fetchPlugins = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/plugins`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/plugins`))
       if (res.ok) {
         const data: PluginStatus[] = await res.json()
         setPluginStatuses(data)
@@ -821,7 +850,7 @@ function App() {
   const fetchMetrics = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics`))
       if (res.ok) {
         const data: MetricsResponse = await res.json()
         setMetricsLoaded(true)
@@ -880,7 +909,7 @@ function App() {
       // Fetch historical data for the current time window
       const startTime = Date.now() - timeWindow.value * 1000
       const res = await fetch(
-        `${API_BASE}/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`
+        withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`)
       )
 
       if (res.ok) {
@@ -941,7 +970,7 @@ function App() {
   const fetchAlerts = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts`))
       if (res.ok) {
         const data: AlertsResponse = await res.json()
         setActiveAlerts(data.activeAlerts)
@@ -954,7 +983,7 @@ function App() {
   const acknowledgeAllAlerts = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/acknowledge`, {
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/acknowledge`), {
         method: 'POST',
       })
       setActiveAlerts([])
@@ -967,7 +996,7 @@ function App() {
   const fetchPipeline = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/pipeline`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`))
       if (res.ok) {
         const data = await res.json()
         setPipelineData(data)
@@ -981,7 +1010,7 @@ function App() {
     if (!selectedProject) return
     setPipelineRunning(true)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/pipeline`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pipelineOptions),
@@ -1003,7 +1032,7 @@ function App() {
   const fetchEnvironments = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/environments`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/environments`))
       if (res.ok) {
         const data = await res.json()
         setEnvironments(data.environments || [])
@@ -1017,7 +1046,7 @@ function App() {
     if (!selectedProject) return
     setDeployingEnv(env)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/deploy`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deploy`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -1038,7 +1067,7 @@ function App() {
     if (!selectedProject) return
     setRollingBackEnv(env)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/rollback`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/rollback`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -1061,9 +1090,9 @@ function App() {
     setSettingsLoading(true)
     try {
       const [alertsRes, logConfigRes, metricsRes] = await Promise.all([
-        fetch(`${API_BASE}/projects/${selectedProject.name}/alerts`),
-        fetch(`${API_BASE}/projects/${selectedProject.name}/logs/config`),
-        fetch(`${API_BASE}/projects/${selectedProject.name}/metrics/storage`),
+        fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts`)),
+        fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/config`)),
+        fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/storage`)),
       ])
       if (alertsRes.ok) {
         const data: AlertsResponse = await alertsRes.json()
@@ -1088,7 +1117,7 @@ function App() {
   const saveAlertThreshold = async (t: AlertThreshold) => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${t.id}`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${t.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
@@ -1105,7 +1134,7 @@ function App() {
   const addAlertThreshold = async (t: Partial<AlertThreshold>) => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
@@ -1122,7 +1151,7 @@ function App() {
   const deleteAlertThreshold = async (id: string) => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${id}`, {
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${id}`), {
         method: 'DELETE',
       })
       await fetchSettings()
@@ -1138,7 +1167,7 @@ function App() {
   const saveLogRetentionConfig = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/config`, {
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/config`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logConfig),
@@ -1151,7 +1180,7 @@ function App() {
   const handleLogRotate = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/rotate`, { method: 'POST' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/rotate`), { method: 'POST' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to rotate logs:', e)
@@ -1161,7 +1190,7 @@ function App() {
   const handleClearLogs = async () => {
     if (!selectedProject || !confirm('Are you sure you want to clear all stored logs?')) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/stored`, { method: 'DELETE' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/stored`), { method: 'DELETE' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to clear logs:', e)
@@ -1171,7 +1200,7 @@ function App() {
   const handleExportMetrics = async (format: 'json' | 'csv') => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics/export`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/export`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ format }),
@@ -1193,20 +1222,30 @@ function App() {
   const handleClearMetrics = async () => {
     if (!selectedProject || !confirm('Are you sure you want to clear all stored metrics?')) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics`, { method: 'DELETE' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics`), { method: 'DELETE' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to clear metrics:', e)
     }
   }
 
+  // Refetch projects whenever the user switches tenants — the closure inside
+  // setInterval otherwise pins to the mount-time `currentTenant`, leaving the
+  // sidebar (and the service-link ports it renders) showing the old tenant.
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
     fetchModels()
     const interval = setInterval(fetchProjects, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [currentTenant])
+
+  // Tenant switch invalidates the currently-selected project. Same-named
+  // projects across tenants would silently retarget, but cross-tenant they're
+  // different services with different ports — clear and let the user pick.
+  useEffect(() => {
+    setSelectedProject(null)
+  }, [currentTenant])
 
   useEffect(() => {
     if (selectedProject) {
@@ -1230,7 +1269,7 @@ function App() {
     fetchAll()
     const interval = setInterval(fetchAll, 5000)
     return () => clearInterval(interval)
-  }, [projects.map(p => p.name).join(',')])
+  }, [projects.map(p => p.name).join(','), currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
@@ -1260,7 +1299,7 @@ function App() {
         clearInterval(alertsInterval)
       }
     }
-  }, [selectedProject?.name, activeTab, timeWindow])
+  }, [selectedProject?.name, activeTab, timeWindow, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'plugins') {
@@ -1268,7 +1307,7 @@ function App() {
       const interval = setInterval(fetchPlugins, 15000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'pipeline') {
@@ -1276,7 +1315,7 @@ function App() {
       const interval = setInterval(fetchPipeline, 10000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'environments') {
@@ -1284,19 +1323,19 @@ function App() {
       const interval = setInterval(fetchEnvironments, 10000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'settings') {
       fetchSettings()
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'deployments') {
       const fetchDeployments = async () => {
         try {
-          const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/deployments`)
+          const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deployments`))
           if (res.ok) {
             const data = await res.json()
             setDeployments(data.deployments || [])
@@ -1307,7 +1346,7 @@ function App() {
       }
       fetchDeployments()
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (followLogs) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1324,15 +1363,15 @@ function App() {
     const poll = async () => {
       try {
         const [statusRes, logRes] = await Promise.all([
-          fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`),
-          fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`),
+          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)),
+          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)),
         ])
         if (statusRes.ok) {
           const s = await statusRes.json()
           setGatlingStatus(s.status)
           if (s.status === 'completed' || s.status === 'error') {
             if (s.status === 'completed') {
-              const rRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`)
+              const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
               if (rRes.ok) setGatlingResults(await rRes.json())
             }
           }
@@ -1351,16 +1390,16 @@ function App() {
   // Fetch latest results when switching to perf tab (if previous run completed)
   useEffect(() => {
     if (!selectedProject || activeTab !== 'perf') return
-    fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)
+    fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`))
       .then(r => r.ok ? r.json() : null)
       .then(async s => {
         if (!s) return
         setGatlingStatus(s.status)
         if (s.status === 'completed') {
-          const rRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`)
+          const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
           if (rRes.ok) setGatlingResults(await rRes.json())
         }
-        const lRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)
+        const lRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`))
         if (lRes.ok) setGatlingLog((await lRes.json()).lines)
       })
       .catch(() => {})
@@ -1372,7 +1411,7 @@ function App() {
     setGatlingLog([])
     setGatlingResults(null)
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`, { method: 'POST' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`), { method: 'POST' })
     } catch {
       setGatlingStatus('error')
     }
@@ -1382,7 +1421,7 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/up`, { method: 'POST' })
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/up`), { method: 'POST' })
       const data = await res.json()
       if (!data.success && data.error) {
         setErrorModal({
@@ -1405,7 +1444,7 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/down`, { method: 'POST' })
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/down`), { method: 'POST' })
       const data = await res.json()
       if (!data.success && data.error) {
         setErrorModal({
@@ -1429,7 +1468,7 @@ function App() {
       return
     }
     try {
-      await fetch(`${API_BASE}/projects/${projectName}`, { method: 'DELETE' })
+      await fetch(withTenant(`${API_BASE}/projects/${projectName}`), { method: 'DELETE' })
       if (selectedProject?.name === projectName) {
         setSelectedProject(null)
       }
@@ -1525,6 +1564,49 @@ function App() {
     }
   }
 
+  const fetchTenants = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/tenants`)
+      if (res.ok) {
+        const data = await res.json()
+        const list = data.tenants || []
+        setTenantList(list)
+        // Seed currentTenant on first load: prefer the env-bound tenant,
+        // otherwise fall through to the first registry entry.
+        if (!currentTenant && list.length > 0) {
+          const envBound = list.find((t: { isCurrent: boolean }) => t.isCurrent)
+          setCurrentTenant((envBound ?? list[0]).name)
+        }
+      }
+    } catch { /* leave list empty; non-fatal */ }
+  }
+
+  useEffect(() => { fetchTenants() }, [])
+
+  const handleRemoveTenant = async (name: string) => {
+    if (!confirm(`Remove tenant '${name}'? This stops its containers and deletes its directory.`)) return
+    setRemovingTenant(name)
+    try {
+      const res = await fetch(`${API_BASE}/tenants/${name}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        await fetchTenants()
+      } else {
+        setErrorModal({ title: 'Failed to remove tenant', message: data.error || 'Unknown error' })
+      }
+    } catch (e) {
+      setErrorModal({ title: 'Failed to remove tenant', message: e instanceof Error ? e.message : 'Network error' })
+    } finally {
+      setRemovingTenant(null)
+    }
+  }
+
+  // Refresh the tenant list whenever the create modal opens so the user sees
+  // any leftover failed creates and can clean them up before retrying.
+  useEffect(() => {
+    if (showCreateTenantModal) fetchTenants()
+  }, [showCreateTenantModal])
+
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTenantForm.name.trim()) return
@@ -1540,6 +1622,12 @@ function App() {
       if (data.success) {
         setShowCreateTenantModal(false)
         setNewTenantForm({ name: '', jenkins: true, prometheus: true, grafana: true, tempo: true, loki: true })
+        // Jump the dashboard's tenant scope to the newly-created tenant so
+        // the sidebar, links, and service URLs all reflect it immediately.
+        // Without this the user stays on the previous tenant and clicking
+        // "web" / "api" opens the wrong tenant's published ports.
+        setCurrentTenant(tenantName)
+        await fetchTenants()
         if (data.started && data.dashboardUrl) {
           setErrorModal({
             title: 'Tenant running',
@@ -1594,7 +1682,7 @@ function App() {
     setAgentLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/agent`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/agent`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1685,8 +1773,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
-      {showGraph && links.clientName && (
-        <GraphView clientName={links.clientName} onClose={() => setShowGraph(false)} />
+      {showGraph && (links.tenantName || links.clientName) && (
+        <GraphView clientName={(links.tenantName || links.clientName)!} onClose={() => setShowGraph(false)} />
       )}
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
@@ -1713,7 +1801,21 @@ function App() {
                 Grafana
               </a>
             )}
-            {links.clientName && (
+            {tenantList.length > 0 && (
+              <select
+                value={currentTenant ?? ''}
+                onChange={e => setCurrentTenant(e.target.value || null)}
+                className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-2 rounded-lg text-sm text-gray-100 font-mono cursor-pointer focus:outline-none focus:border-blue-500"
+                title="Switch tenant"
+              >
+                {tenantList.map(t => (
+                  <option key={t.name} value={t.name}>
+                    {t.name} {t.status === 'running' ? '●' : '○'}
+                  </option>
+                ))}
+              </select>
+            )}
+            {(links.tenantName || links.clientName) && (
               <button
                 onClick={() => setShowGraph(true)}
                 className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-blue-300"
@@ -3258,12 +3360,54 @@ function App() {
       {/* Create Tenant Modal */}
       {showCreateTenantModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-semibold mb-1">Create Tenant</h2>
             <p className="text-xs text-gray-400 mb-4">
               A new isolated environment with its own dashboard + observability.
               We'll scaffold it and boot the containers. First start can take ~30s.
             </p>
+            {tenantList.length > 0 && (
+              <div className="mb-4 border border-gray-700 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-gray-900 text-xs text-gray-400 font-medium">
+                  Existing tenants
+                </div>
+                <div className="divide-y divide-gray-700">
+                  {tenantList.map(t => (
+                    <div key={t.name} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          t.status === 'running' ? 'bg-green-500' :
+                          t.status === 'stopped' ? 'bg-gray-500' : 'bg-yellow-500'
+                        }`} />
+                        <span className="font-mono truncate">{t.name}</span>
+                        {t.isCurrent && <span className="text-[10px] text-blue-300 bg-blue-900/40 border border-blue-700 px-1.5 rounded">current</span>}
+                        <span className="text-xs text-gray-500">:{t.dashboardPort}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {t.status === 'running' && (
+                          <a
+                            href={`http://localhost:${t.dashboardPort}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-blue-300 hover:text-blue-200"
+                          >open</a>
+                        )}
+                        {!t.isCurrent && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTenant(t.name)}
+                            disabled={removingTenant === t.name}
+                            className="text-xs text-red-300 hover:text-red-200 disabled:text-gray-500"
+                          >
+                            {removingTenant === t.name ? 'removing…' : 'remove'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <form onSubmit={handleCreateTenant} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Tenant Name</label>
