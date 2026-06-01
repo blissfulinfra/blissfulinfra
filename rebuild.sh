@@ -72,6 +72,12 @@ for t in "${TENANTS[@]+"${TENANTS[@]}"}"; do
     | xargs -r docker rmi -f >/dev/null 2>&1 || true
 done
 
+# Host-level dashboard (ADR-0017 update, 2026-05-26) — single control plane
+# that survives tenant lifecycles. Must be torn down before we wipe
+# ~/.blissful-infra, otherwise its bind mount sticks to the now-empty dir and
+# the dashboard sees zero tenants after init repopulates the registry.
+docker rm -f blissful-dashboard 2>/dev/null || true
+
 # Legacy / client-model containers from earlier phases
 docker rm -f blissful-jenkins blissful-registry 2>/dev/null || true
 
