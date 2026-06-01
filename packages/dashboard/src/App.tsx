@@ -777,7 +777,7 @@ function App() {
     } catch { /* fall through */ }
     setLokiAvailable(false)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/logs`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs`))
       if (res.ok) {
         const data = await res.json()
         setLogs(data.logs || [])
@@ -811,7 +811,7 @@ function App() {
   // so we can call this for sidebar-visible non-selected projects too.
   const fetchHealthFor = async (projectName: string) => {
     try {
-      const res = await fetch(`${API_BASE}/projects/${projectName}/health`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${projectName}/health`))
       if (!res.ok) return
       const data: HealthResponse = await res.json()
       dispatchHealth({ type: 'set', project: projectName, services: data.services })
@@ -837,7 +837,7 @@ function App() {
   const fetchPlugins = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/plugins`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/plugins`))
       if (res.ok) {
         const data: PluginStatus[] = await res.json()
         setPluginStatuses(data)
@@ -850,7 +850,7 @@ function App() {
   const fetchMetrics = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics`))
       if (res.ok) {
         const data: MetricsResponse = await res.json()
         setMetricsLoaded(true)
@@ -909,7 +909,7 @@ function App() {
       // Fetch historical data for the current time window
       const startTime = Date.now() - timeWindow.value * 1000
       const res = await fetch(
-        `${API_BASE}/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`
+        withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`)
       )
 
       if (res.ok) {
@@ -970,7 +970,7 @@ function App() {
   const fetchAlerts = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts`))
       if (res.ok) {
         const data: AlertsResponse = await res.json()
         setActiveAlerts(data.activeAlerts)
@@ -983,7 +983,7 @@ function App() {
   const acknowledgeAllAlerts = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/acknowledge`, {
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/acknowledge`), {
         method: 'POST',
       })
       setActiveAlerts([])
@@ -996,7 +996,7 @@ function App() {
   const fetchPipeline = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/pipeline`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`))
       if (res.ok) {
         const data = await res.json()
         setPipelineData(data)
@@ -1010,7 +1010,7 @@ function App() {
     if (!selectedProject) return
     setPipelineRunning(true)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/pipeline`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pipelineOptions),
@@ -1032,7 +1032,7 @@ function App() {
   const fetchEnvironments = async () => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/environments`)
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/environments`))
       if (res.ok) {
         const data = await res.json()
         setEnvironments(data.environments || [])
@@ -1046,7 +1046,7 @@ function App() {
     if (!selectedProject) return
     setDeployingEnv(env)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/deploy`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deploy`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -1067,7 +1067,7 @@ function App() {
     if (!selectedProject) return
     setRollingBackEnv(env)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/rollback`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/rollback`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -1090,9 +1090,9 @@ function App() {
     setSettingsLoading(true)
     try {
       const [alertsRes, logConfigRes, metricsRes] = await Promise.all([
-        fetch(`${API_BASE}/projects/${selectedProject.name}/alerts`),
-        fetch(`${API_BASE}/projects/${selectedProject.name}/logs/config`),
-        fetch(`${API_BASE}/projects/${selectedProject.name}/metrics/storage`),
+        fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts`)),
+        fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/config`)),
+        fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/storage`)),
       ])
       if (alertsRes.ok) {
         const data: AlertsResponse = await alertsRes.json()
@@ -1117,7 +1117,7 @@ function App() {
   const saveAlertThreshold = async (t: AlertThreshold) => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${t.id}`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${t.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
@@ -1134,7 +1134,7 @@ function App() {
   const addAlertThreshold = async (t: Partial<AlertThreshold>) => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
@@ -1151,7 +1151,7 @@ function App() {
   const deleteAlertThreshold = async (id: string) => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${id}`, {
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/thresholds/${id}`), {
         method: 'DELETE',
       })
       await fetchSettings()
@@ -1167,7 +1167,7 @@ function App() {
   const saveLogRetentionConfig = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/config`, {
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/config`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logConfig),
@@ -1180,7 +1180,7 @@ function App() {
   const handleLogRotate = async () => {
     if (!selectedProject) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/rotate`, { method: 'POST' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/rotate`), { method: 'POST' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to rotate logs:', e)
@@ -1190,7 +1190,7 @@ function App() {
   const handleClearLogs = async () => {
     if (!selectedProject || !confirm('Are you sure you want to clear all stored logs?')) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/logs/stored`, { method: 'DELETE' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/logs/stored`), { method: 'DELETE' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to clear logs:', e)
@@ -1200,7 +1200,7 @@ function App() {
   const handleExportMetrics = async (format: 'json' | 'csv') => {
     if (!selectedProject) return
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics/export`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/export`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ format }),
@@ -1222,20 +1222,30 @@ function App() {
   const handleClearMetrics = async () => {
     if (!selectedProject || !confirm('Are you sure you want to clear all stored metrics?')) return
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/metrics`, { method: 'DELETE' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics`), { method: 'DELETE' })
       await fetchSettings()
     } catch (e) {
       console.error('Failed to clear metrics:', e)
     }
   }
 
+  // Refetch projects whenever the user switches tenants — the closure inside
+  // setInterval otherwise pins to the mount-time `currentTenant`, leaving the
+  // sidebar (and the service-link ports it renders) showing the old tenant.
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
     fetchModels()
     const interval = setInterval(fetchProjects, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [currentTenant])
+
+  // Tenant switch invalidates the currently-selected project. Same-named
+  // projects across tenants would silently retarget, but cross-tenant they're
+  // different services with different ports — clear and let the user pick.
+  useEffect(() => {
+    setSelectedProject(null)
+  }, [currentTenant])
 
   useEffect(() => {
     if (selectedProject) {
@@ -1259,7 +1269,7 @@ function App() {
     fetchAll()
     const interval = setInterval(fetchAll, 5000)
     return () => clearInterval(interval)
-  }, [projects.map(p => p.name).join(',')])
+  }, [projects.map(p => p.name).join(','), currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
@@ -1289,7 +1299,7 @@ function App() {
         clearInterval(alertsInterval)
       }
     }
-  }, [selectedProject?.name, activeTab, timeWindow])
+  }, [selectedProject?.name, activeTab, timeWindow, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'plugins') {
@@ -1297,7 +1307,7 @@ function App() {
       const interval = setInterval(fetchPlugins, 15000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'pipeline') {
@@ -1305,7 +1315,7 @@ function App() {
       const interval = setInterval(fetchPipeline, 10000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'environments') {
@@ -1313,19 +1323,19 @@ function App() {
       const interval = setInterval(fetchEnvironments, 10000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'settings') {
       fetchSettings()
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'deployments') {
       const fetchDeployments = async () => {
         try {
-          const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/deployments`)
+          const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deployments`))
           if (res.ok) {
             const data = await res.json()
             setDeployments(data.deployments || [])
@@ -1336,7 +1346,7 @@ function App() {
       }
       fetchDeployments()
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
     if (followLogs) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1353,15 +1363,15 @@ function App() {
     const poll = async () => {
       try {
         const [statusRes, logRes] = await Promise.all([
-          fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`),
-          fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`),
+          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)),
+          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)),
         ])
         if (statusRes.ok) {
           const s = await statusRes.json()
           setGatlingStatus(s.status)
           if (s.status === 'completed' || s.status === 'error') {
             if (s.status === 'completed') {
-              const rRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`)
+              const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
               if (rRes.ok) setGatlingResults(await rRes.json())
             }
           }
@@ -1380,16 +1390,16 @@ function App() {
   // Fetch latest results when switching to perf tab (if previous run completed)
   useEffect(() => {
     if (!selectedProject || activeTab !== 'perf') return
-    fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)
+    fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`))
       .then(r => r.ok ? r.json() : null)
       .then(async s => {
         if (!s) return
         setGatlingStatus(s.status)
         if (s.status === 'completed') {
-          const rRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`)
+          const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
           if (rRes.ok) setGatlingResults(await rRes.json())
         }
-        const lRes = await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)
+        const lRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`))
         if (lRes.ok) setGatlingLog((await lRes.json()).lines)
       })
       .catch(() => {})
@@ -1401,7 +1411,7 @@ function App() {
     setGatlingLog([])
     setGatlingResults(null)
     try {
-      await fetch(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`, { method: 'POST' })
+      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`), { method: 'POST' })
     } catch {
       setGatlingStatus('error')
     }
@@ -1411,7 +1421,7 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/up`, { method: 'POST' })
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/up`), { method: 'POST' })
       const data = await res.json()
       if (!data.success && data.error) {
         setErrorModal({
@@ -1434,7 +1444,7 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/down`, { method: 'POST' })
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/down`), { method: 'POST' })
       const data = await res.json()
       if (!data.success && data.error) {
         setErrorModal({
@@ -1458,7 +1468,7 @@ function App() {
       return
     }
     try {
-      await fetch(`${API_BASE}/projects/${projectName}`, { method: 'DELETE' })
+      await fetch(withTenant(`${API_BASE}/projects/${projectName}`), { method: 'DELETE' })
       if (selectedProject?.name === projectName) {
         setSelectedProject(null)
       }
@@ -1612,6 +1622,12 @@ function App() {
       if (data.success) {
         setShowCreateTenantModal(false)
         setNewTenantForm({ name: '', jenkins: true, prometheus: true, grafana: true, tempo: true, loki: true })
+        // Jump the dashboard's tenant scope to the newly-created tenant so
+        // the sidebar, links, and service URLs all reflect it immediately.
+        // Without this the user stays on the previous tenant and clicking
+        // "web" / "api" opens the wrong tenant's published ports.
+        setCurrentTenant(tenantName)
+        await fetchTenants()
         if (data.started && data.dashboardUrl) {
           setErrorModal({
             title: 'Tenant running',
@@ -1666,7 +1682,7 @@ function App() {
     setAgentLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE}/projects/${selectedProject.name}/agent`, {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/agent`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
