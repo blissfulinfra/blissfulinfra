@@ -19,31 +19,32 @@ export function OntologyNodeView({ data }: Props) {
         border: `1px solid ${palette.color}`,
         borderRadius: 6,
         padding: '10px 14px',
-        minWidth: 160,
-        color: '#e5e7eb',
-        fontFamily: 'ui-monospace, monospace',
-        fontSize: 12,
+        minWidth: 170,
+        color: '#ffffff',
+        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+        fontSize: 13,
         boxShadow: data.selected ? `0 0 0 2px ${palette.color}` : 'none',
       }}
     >
-      <Handle type="target" position={Position.Left} style={{ background: palette.color }} />
+      <Handle type="target" position={Position.Left} style={{ background: palette.color, width: 8, height: 8 }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ color: palette.color, fontWeight: 600 }}>{data.label}</span>
+        <span style={{ color: '#ffffff', fontWeight: 700, letterSpacing: 0.2 }}>{data.label}</span>
         <span
           style={{
             width: 8,
             height: 8,
             borderRadius: '50%',
             background: statusColor,
+            flexShrink: 0,
           }}
           title={data.status ?? 'unknown'}
         />
       </div>
-      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: palette.color, marginTop: 4, opacity: 0.85 }}>
         {data.type}
         {data.port ? ` · :${data.port}` : ''}
       </div>
-      <Handle type="source" position={Position.Right} style={{ background: palette.color }} />
+      <Handle type="source" position={Position.Right} style={{ background: palette.color, width: 8, height: 8 }} />
     </div>
   )
 }

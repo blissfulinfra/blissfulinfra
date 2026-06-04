@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { execa } from "execa";
 import type { ChatMessage } from "./ollama.js";
 
 const CLAUDE_MODELS = [
@@ -8,26 +9,54 @@ const CLAUDE_MODELS = [
 
 const DEFAULT_MODEL = CLAUDE_MODELS[0].name;
 
+/**
+ * Build an SDK client from whichever credentials are present.
+ *   - ANTHROPIC_API_KEY  → standard API plan
+ *   - ANTHROPIC_AUTH_TOKEN → OAuth bearer (e.g. extracted from a Claude.ai
+ *     personal subscription / Claude Code session)
+ * Returns null if neither is set; caller may fall back to the CLI subprocess.
+ */
 function getClient(): Anthropic | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  return new Anthropic({ apiKey });
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  if (!apiKey && !authToken) return null;
+  return new Anthropic({ apiKey, authToken });
+}
+
+let cliAvailable: boolean | null = null;
+
+/**
+ * Is the Claude Code CLI installed and on PATH? Used as a fallback when no
+ * API/OAuth credentials are set — we shell out to `claude -p` which uses
+ * the user's already-authenticated Claude.ai subscription session.
+ */
+export async function checkClaudeCliAvailable(): Promise<boolean> {
+  if (cliAvailable !== null) return cliAvailable;
+  try {
+    await execa("claude", ["--version"], { reject: false, timeout: 3000 });
+    cliAvailable = true;
+  } catch {
+    cliAvailable = false;
+  }
+  return cliAvailable;
 }
 
 /**
- * Check if Claude API is available (API key set and valid)
+ * Check if Claude is available via any path:
+ *   1. SDK with API key or OAuth token, OR
+ *   2. Claude Code CLI on PATH (personal subscription, no env vars needed)
  */
 export async function checkClaudeAvailable(): Promise<boolean> {
   const client = getClient();
-  if (!client) return false;
-
-  try {
-    // Quick validation — list models endpoint
-    await client.models.list({ limit: 1 });
-    return true;
-  } catch {
-    return false;
+  if (client) {
+    try {
+      await client.models.list({ limit: 1 });
+      return true;
+    } catch {
+      // fall through to CLI check
+    }
   }
+  return checkClaudeCliAvailable();
 }
 
 /**
@@ -69,57 +98,106 @@ function convertMessages(messages: ChatMessage[]): {
 }
 
 /**
- * Send a chat completion request to Claude (non-streaming)
+ * Render our ChatMessage[] into a single prompt string for the Claude Code
+ * CLI's `-p` mode. The CLI doesn't take a multi-turn message list, so we
+ * fake it by prefixing each turn with `User:` / `Assistant:`.
+ */
+function messagesToCliPrompt(messages: ChatMessage[]): { prompt: string; system: string } {
+  const system = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n");
+  const turns = messages
+    .filter(m => m.role !== "system")
+    .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n\n");
+  return { prompt: turns, system };
+}
+
+async function claudeChatViaCli(messages: ChatMessage[]): Promise<string> {
+  const { prompt, system } = messagesToCliPrompt(messages);
+  const args = ["-p", prompt, "--output-format", "text"];
+  if (system) args.push("--append-system-prompt", system);
+  // `stdin: "ignore"` closes stdin immediately. Without it, `claude -p` waits
+  // ~3s for piped input it'll never get and emits a spurious warning. The
+  // prompt is already in argv, so there's nothing more to feed it.
+  try {
+    const { stdout } = await execa("claude", args, { stdin: "ignore", reject: true });
+    return stdout.trim();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Detect the "Not logged in" exit and replace the noisy subprocess error
+    // with a one-line hint that tells the user exactly what to do.
+    if (/not logged in|please run \/login/i.test(msg)) {
+      throw new Error(
+        "Claude Code is not logged in inside the dashboard container.\n" +
+        "Run on the host: blissful-infra dashboard login",
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Send a chat completion request to Claude. Prefers the SDK (faster,
+ * supports streaming). Falls back to the Claude Code CLI when no
+ * ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN is set — that lets users on a
+ * personal Claude.ai subscription run the agent without an API key by
+ * piggybacking on their `claude login` session.
  */
 export async function claudeChat(
   model: string,
   messages: ChatMessage[]
 ): Promise<string> {
   const client = getClient();
-  if (!client) {
-    throw new Error("ANTHROPIC_API_KEY environment variable is not set");
+  if (client) {
+    const { system, messages: anthropicMessages } = convertMessages(messages);
+    const response = await client.messages.create({
+      model,
+      max_tokens: 4096,
+      system,
+      messages: anthropicMessages,
+    });
+    const textBlock = response.content.find((block) => block.type === "text");
+    return textBlock?.text ?? "";
   }
-
-  const { system, messages: anthropicMessages } = convertMessages(messages);
-
-  const response = await client.messages.create({
-    model,
-    max_tokens: 4096,
-    system,
-    messages: anthropicMessages,
-  });
-
-  const textBlock = response.content.find((block) => block.type === "text");
-  return textBlock?.text ?? "";
+  if (await checkClaudeCliAvailable()) {
+    return claudeChatViaCli(messages);
+  }
+  throw new Error("No Claude credentials. Set ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or install Claude Code (`claude login`).");
 }
 
 /**
- * Stream a chat completion request to Claude
+ * Stream a chat completion request to Claude.
+ *
+ * With SDK credentials: token-by-token streaming via the official API.
+ * Without: falls back to the CLI's `-p` mode and yields the whole response
+ * as a single chunk — the CLI doesn't expose token-by-token streaming in a
+ * stable text format yet, so this is the pragmatic trade-off.
  */
 export async function* claudeChatStream(
   model: string,
   messages: ChatMessage[]
 ): AsyncGenerator<string, void, unknown> {
   const client = getClient();
-  if (!client) {
-    throw new Error("ANTHROPIC_API_KEY environment variable is not set");
-  }
-
-  const { system, messages: anthropicMessages } = convertMessages(messages);
-
-  const stream = client.messages.stream({
-    model,
-    max_tokens: 4096,
-    system,
-    messages: anthropicMessages,
-  });
-
-  for await (const event of stream) {
-    if (
-      event.type === "content_block_delta" &&
-      event.delta.type === "text_delta"
-    ) {
-      yield event.delta.text;
+  if (client) {
+    const { system, messages: anthropicMessages } = convertMessages(messages);
+    const stream = client.messages.stream({
+      model,
+      max_tokens: 4096,
+      system,
+      messages: anthropicMessages,
+    });
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        yield event.delta.text;
+      }
     }
+    return;
   }
+  if (await checkClaudeCliAvailable()) {
+    yield await claudeChatViaCli(messages);
+    return;
+  }
+  throw new Error("No Claude credentials. Set ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or install Claude Code (`claude login`).");
 }

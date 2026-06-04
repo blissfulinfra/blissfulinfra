@@ -1,261 +1,190 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
-  addEdge,
   applyNodeChanges,
   applyEdgeChanges,
-  type Connection,
   type Edge,
   type Node,
   type NodeChange,
   type EdgeChange,
-  type NodeMouseHandler,
-  type EdgeMouseHandler,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Save, RefreshCw, Loader2 } from 'lucide-react'
-import { getConfig } from '../../config'
 import { OntologyNodeView } from './OntologyNodeView'
-import { NodeDetailPanel } from './NodeDetailPanel'
-import { EdgeEditor } from './EdgeEditor'
-import { EDGE_TYPE_COLORS, type ClientOntology, type OntologyEdge, type OntologyNode } from './types'
+import { EDGE_TYPE_COLORS } from './types'
+
+const nodeTypes = { ontology: OntologyNodeView }
+
+/**
+ * Canonical React Flow (xyflow v12) setup, rebuilt from the docs.
+ *
+ *   https://reactflow.dev/learn
+ *   https://reactflow.dev/api-reference/react-flow
+ *
+ * Deliberately uses ZERO Tailwind classes on or above the ReactFlow element.
+ * Tailwind v4's preflight + the project's `*` reset have a history of
+ * silently clobbering library-provided structural CSS, so the entire modal
+ * sub-tree below the header is plain inline styles. Once this paints, the
+ * custom OntologyNodeView gets layered back in.
+ */
 
 interface Props {
   clientName: string
   onClose: () => void
 }
 
-const nodeTypes = { ontology: OntologyNodeView }
-
-function toFlowNodes(nodes: OntologyNode[]): Node[] {
-  return nodes.map(n => ({
-    id: n.id,
-    type: 'ontology',
-    position: n.position,
-    data: n as unknown as Record<string, unknown>,
-  }))
-}
-
-function toFlowEdges(edges: OntologyEdge[]): Edge[] {
-  return edges.map(e => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: e.label,
-    style: { stroke: EDGE_TYPE_COLORS[e.type], strokeWidth: e.wired ? 2.5 : 1.5 },
-    animated: !e.wired && e.type !== 'custom',
-    labelStyle: { fill: '#e5e7eb', fontSize: 11, fontFamily: 'ui-monospace, monospace' },
-    labelBgStyle: { fill: '#1f2937' },
-  }))
+interface OntologyResponse {
+  clientName: string
+  nodes: Array<{
+    id: string
+    type: string
+    label: string
+    port?: number
+    status?: string
+    position: { x: number; y: number }
+  }>
+  edges: Array<{
+    id: string
+    source: string
+    target: string
+    type: string
+    label?: string
+  }>
 }
 
 function GraphInner({ clientName, onClose }: Props) {
-  const [graph, setGraph] = useState<ClientOntology | null>(null)
+  const [graph, setGraph] = useState<OntologyResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
-  const apiBase = getConfig().apiBase
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [nodes, setNodes] = useState<Node[]>([])
+  const [edges, setEdges] = useState<Edge[]>([])
 
-  async function reload() {
+  useEffect(() => {
+    let cancelled = false
     setLoading(true)
     setError(null)
-    try {
-      const res = await fetch(`${apiBase}/ontology/${clientName}`)
-      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`)
-      const data = await res.json() as ClientOntology
-      setGraph(data)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { reload() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [clientName])
-
-  const scheduleSave = useCallback((next: ClientOntology) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      setSaving(true)
-      try {
-        await fetch(`${apiBase}/ontology/${clientName}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(next),
-        })
-      } catch (e) {
-        setError((e as Error).message)
-      } finally {
-        setSaving(false)
-      }
-    }, 500)
-  }, [apiBase, clientName])
-
-  const flowNodes = useMemo(() => graph ? toFlowNodes(graph.nodes) : [], [graph])
-  const flowEdges = useMemo(() => graph ? toFlowEdges(graph.edges) : [], [graph])
-
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setGraph(prev => {
-      if (!prev) return prev
-      const updated = applyNodeChanges(changes, toFlowNodes(prev.nodes))
-      const nextNodes: OntologyNode[] = prev.nodes.map(n => {
-        const flow = updated.find(u => u.id === n.id)
-        return flow ? { ...n, position: flow.position } : n
+    fetch(`/api/v1/ontology/${clientName}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json() as Promise<OntologyResponse>
       })
-      const next = { ...prev, nodes: nextNodes }
-      scheduleSave(next)
-      return next
-    })
-  }, [scheduleSave])
+      .then(data => {
+        if (cancelled) return
+        setGraph(data)
+        setNodes(data.nodes.map(n => ({
+          id: n.id,
+          type: 'ontology',
+          position: n.position,
+          data: {
+            label: n.label,
+            type: n.type,
+            port: n.port,
+            status: n.status,
+          },
+        })))
+        setEdges(data.edges.map(e => {
+          const color = EDGE_TYPE_COLORS[e.type as keyof typeof EDGE_TYPE_COLORS] ?? '#a3a3a3'
+          return {
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            label: e.label,
+            animated: true,
+            style: { stroke: color, strokeWidth: 2 },
+            labelStyle: { fill: '#e2e8f0', fontSize: 11, fontFamily: 'ui-monospace, monospace' },
+            labelBgStyle: { fill: '#1a2236', fillOpacity: 0.9 },
+          }
+        }))
+      })
+      .catch(e => { if (!cancelled) setError((e as Error).message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [clientName])
 
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    setGraph(prev => {
-      if (!prev) return prev
-      const updated = applyEdgeChanges(changes, toFlowEdges(prev.edges))
-      const nextEdges = prev.edges.filter(e => updated.find(u => u.id === e.id))
-      const next = { ...prev, edges: nextEdges }
-      scheduleSave(next)
-      return next
-    })
-  }, [scheduleSave])
-
-  const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return
-    setGraph(prev => {
-      if (!prev) return prev
-      const id = `${connection.source}__${connection.target}__${Date.now()}`
-      const newEdge: OntologyEdge = {
-        id,
-        source: connection.source!,
-        target: connection.target!,
-        type: 'http',
-        wired: false,
-      }
-      const next = { ...prev, edges: [...prev.edges, newEdge] }
-      scheduleSave(next)
-      setSelectedEdgeId(id)
-      return next
-    })
-    // Suppress unused — addEdge is the canonical helper but we work in domain space
-    void addEdge
-  }, [scheduleSave])
-
-  const onNodeClick: NodeMouseHandler = useCallback((_e, node) => {
-    setSelectedNodeId(node.id)
-    setSelectedEdgeId(null)
-  }, [])
-
-  const onEdgeClick: EdgeMouseHandler = useCallback((_e, edge) => {
-    setSelectedEdgeId(edge.id)
-    setSelectedNodeId(null)
-  }, [])
-
-  const selectedNode = graph?.nodes.find(n => n.id === selectedNodeId) ?? null
-  const selectedEdge = graph?.edges.find(e => e.id === selectedEdgeId) ?? null
-
-  function updateEdge(updated: OntologyEdge) {
-    setGraph(prev => {
-      if (!prev) return prev
-      const next = { ...prev, edges: prev.edges.map(e => e.id === updated.id ? updated : e) }
-      scheduleSave(next)
-      return next
-    })
-  }
-
-  function deleteEdge(id: string) {
-    setGraph(prev => {
-      if (!prev) return prev
-      const next = { ...prev, edges: prev.edges.filter(e => e.id !== id) }
-      scheduleSave(next)
-      return next
-    })
-    setSelectedEdgeId(null)
-  }
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes(curr => applyNodeChanges(changes, curr)),
+    [],
+  )
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => setEdges(curr => applyEdgeChanges(changes, curr)),
+    [],
+  )
 
   return (
-    <div className="fixed inset-0 bg-gray-950 z-30 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-gray-100">System Topology</span>
-          <span className="text-xs text-blue-300 bg-blue-900/40 border border-blue-700 px-2 py-0.5 rounded font-mono">{clientName}</span>
-          {saving && <span className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> saving</span>}
-          {error && <span className="text-xs text-red-300">{error}</span>}
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 50,
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#0b0e1a',
+    }}>
+      <div style={{
+        height: 56,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 16px',
+        borderBottom: '1px solid #1a2236',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, color: '#e2e8f0' }}>System Topology</span>
+          <span style={{
+            fontSize: 11,
+            color: '#90beff',
+            background: 'rgba(59,126,244,0.15)',
+            border: '1px solid #3b7ef4',
+            padding: '2px 6px',
+            borderRadius: 3,
+            fontFamily: 'monospace',
+          }}>{clientName}</span>
+          <span style={{ fontSize: 10, color: '#8899b4', fontFamily: 'monospace' }}>
+            {loading ? 'fetching…' : error ? `error: ${error}` : `nodes=${graph?.nodes.length ?? 0} edges=${graph?.edges.length ?? 0}`}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={reload} className="p-2 hover:bg-gray-800 rounded" title="Refresh">
-            <RefreshCw className="w-4 h-4 text-gray-400" />
-          </button>
-          <button onClick={onClose} className="px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 rounded">
-            Close
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: '#111827',
+            color: '#e2e8f0',
+            padding: '6px 12px',
+            borderRadius: 4,
+            fontSize: 12,
+            border: '1px solid #1a2236',
+            cursor: 'pointer',
+          }}
+        >Close</button>
       </div>
 
-      <div className="flex-1 min-h-0 relative" style={{ width: '100%', height: 'calc(100vh - 56px)' }}>
-        {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-            <Loader2 className="w-6 h-6 animate-spin" />
-          </div>
-        ) : !graph || graph.nodes.length === 0 ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-2">
-            <span className="text-sm">No nodes returned for <code className="text-blue-300">{clientName}</code>.</span>
-            <span className="text-xs">Check that the tenant has at least one project + service registered.</span>
-          </div>
-        ) : (
-          <div style={{ width: '100%', height: '100%' }}>
-            <ReactFlow
-              nodes={flowNodes}
-              edges={flowEdges}
-              nodeTypes={nodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={onNodeClick}
-              onEdgeClick={onEdgeClick}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-              defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-              minZoom={0.1}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background color="#374151" />
-              <Controls className="!bg-gray-800 !border-gray-700" />
-              <MiniMap className="!bg-gray-900 !border-gray-700" maskColor="rgba(0,0,0,0.6)" nodeColor="#60a5fa" />
-            </ReactFlow>
-          </div>
-        )}
-
-        {selectedNode && (
-          <NodeDetailPanel
-            clientName={clientName}
-            node={selectedNode}
-            onClose={() => setSelectedNodeId(null)}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          fitView
+          fitViewOptions={{ padding: 0.25 }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="#1a2236" gap={20} size={1.5} />
+          <Controls style={{ background: '#111827', border: '1px solid #1a2236' }} />
+          <MiniMap
+            style={{ background: '#0b0e1a', border: '1px solid #1a2236' }}
+            nodeColor="#3b7ef4"
+            maskColor="rgba(0,0,0,0.6)"
           />
-        )}
-        {selectedEdge && (
-          <EdgeEditor
-            clientName={clientName}
-            edge={selectedEdge}
-            onClose={() => setSelectedEdgeId(null)}
-            onChange={updateEdge}
-            onDelete={() => deleteEdge(selectedEdge.id)}
-          />
-        )}
+        </ReactFlow>
       </div>
     </div>
   )
 }
 
 export function GraphView(props: Props) {
-  // Keep the unused-imports-friendly guard explicit
-  void Save
   return (
     <ReactFlowProvider>
       <GraphInner {...props} />

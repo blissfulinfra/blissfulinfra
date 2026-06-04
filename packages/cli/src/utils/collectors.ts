@@ -224,7 +224,72 @@ export async function getGitDiff(
 }
 
 /**
- * Collect all context for agent analysis
+ * Tenant-mode log collector (ADR-0017). Containers carry
+ * com.blissful.tenant + com.blissful.project labels, so we filter by those
+ * directly instead of relying on `docker compose logs` from a project dir
+ * that doesn't exist in the host-level dashboard container's filesystem.
+ */
+export async function collectTenantProjectLogs(
+  tenant: string,
+  project: string,
+  tail = 100,
+): Promise<LogEntry[]> {
+  let containers: string[] = [];
+  try {
+    const { stdout } = await execa("docker", [
+      "ps", "-a",
+      "--filter", `label=com.blissful.tenant=${tenant}`,
+      "--filter", `label=com.blissful.project=${project}`,
+      "--format", "{{.Names}}",
+    ], { reject: false });
+    containers = stdout.trim().split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+  if (containers.length === 0) return [];
+
+  const results = await Promise.all(containers.map(async name => {
+    try {
+      const { stdout } = await execa("docker", [
+        "logs", `--tail=${tail}`, "--timestamps", name,
+      ], { reject: false });
+      const serviceName = name.startsWith(`${tenant}-${project}-`)
+        ? name.slice(`${tenant}-${project}-`.length)
+        : name.startsWith(`${tenant}-`) ? name.slice(`${tenant}-`.length) : name;
+      const entries: LogEntry[] = [];
+      for (const line of stdout.split("\n")) {
+        if (!line) continue;
+        const spaceIdx = line.indexOf(" ");
+        const ts = spaceIdx > 0 ? line.slice(0, spaceIdx) : new Date().toISOString();
+        const message = spaceIdx > 0 ? line.slice(spaceIdx + 1) : line;
+        entries.push({ timestamp: ts, service: serviceName, message });
+      }
+      return entries;
+    } catch {
+      return [];
+    }
+  }));
+  return results.flat().sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+/** Lines we treat as "error-ish" when the agent query is about problems. */
+const ERROR_LINE_PATTERN = /\b(error|exception|fail(ed|ure)?|fatal|critical|severe|panic|warn(ing)?)\b/i;
+
+export function filterErrorLikeLogs(logs: LogEntry[]): LogEntry[] {
+  return logs.filter(l => ERROR_LINE_PATTERN.test(l.message));
+}
+
+/**
+ * Collect all context for agent analysis.
+ *
+ * When `tenant` + `project` are provided (control-plane / tenant mode), we
+ * read logs via docker labels — the dashboard container has the socket but
+ * no compose dir on disk. Otherwise fall back to flat-model `docker
+ * compose logs` from projectDir.
+ *
+ * Pass `errorsOnly: true` to keep just error/warn-style lines after pulling
+ * the larger tail. Useful for "what's broken?" queries — same wide window,
+ * narrower signal, far fewer tokens in the prompt.
  */
 export async function collectContext(
   projectDir: string,
@@ -232,29 +297,28 @@ export async function collectContext(
     logTail?: number;
     commitLimit?: number;
     service?: string;
+    tenant?: string;
+    project?: string;
+    errorsOnly?: boolean;
   } = {}
 ): Promise<CollectedContext> {
-  const { logTail = 100, commitLimit = 10, service } = options;
+  const { logTail = 500, commitLimit = 10, service, tenant, project, errorsOnly } = options;
 
-  // Collect in parallel
-  const [logs, commits] = await Promise.all([
-    collectDockerLogs(projectDir, { tail: logTail, service }),
-    collectGitCommits(projectDir, { limit: commitLimit }),
-  ]);
+  const allLogs = tenant && project
+    ? await collectTenantProjectLogs(tenant, project, logTail)
+    : await collectDockerLogs(projectDir, { tail: logTail, service });
+  const logs = errorsOnly ? filterErrorLikeLogs(allLogs) : allLogs;
+  const commits = await collectGitCommits(projectDir, { limit: commitLimit });
 
-  // Generate summary
-  const errorLogs = logs.filter(
-    (l) =>
-      l.message.toLowerCase().includes("error") ||
-      l.message.toLowerCase().includes("exception") ||
-      l.message.toLowerCase().includes("failed")
-  );
+  const errorLogs = errorsOnly ? logs : filterErrorLikeLogs(allLogs);
 
   const summary = [
-    `Collected ${logs.length} log entries from Docker containers.`,
+    errorsOnly
+      ? `Filtered ${allLogs.length} log entries down to ${logs.length} error/warn-level lines.`
+      : `Collected ${logs.length} log entries from Docker containers.`,
     errorLogs.length > 0
-      ? `Found ${errorLogs.length} entries containing errors/exceptions.`
-      : "No obvious errors found in logs.",
+      ? `Found ${errorLogs.length} entries containing errors/warnings.`
+      : "No obvious errors or warnings found in logs.",
     `Collected ${commits.length} recent git commits.`,
   ].join(" ");
 

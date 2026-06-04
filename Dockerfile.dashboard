@@ -7,14 +7,20 @@
 FROM node:20-alpine AS deps
 WORKDIR /repo
 
+# Build tools for native modules (node-pty has a small native component).
+RUN apk add --no-cache python3 make g++
+
 # Copy manifests first so layer cache survives source-only changes
 COPY package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/cli/package.json ./packages/cli/
 COPY packages/dashboard/package.json ./packages/dashboard/
 
-# Single root install resolves the @blissful-infra/shared workspace symlink
+# Skip lifecycle scripts: the root postinstall builds the shared package,
+# but its source isn't COPYed yet. node-pty's native module is rebuilt
+# explicitly below once the build tools are confirmed present.
 RUN npm install --ignore-scripts
+RUN npm rebuild node-pty
 
 # ── Stage 2: build shared → cli → dashboard ───────────────────────────────────
 FROM deps AS build
@@ -30,7 +36,16 @@ RUN npm run build -w packages/dashboard
 
 # ── Stage 3: lean runtime image ───────────────────────────────────────────────
 FROM node:20-alpine
-RUN apk add --no-cache docker-cli docker-cli-compose
+# bash + common operator tools so the in-dashboard terminal feels familiar.
+# libstdc++ keeps node-pty's prebuilt .node loadable at runtime on Alpine.
+RUN apk add --no-cache docker-cli docker-cli-compose bash curl vim git ncurses libstdc++
+
+# Claude Code CLI — lets the in-container Agent endpoint reach Claude.ai via
+# the user's subscription instead of demanding an ANTHROPIC_API_KEY env var.
+# Auth credentials live in /root/.claude, which the compose file bind-mounts
+# from ~/.blissful-infra/dashboard-claude on the host so the login survives
+# container recreates. First-time setup: `blissful-infra dashboard login`.
+RUN npm install -g @anthropic-ai/claude-code@latest
 
 WORKDIR /app
 

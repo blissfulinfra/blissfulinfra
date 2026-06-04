@@ -1,15 +1,12 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import chalk from "chalk";
-import ora from "ora";
-import { execa } from "execa";
 import { tenantCreateAction, tenantUpAction } from "./tenant.js";
 import { projectCreateAction } from "./project.js";
 import { serviceAddV2Action } from "./service-v2.js";
 import { listTenants, listProjects, getTenantDir, getProjectDir, getService, getTenant } from "../utils/tenant-registry.js";
 import { writeContext } from "../utils/context.js";
-import { writeHostDashboardCompose, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
-import { ensureDashboardImage } from "../utils/infra-images.js";
+import { ensureHostDashboardRunning, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
 import fs from "node:fs/promises";
 
 interface InitOptions {
@@ -61,7 +58,7 @@ export const initCommand = new Command("init")
       console.log(chalk.dim("First run takes a few minutes (image builds + pulls). Subsequent runs are seconds."));
       console.log();
       await tenantUpAction(tenantName);
-      await ensureHostDashboardRunning();
+      await ensureHostDashboardRunning({ forceRecreate: true });
       printNextStepsRunning(tenantName, projectName, addedServices);
     } else {
       printNextStepsScaffoldedOnly(tenantName, projectName, addedServices);
@@ -345,26 +342,6 @@ async function printNextStepsRunning(tenant: string, project: string, services: 
   console.log(chalk.dim("Stop everything when you're done:"));
   console.log(chalk.cyan("  blissful-infra tenant down"));
   console.log();
-}
-
-async function ensureHostDashboardRunning(): Promise<void> {
-  // Always force-recreate so a dashboard from a previous session can't keep
-  // a stale bind mount to a freshly-wiped/repopulated ~/.blissful-infra.
-  // Docker Desktop pins the inode when the source dir is empty at mount
-  // time; the container then sees an empty /blissful-home even after the
-  // registry is rewritten on the host. Recreating is the only reliable cure.
-  const spinner = ora("Starting host dashboard...").start();
-  try {
-    await ensureDashboardImage();
-    const composePath = await writeHostDashboardCompose();
-    await execa("docker", [
-      "compose", "-f", composePath, "up", "-d", "--force-recreate",
-    ], { stdio: "pipe" });
-    spinner.succeed(`Dashboard running at http://localhost:${HOST_DASHBOARD_PORT}`);
-  } catch (err) {
-    spinner.fail("Failed to start dashboard");
-    if (err instanceof Error) console.error(chalk.red(err.message));
-  }
 }
 
 function printNextStepsScaffoldedOnly(tenant: string, project: string, services: string[]): void {
