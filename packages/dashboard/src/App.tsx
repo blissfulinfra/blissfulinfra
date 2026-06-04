@@ -30,6 +30,7 @@ import {
   X,
   HardDrive,
   Network,
+  TerminalSquare,
   BarChart3,
   CheckCircle,
   XCircle,
@@ -50,7 +51,12 @@ import {
   Workflow,
 } from 'lucide-react'
 import { GraphView } from './components/ontology/GraphView'
+import { Terminal as InDashboardTerminal } from './components/Terminal'
 import { ClientOverviewView } from './components/ClientOverviewView'
+import { Watcher } from './components/Watcher'
+// browserAi is consumed exclusively by Watcher.tsx — the Agent tab always
+// uses the backend LLM via /api/v1/projects/:name/agent for deeper analysis
+// with tool access.
 
 interface Project {
   name: string
@@ -496,7 +502,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings' | 'perf'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'watcher' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings' | 'perf'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
     timestamps: [],
@@ -551,6 +557,7 @@ function App() {
   }>>([])
   const [removingTenant, setRemovingTenant] = useState<string | null>(null)
   const [showGraph, setShowGraph] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
   const [models, setModels] = useState<ModelsResponse | null>(null)
@@ -1232,15 +1239,15 @@ function App() {
     }
   }
 
-  // Refetch projects whenever the user switches tenants — the closure inside
-  // setInterval otherwise pins to the mount-time `currentTenant`, leaving the
-  // sidebar (and the service-link ports it renders) showing the old tenant.
+  // Fetch projects on mount and whenever the user switches tenants. No
+  // polling — the dashboard is for local dev, not a live ops console, and
+  // 5s polling drowns the Network tab. Tenant create / project create /
+  // service add / start / stop all call `fetchProjects()` explicitly, so
+  // the sidebar stays in sync without a heartbeat.
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
     fetchModels()
-    const interval = setInterval(fetchProjects, 5000)
-    return () => clearInterval(interval)
   }, [currentTenant])
 
   // Tenant switch invalidates the currently-selected project. Same-named
@@ -1259,19 +1266,12 @@ function App() {
     }
   }, [selectedProject?.name, lokiServiceFilter, lokiLevelFilter, lokiSearch])
 
-  // Health polling — covers ALL projects, not just the selected one.
-  // The sidebar's health dot for a non-selected project also reads from
-  // healthByProject[name], so we keep them all fresh. The cost is one
-  // extra request per project per 5s; in practice you've got 1-3 projects,
-  // and the /health endpoint is cheap (docker inspect, not HTTP probe).
+  // Health — fetched once when the project set changes or the tenant
+  // changes. No polling; the sidebar dot stays at last-known state until
+  // the user does something that re-fetches projects.
   useEffect(() => {
     if (projects.length === 0) return
-    const fetchAll = () => {
-      for (const p of projects) fetchHealthFor(p.name)
-    }
-    fetchAll()
-    const interval = setInterval(fetchAll, 5000)
-    return () => clearInterval(interval)
+    for (const p of projects) fetchHealthFor(p.name)
   }, [projects.map(p => p.name).join(','), currentTenant])
 
   useEffect(() => {
@@ -1572,12 +1572,15 @@ function App() {
       const res = await fetch(`${API_BASE}/tenants`)
       if (res.ok) {
         const data = await res.json()
-        const list = data.tenants || []
-        setTenantList(list)
-        // Seed currentTenant on first load: prefer the env-bound tenant,
-        // otherwise fall through to the first registry entry.
-        if (!currentTenant && list.length > 0) {
-          const envBound = list.find((t: { isCurrent: boolean }) => t.isCurrent)
+        const list: Array<{ name: string; isCurrent: boolean }> = data.tenants || []
+        setTenantList(list as typeof tenantList)
+        // Seed (or correct) currentTenant. Without this, a stale entry from
+        // a prior session's localStorage can point at a tenant that no
+        // longer exists — every per-tenant fetch then returns empty and the
+        // graph/sidebar look broken even though everything works.
+        const known = new Set(list.map(t => t.name))
+        if (list.length > 0 && (!currentTenant || !known.has(currentTenant))) {
+          const envBound = list.find(t => t.isCurrent)
           setCurrentTenant((envBound ?? list[0]).name)
         }
       }
@@ -1681,39 +1684,31 @@ function App() {
 
     const userMessage = input.trim()
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage }])
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setAgentLoading(true)
 
     try {
+      // Backend agent: deeper analysis, tool access, full project context.
+      // The on-device path lives in the Watcher tab — different feature,
+      // different intent.
       const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/agent`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: userMessage,
           model: selectedModel || undefined,
-          // Always derive provider from the selected model so Ollama models work
-          // even when Claude is also available
           provider: models?.models.find(m => m.name === selectedModel)?.provider ?? aiProvider ?? undefined,
         }),
       })
 
       if (res.ok) {
         const data = await res.json()
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: data.response },
-        ])
+        setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
       } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: 'Error: Failed to get response from agent' },
-        ])
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Failed to get response from agent' }])
       }
     } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Error: Could not connect to agent' },
-      ])
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Could not connect to agent' }])
     } finally {
       setAgentLoading(false)
     }
@@ -1776,9 +1771,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
-      {showGraph && (links.tenantName || links.clientName) && (
-        <GraphView clientName={(links.tenantName || links.clientName)!} onClose={() => setShowGraph(false)} />
+      {showGraph && (currentTenant || links.tenantName || links.clientName) && (
+        <GraphView clientName={(currentTenant ?? links.tenantName ?? links.clientName)!} onClose={() => setShowGraph(false)} />
       )}
+      {showTerminal && <InDashboardTerminal onClose={() => setShowTerminal(false)} />}
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -1818,7 +1814,7 @@ function App() {
                 ))}
               </select>
             )}
-            {(links.tenantName || links.clientName) && (
+            {(currentTenant || links.tenantName || links.clientName) && (
               <button
                 onClick={() => setShowGraph(true)}
                 className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-blue-300"
@@ -1828,6 +1824,14 @@ function App() {
                 Graph
               </button>
             )}
+            <button
+              onClick={() => setShowTerminal(true)}
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-emerald-300"
+              title="Open a shell inside the dashboard container"
+            >
+              <TerminalSquare className="w-4 h-4" />
+              Terminal
+            </button>
             {links.tenantName && (
               <button
                 onClick={() => setShowCreateTenantModal(true)}
@@ -2158,6 +2162,18 @@ function App() {
                   Agent
                 </button>
                 <button
+                  onClick={() => setActiveTab('watcher')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'watcher'
+                      ? 'border-emerald-400 text-emerald-300'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                  title="On-device AI monitor watching this service for anomalies"
+                >
+                  <Eye className="w-4 h-4" />
+                  Watcher
+                </button>
+                <button
                   onClick={() => setActiveTab('metrics')}
                   className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                     activeTab === 'metrics'
@@ -2341,7 +2357,7 @@ function App() {
                   <div className="border-b border-gray-800 px-4 py-3 space-y-2">
                     {!models?.available ? (
                       <p className="text-sm text-yellow-400">
-                        No AI provider available — set ANTHROPIC_API_KEY or start Ollama
+                        No AI provider available — install Claude Code (`claude login`), set ANTHROPIC_API_KEY, or start Ollama
                       </p>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
@@ -2471,6 +2487,19 @@ function App() {
                       </button>
                     </div>
                   </form>
+                </div>
+              ) : activeTab === 'watcher' ? (
+                <div className="flex-1 flex flex-col p-4 gap-4 overflow-auto">
+                  <div className="text-sm text-gray-400 leading-relaxed">
+                    On-device passive monitor. Runs entirely in your browser via Chrome's built-in
+                    Gemini Nano — no network, no API key. Pulls health, alerts, and recent error
+                    logs every 60s and surfaces only what a developer would actually want to know.
+                  </div>
+                  <Watcher
+                    projectName={selectedProject?.name ?? null}
+                    withTenant={withTenant}
+                    apiBase={API_BASE}
+                  />
                 </div>
               ) : activeTab === 'metrics' ? (
                 <div className="flex-1 flex flex-col">

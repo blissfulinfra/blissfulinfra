@@ -23,7 +23,11 @@ export interface AIModelInfo {
 
 /**
  * Determine the best available AI provider.
- * Prefers Claude when ANTHROPIC_API_KEY is set, falls back to Ollama.
+ *
+ * "Available" for Claude now means any of: ANTHROPIC_API_KEY,
+ * ANTHROPIC_AUTH_TOKEN (OAuth), or the `claude` CLI on PATH (uses the
+ * user's authenticated Claude.ai session). Auto-select still prefers
+ * Claude over Ollama.
  */
 export async function getProvider(
   preferred?: AIProvider
@@ -35,10 +39,7 @@ export async function getProvider(
     return (await checkOllamaRunning()) ? "ollama" : null;
   }
 
-  // Auto-select: prefer Claude if API key is set
-  if (process.env.ANTHROPIC_API_KEY) {
-    if (await checkClaudeAvailable()) return "claude";
-  }
+  if (await checkClaudeAvailable()) return "claude";
   if (await checkOllamaRunning()) return "ollama";
   return null;
 }
@@ -107,8 +108,8 @@ export async function listAllModels(): Promise<
     displayName?: string;
   }> = [];
 
-  // Add Claude models if available
-  if (process.env.ANTHROPIC_API_KEY) {
+  // Add Claude models if any Claude path is available (SDK keys or CLI).
+  if (await checkClaudeAvailable()) {
     for (const m of listClaudeModels()) {
       models.push({
         name: m.name,

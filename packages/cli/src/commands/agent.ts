@@ -239,8 +239,10 @@ export async function agentAction(name?: string, opts: AgentOptions = {}): Promi
     }
     console.error();
     console.error(chalk.dim("Options:"));
-    console.error(chalk.cyan("  1. Set ANTHROPIC_API_KEY") + chalk.dim(" for Claude"));
-    console.error(chalk.cyan("  2. Run 'ollama serve'") + chalk.dim("    for Ollama (local)"));
+    console.error(chalk.cyan("  1. Install Claude Code + 'claude login'") + chalk.dim(" — uses your Claude.ai subscription, no API key needed"));
+    console.error(chalk.cyan("  2. Set ANTHROPIC_API_KEY") + chalk.dim("             — Anthropic API plan"));
+    console.error(chalk.cyan("  3. Set ANTHROPIC_AUTH_TOKEN") + chalk.dim("           — OAuth bearer token"));
+    console.error(chalk.cyan("  4. Run 'ollama serve'") + chalk.dim("                  — local Ollama"));
     process.exit(1);
   }
 

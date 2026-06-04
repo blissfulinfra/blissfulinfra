@@ -91,6 +91,33 @@ async function dashboardOpenAction(): Promise<void> {
   await openBrowser(`http://localhost:${HOST_DASHBOARD_PORT}`);
 }
 
+/**
+ * Run `claude login` inside the dashboard container so the in-dashboard
+ * Agent tab can hit Claude without an API key. Credentials persist in the
+ * bind-mounted ~/.blissful-infra/dashboard-claude across container recreates.
+ */
+async function dashboardLoginAction(): Promise<void> {
+  if (!(await isDashboardRunning())) {
+    console.error(chalk.red("Dashboard is not running."));
+    console.error(chalk.dim("Start with: ") + chalk.cyan("blissful-infra dashboard up"));
+    process.exit(1);
+  }
+  console.log(chalk.dim("Opening Claude Code login flow inside the dashboard container..."));
+  console.log(chalk.dim("(Auth tokens persist at ~/.blissful-infra/dashboard-claude/)"));
+  console.log();
+  try {
+    await execa("docker", ["exec", "-it", HOST_DASHBOARD_CONTAINER, "claude", "/login"], {
+      stdio: "inherit",
+    });
+    console.log();
+    console.log(chalk.green("✓ Logged in. The dashboard's Agent tab can now reach Claude."));
+  } catch (err) {
+    const e = toExecError(err);
+    if (e.stderr) console.error(chalk.red(e.stderr));
+    process.exit(1);
+  }
+}
+
 export const dashboardCommand = new Command("dashboard")
   .description("Host-level dashboard (single control plane for every tenant)");
 
@@ -114,3 +141,8 @@ dashboardCommand
   .command("open")
   .description("Open the running dashboard in your browser")
   .action(dashboardOpenAction);
+
+dashboardCommand
+  .command("login")
+  .description("Authenticate the in-dashboard Agent tab with Claude (one-time, no API key needed)")
+  .action(dashboardLoginAction);

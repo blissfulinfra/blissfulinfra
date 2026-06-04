@@ -685,7 +685,17 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
 
-        const response = await handleAgentQuery(projectDir, query, requestedModel, requestedProvider);
+        // In tenant mode, pass the tenant so the context collector can find
+        // logs via docker labels (the dashboard container has no compose
+        // dir on disk for the new tenant model).
+        const agentTenant = tenantFromRequest();
+        const response = await handleAgentQuery(
+          projectDir,
+          query,
+          requestedModel,
+          requestedProvider,
+          agentTenant ? { tenant: agentTenant, project: projectName } : undefined,
+        );
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ response }));
         return;
@@ -1559,6 +1569,18 @@ export function createApiServer(workingDir: string, port = 3002) {
     }
   });
 
+  // Web terminal — opt-in. Only wired up inside the dashboard container
+  // (DOCKER_MODE) where /var/run/docker.sock and the blissful CLI are
+  // available. Host-side `blissful-infra dashboard` foreground runs are
+  // legacy and don't need a browser shell.
+  if (process.env.DOCKER_MODE === "true") {
+    void import("./terminal.js").then(({ attachTerminalWebSocket }) => {
+      attachTerminalWebSocket(server);
+    }).catch(err => {
+      console.error("Failed to attach terminal WebSocket:", err);
+    });
+  }
+
   return {
     start: () => {
       return new Promise<void>((resolve) => {
@@ -2029,45 +2051,62 @@ async function buildTenantOntology(tenantName: string): Promise<{
     // Services to the right
     p.services.forEach((s, sIdx) => {
       const serviceId = `service:${p.name}:${s.name}`;
+      // Stagger services into a column to the right of project infra. Wider
+      // spacing so the fan-out edges (to kafka, postgres, loki, tempo,
+      // prometheus) don't all overlap.
       nodes.push({
         id: serviceId,
         type: "service",
         label: `${s.name}`,
         port: s.ports.http,
         status: statusOf(`${tenantName}-${p.name}-${s.name}`),
-        position: place(serviceId, { x: 660 + Math.floor(sIdx / 3) * 200, y: laneY + (sIdx % 3) * 70 }),
+        position: place(serviceId, { x: 700 + Math.floor(sIdx / 4) * 220, y: laneY - 30 + (sIdx % 4) * 90 }),
       });
 
-      // Auto-edge: service → kafka (if project has kafka and service isn't a frontend)
-      if (s.type !== "frontend") {
-        const kafkaId = `project:${p.name}:kafka`;
-        if (nodes.find(n => n.id === kafkaId)) {
-          edges.push({
-            id: `${serviceId}__kafka`,
-            source: serviceId,
-            target: kafkaId,
-            type: "kafka",
-            label: "events",
-            wired: false,
-          });
-        }
+      const has = (id: string) => nodes.find(n => n.id === id);
+
+      // Project-level data dependencies
+      if (s.type !== "frontend" && has(`project:${p.name}:kafka`)) {
+        edges.push({
+          id: `${serviceId}__kafka`, source: serviceId, target: `project:${p.name}:kafka`,
+          type: "kafka", label: "events", wired: false,
+        });
+      }
+      if ((s.type === "backend" || s.type === "worker") && has(`project:${p.name}:postgres`)) {
+        edges.push({
+          id: `${serviceId}__postgres`, source: serviceId, target: `project:${p.name}:postgres`,
+          type: "database", label: "schema", wired: false,
+        });
+      }
+      // Gateway routes inbound traffic to frontends and backends with an
+      // http port. Drawn so the user sees the request path through the edge.
+      if (s.ports.http && has(`project:${p.name}:gateway`)) {
+        edges.push({
+          id: `gateway__${serviceId}`, source: `project:${p.name}:gateway`, target: serviceId,
+          type: "http", label: s.type === "frontend" ? "/" : `/${s.name}`, wired: false,
+        });
       }
 
-      // Auto-edge: service → postgres if the service has a DB binding (we
-      // can't read service.yaml from here cheaply, so we approximate: every
-      // backend/worker gets one by default in the current scaffolder).
-      if (s.type === "backend" || s.type === "worker") {
-        const pgId = `project:${p.name}:postgres`;
-        if (nodes.find(n => n.id === pgId)) {
-          edges.push({
-            id: `${serviceId}__postgres`,
-            source: serviceId,
-            target: pgId,
-            type: "database",
-            label: "schema",
-            wired: false,
-          });
-        }
+      // Tenant-level observability fan-in: every service produces logs,
+      // traces, and metrics — show those so the canvas reflects what's
+      // actually flowing at runtime.
+      if (has("tenant:loki")) {
+        edges.push({
+          id: `${serviceId}__loki`, source: serviceId, target: "tenant:loki",
+          type: "custom", label: "logs", wired: false,
+        });
+      }
+      if (has("tenant:tempo")) {
+        edges.push({
+          id: `${serviceId}__tempo`, source: serviceId, target: "tenant:tempo",
+          type: "custom", label: "traces", wired: false,
+        });
+      }
+      if (has("tenant:prometheus")) {
+        edges.push({
+          id: `${serviceId}__prometheus`, source: serviceId, target: "tenant:prometheus",
+          type: "custom", label: "metrics", wired: false,
+        });
       }
     });
   });
@@ -2975,12 +3014,13 @@ async function handleAgentQuery(
   projectDir: string,
   query: string,
   requestedModel?: string,
-  requestedProvider?: AIProvider
+  requestedProvider?: AIProvider,
+  tenantScope?: { tenant: string; project: string },
 ): Promise<string> {
   // Find available provider
   const provider = await getProvider(requestedProvider);
   if (!provider) {
-    return "Error: No AI provider available. Set ANTHROPIC_API_KEY for Claude or start Ollama with `ollama serve`.";
+    return "Error: No AI provider available. Either install Claude Code (`claude login`), set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN, or start Ollama with `ollama serve`.";
   }
 
   // Select model
@@ -2989,8 +3029,16 @@ async function handleAgentQuery(
     return "Error: No language models available.";
   }
 
-  // Collect context
-  const context = await collectContext(projectDir);
+  // If the user's query mentions failure-shaped words, narrow context to
+  // error/warn-level lines from a wider window. Same token cost, much
+  // higher signal — "what's broken?" gets the actual error lines, not 500
+  // lines of healthy Spring Boot startup chatter.
+  const failureIntent = /\b(error|errors|warn|warning|warnings|fail|failed|failure|issue|issues|broken|crash|crashed|exception|exceptions|stack ?trace|down|unhealthy|wrong)\b/i.test(query);
+
+  const context = await collectContext(projectDir, {
+    ...(tenantScope ? { tenant: tenantScope.tenant, project: tenantScope.project } : {}),
+    errorsOnly: failureIntent,
+  });
   const contextText = formatContextForPrompt(context);
 
   // Build messages

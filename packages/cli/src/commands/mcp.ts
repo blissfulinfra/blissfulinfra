@@ -1,8 +1,9 @@
 import { Command } from "commander";
 import { startMcpServer } from "../server/mcp.js";
 import { getClientPortBlock, listClients } from "../utils/client-registry.js";
+import { ensureHostDashboardRunning, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
 
-const DEFAULT_API = "http://localhost:3002";
+const DEFAULT_API = `http://localhost:${HOST_DASHBOARD_PORT}`;
 
 /**
  * Resolve the API base URL from the user's flags.
@@ -45,5 +46,12 @@ export const mcpCommand = new Command("mcp")
   )
   .action(async (opts: { api?: string; client?: string }) => {
     const apiBase = await resolveMcpApiBase(opts);
+    // When pointing at the default host dashboard, auto-start it so the
+    // user doesn't have to remember `dashboard up` first. Silent so the
+    // JSON-RPC stdio stream on stdout stays clean. If the user pointed
+    // --api or --client somewhere else, assume they know what they're doing.
+    if (apiBase === DEFAULT_API) {
+      await ensureHostDashboardRunning({ silent: true });
+    }
     await startMcpServer({ apiBase });
   });
