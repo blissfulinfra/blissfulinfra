@@ -1871,7 +1871,7 @@ function App() {
       </header>
 
       <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar - Client overview + Services in this client */}
+        {/* Sidebar - Tenant overview + Projects in this tenant */}
         <aside className="w-80 border-r border-gray-800 p-4 flex flex-col">
           {links.clientName && (
             <button
@@ -1885,20 +1885,20 @@ function App() {
             >
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-blue-400" />
-                <span className="font-medium">Client overview</span>
+                <span className="font-medium">Tenant overview</span>
               </div>
               <div className="mt-1 text-xs text-gray-500 font-mono">{links.clientName}</div>
             </button>
           )}
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">
-            Services ({projects.length})
+            Projects ({projects.length})
           </h2>
 
           {projects.length === 0 ? (
             <div className="text-gray-500 text-sm text-center py-8">
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No services in this client yet</p>
-              <p className="text-xs mt-2">Click "New Service" to add one</p>
+              <p>No projects in this tenant yet</p>
+              <p className="text-xs mt-2">Click "New Project" to add one</p>
             </div>
           ) : (
             <div className="space-y-2 overflow-auto flex-1">
