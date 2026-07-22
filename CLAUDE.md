@@ -1,6 +1,8 @@
 # blissful-infra. Monorepo Root
 
 ## TODOs
+- **Tenant / Project / Service hierarchy (ADR-0017) is the current model** (accepted 2026-05-14, clean break from the client model): `tenant create/list/status/up/down/remove`, `project create/list/status/up/down/remove`, `service add/remove/up/down/logs --type backend|frontend|worker` (`commands/service-v2.ts`) and `use` for persistent tenant/project context (`~/.blissful-infra/context.json`). Data lives under `~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>`, port allocation in `~/.blissful-infra/registry.json` via hierarchical sub-allocation (10 tenants × 10 projects × 20 services, `utils/tenant-registry.ts`). Tenant owns dashboard + Jenkins + observability, project owns Kafka + Postgres + gateway + isolated Docker network, a service is one container family. See [docs/adr/0017-tenant-project-service-hierarchy.md](docs/adr/0017-tenant-project-service-hierarchy.md). Recent work on top of it: multi-tenant dashboard single view, ontology graph, Loki labels, AI debugging via MCP.
+- **Client-model bullets below predate ADR-0017.** The client commands (`commands/client.ts`, `commands/service.ts`) still work but are legacy, new work targets the tenant model. Read "client-level" in the items below as "tenant-level or project-level" going forward.
 - Client model (Phase 6A) is implemented, `blissful-infra client create/list/up/down/status/remove` and `blissful-infra service add/up/down/logs`. Both Jenkins and observability are per-client (fully isolated). Phase 6B (dynamic Prometheus scrape updates, Jenkins job scoping) is next.
 - User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab), designed in [specs/analytics.md](specs/analytics.md). Slice A (plumbing) is the next build chunk.
 - **dev-app is now a client-model service**: lives at `~/.blissful-infra/clients/dev/app/` (client `dev`, service `app`). The old `dev-app/` directory at the repo root has been removed. `dev.sh` rebuilt to use `blissful-infra client up dev`. Eat-your-own-dogfood is now the client model. The legacy `blissful-infra start` flat-model path still works for users who want it, but is no longer used internally.
@@ -88,7 +90,8 @@ implementation details.
 
 | You want to work on… | Read |
 |---|---|
-| Client environment model / `blissful-infra client create` / per-client isolation | [specs/client-model.md](specs/client-model.md) |
+| Tenant / project / service hierarchy, DDD enforcement, port allocation | [docs/adr/0017-tenant-project-service-hierarchy.md](docs/adr/0017-tenant-project-service-hierarchy.md) |
+| Client environment model (legacy, superseded by ADR-0017) | [specs/client-model.md](specs/client-model.md) |
 | User session analytics (ClickHouse + Kafka pipeline + SDK) | [specs/analytics.md](specs/analytics.md) |
 | Browser-friendly URLs / Caddy edge proxy / local TLS | [docs/adr/0001-caddy-edge-proxy.md](docs/adr/0001-caddy-edge-proxy.md) |
 | Cloud hosting / `blissful-infra deploy` / $5 tier | [specs/cloud-hosting.md](specs/cloud-hosting.md) |
@@ -142,9 +145,10 @@ implementation details.
 
 These patterns appear across multiple packages and should stay consistent:
 
-**Docker Compose** is the runtime unit. Two models coexist:
+**Docker Compose** is the runtime unit. Three generations coexist:
 - **Flat model** (legacy): `blissful-infra start <name>` creates a single `docker-compose.yaml` with all services and infra in one file.
-- **Client model** (Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network as an external network. Clients are fully isolated, no shared resources between them. Config and data live under `~/.blissful-infra/clients/`.
+- **Client model** (legacy, Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network. Config and data live under `~/.blissful-infra/clients/`.
+- **Tenant model** (current, ADR-0017): three levels. The tenant compose (`docker-compose.tenant.yaml`) runs dashboard, Jenkins and the observability stack. Each project compose (`docker-compose.project.yaml`) runs Kafka, Postgres and the API gateway on an isolated Docker network. Each service has its own `docker-compose.yaml` joining the project network. Config and data live under `~/.blissful-infra/tenants/`.
 
 **API server** (`packages/cli/src/server/api.ts`) runs on **port 3002** and is the single integration point between the CLI, the dashboard, and Jenkins pipelines. The dashboard talks to it over `http://localhost:3002`. Jenkins pipelines reach it via `http://host.docker.internal:3002`.
 

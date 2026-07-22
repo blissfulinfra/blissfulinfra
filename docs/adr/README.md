@@ -63,6 +63,9 @@ Use `_template.md` as a starting point.
 | [0014](./0014-multiple-postgres-instances-per-client.md) | Multiple Postgres instances per client (canonical array form) | Proposed | 2026-05-05 |
 | [0015](./0015-host-mode-sidecars.md) | Host-mode sidecars for hardware-accelerated plugins | Proposed | 2026-05-05 |
 | [0016](./0016-studio-level-infra-and-plane-tracker.md) | Studio-level infrastructure layer with Plane | Proposed | 2026-05-05 |
+| [0016](./0016-tempo-replaces-jaeger.md) | Tempo replaces Jaeger as the default tracing backend (duplicate number) | Accepted | 2026-05-05 |
+| [0017](./0017-tenant-project-service-hierarchy.md) | Tenant / Project / Service hierarchy with DDD enforcement | Accepted | 2026-05-14 |
+| [0018](./0018-caddy-as-project-api-gateway.md) | Caddy as the project-level API gateway | Proposed | 2026-07-21 |
 
 When you add an ADR, append a row to this index in the same PR.
 
