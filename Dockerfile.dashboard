@@ -49,6 +49,12 @@ RUN npm install -g @anthropic-ai/claude-code@latest
 
 WORKDIR /app
 
+# MCP config — when `claude -p` runs from /app (set as cwd in
+# claudeChatViaCli), it auto-loads .mcp.json and our MCP server becomes
+# available as tools. The agent then RETRIEVES (list_projects, get_health,
+# query_logs, etc.) rather than us pre-stuffing the prompt with logs.
+RUN printf '{\n  "mcpServers": {\n    "blissful-infra": {\n      "command": "node",\n      "args": ["/app/dist/index.js", "mcp"]\n    }\n  }\n}\n' > /app/.mcp.json
+
 # CLI dist, templates, and package manifest
 COPY --from=build /repo/packages/cli/dist ./dist
 COPY --from=build /repo/packages/cli/templates ./templates

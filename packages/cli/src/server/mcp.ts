@@ -14,6 +14,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 
 export interface McpServerOptions {
   /** Base URL of a running dashboard API server, e.g. http://localhost:3002 */
@@ -22,28 +25,64 @@ export interface McpServerOptions {
   name?: string;
 }
 
-async function apiGet(base: string, path: string): Promise<unknown> {
-  const res = await fetch(`${base}${path}`);
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status} ${res.statusText}`);
+/**
+ * Resolve a default tenant so the MCP tools auto-scope to the user's
+ * current context. Lookup order:
+ *   1. context.json (written by `tenant create` / `use`)
+ *   2. registry.json (first tenant — covers the common single-tenant case)
+ *   3. null (the API server stays in legacy flat-model mode)
+ */
+let cachedDefaultTenant: string | null | undefined;
+async function getDefaultTenant(): Promise<string | null> {
+  if (cachedDefaultTenant !== undefined) return cachedDefaultTenant;
+  const home = process.env.BLISSFUL_HOME ?? path.join(os.homedir(), ".blissful-infra");
+  try {
+    const raw = await fs.readFile(path.join(home, "context.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { tenant?: string };
+    if (parsed.tenant) return (cachedDefaultTenant = parsed.tenant);
+  } catch { /* fall through */ }
+  try {
+    const raw = await fs.readFile(path.join(home, "registry.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { tenants?: Array<{ name: string }> };
+    if (parsed.tenants?.[0]) return (cachedDefaultTenant = parsed.tenants[0].name);
+  } catch { /* fall through */ }
+  return (cachedDefaultTenant = null);
+}
+
+/** Append ?tenant=<default> when the path doesn't already specify one. */
+async function withTenantQuery(p: string): Promise<string> {
+  if (p.includes("tenant=")) return p;
+  const tenant = await getDefaultTenant();
+  if (!tenant) return p;
+  const sep = p.includes("?") ? "&" : "?";
+  return `${p}${sep}tenant=${encodeURIComponent(tenant)}`;
+}
+
+async function apiGet(base: string, p: string): Promise<unknown> {
+  const url = await withTenantQuery(p);
+  const res = await fetch(`${base}${url}`);
+  if (!res.ok) throw new Error(`GET ${url} → ${res.status} ${res.statusText}`);
   return res.json();
 }
 
-async function apiPost(base: string, path: string, body: unknown = {}): Promise<unknown> {
-  const res = await fetch(`${base}${path}`, {
+async function apiPost(base: string, p: string, body: unknown = {}): Promise<unknown> {
+  const url = await withTenantQuery(p);
+  const res = await fetch(`${base}${url}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`POST ${path} → ${res.status}: ${text}`);
+    throw new Error(`POST ${url} → ${res.status}: ${text}`);
   }
   return res.json();
 }
 
-async function apiDelete(base: string, path: string): Promise<unknown> {
-  const res = await fetch(`${base}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE ${path} → ${res.status} ${res.statusText}`);
+async function apiDelete(base: string, p: string): Promise<unknown> {
+  const url = await withTenantQuery(p);
+  const res = await fetch(`${base}${url}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE ${url} → ${res.status} ${res.statusText}`);
   return res.json();
 }
 
