@@ -136,129 +136,9 @@ export const LegacyProjectConfigSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Client environment model — per-client isolation with shared infrastructure
+// Client environment model — removed. Superseded by the ADR-0017 tenant
+// schemas in tenant.ts / project.ts / service-v2.ts / tenant-registry.ts.
 // ---------------------------------------------------------------------------
-
-export const ObservabilityConfigSchema = z.object({
-  prometheus: z.boolean().default(true),
-  grafana: z.boolean().default(true),
-  // ADR-0016 swapped Jaeger for Tempo. `tempo` is the canonical flag.
-  // `jaeger` is kept as a deprecated alias: existing client configs with
-  // `jaeger: true` continue to work and get a Tempo container instead.
-  tempo: z.boolean().default(true),
-  jaeger: z.boolean().default(false),
-  loki: z.boolean().default(true),
-  // Note: `clickhouse` here is legacy (was nested under observability before
-  // ADR-0008 promoted it to a top-level infra component). Kept for backwards
-  // compatibility on existing client configs; new code reads
-  // ClientInfrastructure.clickhouse instead.
-  clickhouse: z.boolean().default(false),
-});
-
-// ADR-0014 — Postgres can be a single boolean (shorthand: one instance named
-// `default`) or a list of named instances. Use `normalizePostgresInstances()`
-// downstream to always work with the canonical array form.
-export const PostgresInstanceSchema = z.object({
-  name: z.string().regex(/^[a-z][a-z0-9_-]*$/),
-  version: z.string().default("16"),
-  tuning: z.record(z.string(), z.string()).optional(),
-});
-
-export const PostgresConfigSchema = z.union([
-  z.boolean(),
-  z.array(PostgresInstanceSchema).min(1),
-]);
-
-export const ClientInfrastructureSchema = z.object({
-  kafka: z.boolean().default(true),
-  postgres: PostgresConfigSchema.default(true),
-  jenkins: z.boolean().default(true),
-  observability: ObservabilityConfigSchema.optional(),
-  // Promoted to client-level platform services (ADR-0008, 0009, 0010).
-  // All default to `false` — opt-in to keep the lightweight default footprint
-  // small. `client create` interactive prompt + flags drive these.
-  clickhouse: z.boolean().default(false),  // ADR-0008
-  localstack: z.boolean().default(false),  // ADR-0008
-  keycloak:   z.boolean().default(false),  // ADR-0009
-  mlflow:     z.boolean().default(false),  // ADR-0010
-  mage:       z.boolean().default(false),  // ADR-0010
-});
-
-/**
- * Convert the user-facing `postgres` config (boolean shorthand or array)
- * into the canonical `PostgresInstance[]` form used by all downstream code.
- *
- *   true  → [{ name: "default", version: "16" }]
- *   false → []
- *   array → array (with defaults filled in)
- */
-export function normalizePostgresInstances(
-  value: PostgresConfig | undefined,
-): PostgresInstance[] {
-  if (value === undefined || value === false) return [];
-  if (value === true) return [{ name: "default", version: "16" }];
-  return value.map(i => PostgresInstanceSchema.parse(i));
-}
-
-export const ClientServiceRefSchema = z.object({
-  name: z.string(),
-  path: z.string(),
-});
-
-export const ClientConfigSchema = z.object({
-  type: z.literal("client"),
-  name: z.string(),
-  infrastructure: ClientInfrastructureSchema.optional(),
-  plugins: z.array(PluginInstanceSchema).optional(),
-  deploy: DeployConfigSchema.optional(),
-  services: z.array(ClientServiceRefSchema).optional(),
-});
-
-export const ServiceConfigSchema = z.object({
-  type: z.literal("service"),
-  name: z.string(),
-  client: z.string(),
-  backend: z.string().optional(),
-  frontend: z.string().optional(),
-  plugins: z.array(PluginInstanceSchema).optional(),
-});
-
-// ---------------------------------------------------------------------------
-// Port block allocation — deterministic port assignment per client
-// ---------------------------------------------------------------------------
-
-export const PortBlockSchema = z.object({
-  clientName: z.string(),
-  blockIndex: z.number(),
-  jenkins: z.number(),
-  grafana: z.number(),
-  prometheus: z.number(),
-  // ADR-0016: `tempo` is the new canonical tracing port. `jaeger` is kept
-  // optional for back-compat with older registry entries; nothing binds to it.
-  tempo: z.number(),
-  jaeger: z.number().optional(),
-  kafka: z.number(),
-  postgres: z.number(),
-  dashboard: z.number(),
-  // Optional: only populated when the client has the corresponding
-  // infrastructure component enabled. Older registry entries without these
-  // fields remain valid (the schema's optional() makes them non-breaking).
-  clickhouse: z.number().optional(),  // ADR-0008
-  localstack: z.number().optional(),  // ADR-0008
-  keycloak:   z.number().optional(),  // ADR-0009
-  mlflow:     z.number().optional(),  // ADR-0010
-  mage:       z.number().optional(),  // ADR-0010
-  // ADR-0014 — additional Postgres instances beyond the "default" instance.
-  // Keys are instance names; values are host ports allocated from the
-  // expansion range (5600 + blockIndex * 10 + extraIndex). The instance
-  // named `default` keeps using `postgres` above for back-compat.
-  postgresInstances: z.record(z.string(), z.number()).optional(),
-});
-
-export const ClientRegistrySchema = z.object({
-  clients: z.record(z.string(), PortBlockSchema),
-  nextBlockIndex: z.number().default(0),
-});
 
 // ---------------------------------------------------------------------------
 // Lambda manifest — drives both local (LocalStack) deploy and future cloud deploy
@@ -302,14 +182,5 @@ export type ApiGenerateTypes = z.infer<typeof ApiGenerateTypesSchema>;
 export type ApiGenerate = z.infer<typeof ApiGenerateSchema>;
 export type ApiConfig = z.infer<typeof ApiConfigSchema>;
 export type LegacyProjectConfig = z.infer<typeof LegacyProjectConfigSchema>;
-export type ObservabilityConfig = z.infer<typeof ObservabilityConfigSchema>;
-export type PostgresInstance = z.infer<typeof PostgresInstanceSchema>;
-export type PostgresConfig = z.infer<typeof PostgresConfigSchema>;
-export type ClientInfrastructure = z.infer<typeof ClientInfrastructureSchema>;
-export type ClientServiceRef = z.infer<typeof ClientServiceRefSchema>;
-export type ClientConfig = z.infer<typeof ClientConfigSchema>;
-export type ServiceConfig = z.infer<typeof ServiceConfigSchema>;
-export type PortBlock = z.infer<typeof PortBlockSchema>;
-export type ClientRegistry = z.infer<typeof ClientRegistrySchema>;
 export type LambdaRuntime = z.infer<typeof LambdaRuntimeSchema>;
 export type LambdaManifest = z.infer<typeof LambdaManifestSchema>;

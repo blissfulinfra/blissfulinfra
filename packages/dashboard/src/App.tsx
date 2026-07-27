@@ -579,6 +579,17 @@ function App() {
   const [environments, setEnvironments] = useState<EnvironmentInfo[]>([])
   const [deployingEnv, setDeployingEnv] = useState<string | null>(null)
   const [rollingBackEnv, setRollingBackEnv] = useState<string | null>(null)
+  // Canary rollout (kubernetes-runtime services) — null when no Rollout exists
+  const [canary, setCanary] = useState<{
+    service: string
+    project: string
+    status: string
+    step: number
+    totalSteps: number
+    currentWeight: number
+    message?: string
+  } | null>(null)
+  const [canaryActionPending, setCanaryActionPending] = useState<string | null>(null)
 
   // Deployments state
   const [deployments, setDeployments] = useState<any[]>([])
@@ -634,7 +645,9 @@ function App() {
     grafanaUrl: string | null
     prometheusUrl: string | null
     jenkinsUrl: string | null
-  }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null })
+    argocdUrl: string | null
+    giteaUrl: string | null
+  }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null, argocdUrl: null, giteaUrl: null })
 
   useEffect(() => {
     fetch(withTenant(`${API_BASE}/links`)).then(r => r.ok ? r.json() : null).then(data => {
@@ -1049,6 +1062,36 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to fetch environments:', e)
+    }
+    // Canary status rides along on the same poll (kubernetes runtime only —
+    // null when the service has no Rollout).
+    try {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/canary`))
+      if (res.ok) {
+        const data = await res.json()
+        setCanary(data.canary ?? null)
+      }
+    } catch {
+      setCanary(null)
+    }
+  }
+
+  const handleCanaryAction = async (action: 'promote' | 'promote-full' | 'abort') => {
+    if (!selectedProject) return
+    setCanaryActionPending(action)
+    try {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/canary/${action}`), {
+        method: 'POST',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setErrorModal({ title: 'Canary Action Failed', message: data.error || `'${action}' failed` })
+      }
+      await fetchEnvironments()
+    } catch (e) {
+      console.error('Canary action failed:', e)
+    } finally {
+      setCanaryActionPending(null)
     }
   }
 
@@ -1798,6 +1841,30 @@ function App() {
               >
                 <ExternalLink className="w-4 h-4" />
                 Grafana
+              </a>
+            )}
+            {links.argocdUrl && (
+              <a
+                href={links.argocdUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-amber-400"
+                title="Open ArgoCD (GitOps sync status for kubernetes-runtime projects)"
+              >
+                <ExternalLink className="w-4 h-4" />
+                ArgoCD
+              </a>
+            )}
+            {links.giteaUrl && (
+              <a
+                href={links.giteaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-green-400"
+                title="Open Gitea (the tenant's gitops repo)"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Gitea
               </a>
             )}
             {tenantList.length > 0 && (
@@ -2840,7 +2907,65 @@ function App() {
                   )}
                 </div>
               ) : activeTab === 'environments' ? (
-                <div className="flex-1 overflow-auto p-6">
+                <div className="flex-1 overflow-auto p-6 space-y-4">
+                  {canary && (
+                    <div className="bg-gray-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <h3 className="font-medium">Canary Rollout</h3>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            canary.status === 'Healthy' ? 'bg-green-900/50 text-green-400' :
+                            canary.status === 'Paused' ? 'bg-yellow-900/50 text-yellow-400' :
+                            canary.status === 'Degraded' ? 'bg-red-900/50 text-red-400' :
+                            'bg-blue-900/50 text-blue-400'
+                          }`}>
+                            {canary.status}
+                          </span>
+                          {canary.totalSteps > 0 && (
+                            <span className="text-xs text-gray-400">step {canary.step}/{canary.totalSteps}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleCanaryAction('promote')}
+                            disabled={canaryActionPending !== null || canary.status === 'Healthy'}
+                            className="px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 flex items-center gap-1"
+                          >
+                            {canaryActionPending === 'promote' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                            Promote
+                          </button>
+                          <button
+                            onClick={() => handleCanaryAction('promote-full')}
+                            disabled={canaryActionPending !== null || canary.status === 'Healthy'}
+                            className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 flex items-center gap-1"
+                          >
+                            {canaryActionPending === 'promote-full' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                            Promote Full
+                          </button>
+                          <button
+                            onClick={() => handleCanaryAction('abort')}
+                            disabled={canaryActionPending !== null || canary.status === 'Healthy'}
+                            className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 disabled:bg-gray-700 disabled:text-gray-500 flex items-center gap-1"
+                          >
+                            {canaryActionPending === 'abort' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                            Abort
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-3 bg-gray-700 rounded overflow-hidden flex">
+                          <div className="bg-amber-500 h-full transition-all" style={{ width: `${canary.currentWeight}%` }} />
+                          <div className="bg-blue-600 h-full transition-all" style={{ width: `${100 - canary.currentWeight}%` }} />
+                        </div>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          {canary.currentWeight}% canary / {100 - canary.currentWeight}% stable
+                        </span>
+                      </div>
+                      {canary.message && (
+                        <p className="mt-2 text-xs text-gray-500">{canary.message}</p>
+                      )}
+                    </div>
+                  )}
                   {environments.length > 0 ? (
                     <div className="bg-gray-800 rounded-lg overflow-hidden">
                       <table className="w-full text-sm">
@@ -2936,6 +3061,17 @@ function App() {
                               <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusColor}`}>
                                 {d.status}
                               </span>
+                              {d.strategy && (
+                                <span className="text-xs px-2 py-0.5 rounded font-medium bg-purple-900 text-purple-300">
+                                  {d.strategy}
+                                </span>
+                              )}
+                              {d.imageTag && d.imageTag !== d.gitSha && (
+                                <span className="text-xs text-gray-500 font-mono">tag {d.imageTag}</span>
+                              )}
+                              {d.environment && (
+                                <span className="text-xs text-gray-500">ns {d.environment}</span>
+                              )}
                               <span className="text-xs text-gray-500 ml-auto">
                                 {new Date(d.timestamp).toLocaleString()}
                               </span>

@@ -1,0 +1,76 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{SERVICE_NAME}}
+  labels:
+    app: {{SERVICE_NAME}}
+    com.blissful/tenant: {{TENANT_NAME}}
+    com.blissful/project: {{PROJECT_NAME}}
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: {{SERVICE_NAME}}
+  strategy:
+    canary:
+      canaryService: {{SERVICE_NAME}}-canary
+      stableService: {{SERVICE_NAME}}-stable
+      # Pause-based canary (ADR-0020 v1): no in-cluster Prometheus yet, so no
+      # analysis steps — each pause is promotable early from the CLI
+      # (`blissful-infra canary promote`) or the dashboard.
+      steps:
+        - setWeight: 10
+        - pause: { duration: 2m }
+        - setWeight: 25
+        - pause: { duration: 2m }
+        - setWeight: 50
+        - pause: { duration: 5m }
+        - setWeight: 100
+  template:
+    metadata:
+      labels:
+        app: {{SERVICE_NAME}}
+    spec:
+      containers:
+        - name: {{SERVICE_NAME}}
+          image: {{IMAGE_NAME}}:{{IMAGE_TAG}}
+          # kind-loaded images exist only on the node — never pull.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{SERVICE_NAME}}-config
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          # Spring Boot actuator serves /actuator/health; the scaffolded app
+          # has no /ready or /live endpoints.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30

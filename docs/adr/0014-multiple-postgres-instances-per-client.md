@@ -1,6 +1,6 @@
 # 0014. Multiple Postgres instances per client
 
-- **Status:** Proposed
+- **Status:** Superseded by [0017](./0017-tenant-project-service-hierarchy.md) (the client model was replaced by the tenant hierarchy)
 - **Date:** 2026-05-05
 - **Deciders:** @cavanpage
 

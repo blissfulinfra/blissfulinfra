@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck -w packages/cli
 
+      - name: Test
+        run: npm test
+
   install-test:
     name: npm install test
     runs-on: ubuntu-latest

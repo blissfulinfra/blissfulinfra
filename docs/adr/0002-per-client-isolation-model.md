@@ -1,6 +1,6 @@
 # 0002. Each client environment is fully isolated
 
-- **Status:** Accepted
+- **Status:** Superseded by [0017](./0017-tenant-project-service-hierarchy.md) (the client model was replaced by the tenant hierarchy)
 - **Date:** 2026-04-18
 - **Deciders:** @cavanpage
 

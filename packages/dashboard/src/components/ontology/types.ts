@@ -78,6 +78,10 @@ export const NODE_PALETTE: Record<OntologyNodeType, { color: string; bg: string 
   clickhouse: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
   mlflow:     { color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
   mage:       { color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+  // Kubernetes runtime (ADR-0020)
+  'argocd':        { color: '#fb923c', bg: 'rgba(251,146,60,0.15)' },
+  'gitea':         { color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+  'argo-rollouts': { color: '#818cf8', bg: 'rgba(129,140,248,0.15)' },
 }
 
 export const EDGE_TYPE_COLORS: Record<OntologyEdgeType, string> = {

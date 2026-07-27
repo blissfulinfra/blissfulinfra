@@ -1,3 +1,10 @@
+/**
+ * @deprecated Legacy flat-model config (`blissful-infra.yaml` in a project
+ * dir). The tenant model (ADR-0017) never writes this file. Only the deferred
+ * perf/chaos/compare/analyze/agent/generate commands may keep using it —
+ * do not add new importers. Goes away when those commands are re-keyed to
+ * tenant coordinates.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import {

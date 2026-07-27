@@ -1,6 +1,5 @@
 import { Command } from "commander";
 import { startMcpServer } from "../server/mcp.js";
-import { getClientPortBlock, listClients } from "../utils/client-registry.js";
 import { ensureHostDashboardRunning, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
 
 const DEFAULT_API = `http://localhost:${HOST_DASHBOARD_PORT}`;
@@ -8,28 +7,12 @@ const DEFAULT_API = `http://localhost:${HOST_DASHBOARD_PORT}`;
 /**
  * Resolve the API base URL from the user's flags.
  *
- *   --api <url>       → explicit override, wins over everything
- *   --client <name>   → look up the client's dashboard port in the registry,
- *                       construct http://localhost:<port>
- *   neither           → default to http://localhost:3002 (legacy flat-model)
+ *   --api <url>  → explicit override
+ *   omitted      → the host control-plane dashboard on :3002
  *
  * Exported for testing.
  */
-export async function resolveMcpApiBase(opts: { api?: string; client?: string }): Promise<string> {
-  if (opts.api && opts.api !== DEFAULT_API) {
-    // User passed --api explicitly (a non-default value). Honor it.
-    return opts.api;
-  }
-  if (opts.client) {
-    const block = await getClientPortBlock(opts.client);
-    if (!block) {
-      const known = (await listClients()).map(c => c.clientName).join(", ") || "(none)";
-      throw new Error(
-        `Client '${opts.client}' not found in registry. Known clients: ${known}`,
-      );
-    }
-    return `http://localhost:${block.dashboard}`;
-  }
+export function resolveMcpApiBase(opts: { api?: string }): string {
   return opts.api ?? DEFAULT_API;
 }
 
@@ -37,19 +20,15 @@ export const mcpCommand = new Command("mcp")
   .description("Start the blissful-infra MCP server (stdio transport for Claude Desktop / Claude Code)")
   .option(
     "--api <url>",
-    "Dashboard API base URL (overrides --client)",
+    "Dashboard API base URL",
     DEFAULT_API,
   )
-  .option(
-    "--client <name>",
-    "Auto-discover the dashboard port for the given client (reads ~/.blissful-infra/registry.json)",
-  )
-  .action(async (opts: { api?: string; client?: string }) => {
-    const apiBase = await resolveMcpApiBase(opts);
+  .action(async (opts: { api?: string }) => {
+    const apiBase = resolveMcpApiBase(opts);
     // When pointing at the default host dashboard, auto-start it so the
     // user doesn't have to remember `dashboard up` first. Silent so the
     // JSON-RPC stdio stream on stdout stays clean. If the user pointed
-    // --api or --client somewhere else, assume they know what they're doing.
+    // --api somewhere else, assume they know what they're doing.
     if (apiBase === DEFAULT_API) {
       await ensureHostDashboardRunning({ silent: true });
     }

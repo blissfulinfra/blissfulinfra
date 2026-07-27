@@ -1,0 +1,23 @@
+# Argo Rollouts controller for the local kind cluster. Derived from the
+# original templates/cluster/argo-rollouts/values.yaml with the
+# serviceMonitor disabled — there is no Prometheus operator (and therefore no
+# ServiceMonitor CRD) in the kind cluster, and enabling it would fail the
+# whole helm release.
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+dashboard:
+  enabled: true
+  service:
+    type: ClusterIP
+    port: 3100
+
+notifications:
+  enabled: false

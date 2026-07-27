@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import yaml from "js-yaml";
 import {
+  ProjectConfigSchema,
+  type ProjectConfig,
+  type ProjectRuntime,
   TenantRegistrySchema,
   type TenantRegistry,
   type RegistryTenantEntry,
@@ -44,6 +48,11 @@ export function getServiceDir(tenant: string, project: string, service: string):
   return path.join(getServicesDir(tenant, project), service);
 }
 
+/** Terraform workspace for the tenant's kind cluster (ADR-0020). */
+export function getClusterDir(tenant: string): string {
+  return path.join(getTenantDir(tenant), "cluster");
+}
+
 function getRegistryPath(): string {
   return path.join(getBlissfulHome(), "registry.json");
 }
@@ -65,6 +74,13 @@ const TENANT_BASES = {
   prometheus: 9090,
   tempo:      3200,
   loki:       3100,
+  // Kubernetes runtime (ADR-0020): kind API server, ArgoCD UI, Gitea.
+  // Bases chosen clear of every existing range (grafana 3000s, dashboard
+  // 3010s, loki 3100s, tempo 3200s, gateway 8080-8179, kafkaExporter 9308+,
+  // service http 30000+) and of Docker Desktop's own 6443.
+  kubeApi: 6550,
+  argocd:  8440,
+  gitea:   3300,
 } as const;
 
 const PROJECT_BASES = {
@@ -96,7 +112,31 @@ export function tenantPortBlock(tenant: string, tenantIndex: number): TenantPort
     prometheus: TENANT_BASES.prometheus + tenantIndex,
     tempo:      TENANT_BASES.tempo      + tenantIndex,
     loki:       TENANT_BASES.loki       + tenantIndex,
+    kubeApi:    TENANT_BASES.kubeApi    + tenantIndex,
+    argocd:     TENANT_BASES.argocd     + tenantIndex,
+    gitea:      TENANT_BASES.gitea      + tenantIndex,
   };
+}
+
+/**
+ * Cluster ports for a tenant, lazily backfilled: registry entries created
+ * before the k8s runtime existed lack kubeApi/argocd/gitea — derive them from
+ * the blockIndex, persist, and return the full block. Idempotent.
+ */
+export async function ensureClusterPorts(tenant: string): Promise<TenantPortBlock> {
+  const registry = await loadRegistry();
+  const entry = registry.tenants.find(t => t.name === tenant);
+  if (!entry) {
+    throw new Error(`Tenant '${tenant}' not found in registry.`);
+  }
+  const block = entry.portBlock;
+  if (block.kubeApi && block.argocd && block.gitea) return block;
+
+  block.kubeApi = TENANT_BASES.kubeApi + block.blockIndex;
+  block.argocd  = TENANT_BASES.argocd  + block.blockIndex;
+  block.gitea   = TENANT_BASES.gitea   + block.blockIndex;
+  await saveRegistry(registry);
+  return block;
 }
 
 export function projectPortBlock(
@@ -332,4 +372,35 @@ export async function listServices(tenant: string, project: string): Promise<Reg
 export async function getService(tenant: string, project: string, service: string): Promise<RegistryServiceEntry | null> {
   const services = await listServices(tenant, project);
   return services.find(s => s.name === service) ?? null;
+}
+
+/**
+ * Find which project inside a tenant owns a service with this name.
+ * Returns the first match (service names are unique per project, not per
+ * tenant — ambiguity is resolved by passing an explicit project).
+ */
+export async function findServiceProject(
+  tenant: string,
+  service: string,
+): Promise<{ project: string; service: RegistryServiceEntry } | null> {
+  for (const p of await listProjects(tenant)) {
+    const match = p.services.find(s => s.name === service);
+    if (match) return { project: p.name, service: match };
+  }
+  return null;
+}
+
+/** Parse projects/<project>/project.yaml (throws if missing or invalid). */
+export async function readProjectConfig(tenant: string, project: string): Promise<ProjectConfig> {
+  const raw = await fs.readFile(path.join(getProjectDir(tenant, project), "project.yaml"), "utf-8");
+  return ProjectConfigSchema.parse(yaml.load(raw));
+}
+
+/** The project's runtime; defaults to compose when the config is unreadable. */
+export async function readProjectRuntime(tenant: string, project: string): Promise<ProjectRuntime> {
+  try {
+    return (await readProjectConfig(tenant, project)).runtime;
+  } catch {
+    return "compose";
+  }
 }

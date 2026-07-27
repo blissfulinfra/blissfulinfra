@@ -18,6 +18,7 @@ import {
   getProject,
   getTenantDir,
   getProjectDir,
+  readProjectRuntime,
 } from "../utils/tenant-registry.js";
 import { writeProjectCompose, serviceComposeIncludePath } from "../utils/project-compose.js";
 import { writeTenantCompose, projectComposeIncludePath } from "../utils/tenant-compose.js";
@@ -32,6 +33,7 @@ interface ProjectCreateOptions {
   postgres?: boolean;
   redis?: boolean;
   gateway?: boolean;
+  runtime?: string;
 }
 
 export async function projectCreateAction(
@@ -61,6 +63,12 @@ export async function projectCreateAction(
     process.exit(1);
   }
 
+  const runtime = opts.runtime ?? "compose";
+  if (runtime !== "compose" && runtime !== "kubernetes") {
+    console.error(chalk.red(`Invalid runtime '${runtime}'. Expected compose or kubernetes.`));
+    process.exit(1);
+  }
+
   const useDefaults = opts.skipPrompts || !process.stdout.isTTY;
   let config: ProjectConfig;
 
@@ -69,6 +77,7 @@ export async function projectCreateAction(
       type: "project",
       name: projectName,
       tenant: tenantName,
+      runtime,
       infrastructure: {
         kafka:    opts.kafka    !== false,
         postgres: opts.postgres !== false,
@@ -96,6 +105,7 @@ export async function projectCreateAction(
       type: "project",
       name: projectName,
       tenant: tenantName,
+      runtime,
       infrastructure: {
         kafka:    answers.components.includes("kafka"),
         postgres: answers.components.includes("postgres"),
@@ -240,8 +250,10 @@ async function projectStatusAction(tenantName: string, projectName: string): Pro
     console.error(chalk.red(`Project '${projectName}' not found in tenant '${tenantName}'.`));
     process.exit(1);
   }
+  const runtime = await readProjectRuntime(tenantName, projectName);
   console.log();
   console.log(chalk.bold(`Project: ${tenantName}/${projectName}`));
+  console.log(chalk.dim(`  Runtime:  ${runtime}${runtime === "kubernetes" ? " (kind + ArgoCD + Argo Rollouts)" : ""}`));
   console.log(chalk.dim(`  Block #${p.portBlock.projectIndex}`));
   console.log(chalk.dim(`  Kafka:    localhost:${p.portBlock.kafka}`));
   console.log(chalk.dim(`  Postgres: localhost:${p.portBlock.postgres}`));
@@ -376,6 +388,7 @@ projectCommand
   .argument("[arg1]", "Project name, or tenant name when followed by another arg")
   .argument("[arg2]", "Project name (when tenant is also given)")
   .option("-y, --skip-prompts", "Skip prompts, use defaults")
+  .option("--runtime <runtime>", "Service runtime: compose (default) or kubernetes (kind + ArgoCD + Argo Rollouts)")
   .option("--no-kafka", "Disable Kafka")
   .option("--no-postgres", "Disable Postgres")
   .option("--no-redis", "Disable Redis")

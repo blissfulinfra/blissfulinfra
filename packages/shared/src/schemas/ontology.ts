@@ -16,6 +16,10 @@ export const OntologyNodeTypeSchema = z.enum([
   "clickhouse",
   "mlflow",
   "mage",
+  // Kubernetes runtime (ADR-0020)
+  "argocd",
+  "gitea",
+  "argo-rollouts",
 ]);
 
 export const OntologyEdgeTypeSchema = z.enum(["http", "kafka", "database", "custom"]);

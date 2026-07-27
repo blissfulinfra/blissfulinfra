@@ -1,19 +1,14 @@
 # blissful-infra. Monorepo Root
 
 ## TODOs
-- **Tenant / Project / Service hierarchy (ADR-0017) is the current model** (accepted 2026-05-14, clean break from the client model): `tenant create/list/status/up/down/remove`, `project create/list/status/up/down/remove`, `service add/remove/up/down/logs --type backend|frontend|worker` (`commands/service-v2.ts`) and `use` for persistent tenant/project context (`~/.blissful-infra/context.json`). Data lives under `~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>`, port allocation in `~/.blissful-infra/registry.json` via hierarchical sub-allocation (10 tenants × 10 projects × 20 services, `utils/tenant-registry.ts`). Tenant owns dashboard + Jenkins + observability, project owns Kafka + Postgres + gateway + isolated Docker network, a service is one container family. See [docs/adr/0017-tenant-project-service-hierarchy.md](docs/adr/0017-tenant-project-service-hierarchy.md). Recent work on top of it: multi-tenant dashboard single view, ontology graph, Loki labels, AI debugging via MCP.
-- **Client-model bullets below predate ADR-0017.** The client commands (`commands/client.ts`, `commands/service.ts`) still work but are legacy, new work targets the tenant model. Read "client-level" in the items below as "tenant-level or project-level" going forward.
-- Client model (Phase 6A) is implemented, `blissful-infra client create/list/up/down/status/remove` and `blissful-infra service add/up/down/logs`. Both Jenkins and observability are per-client (fully isolated). Phase 6B (dynamic Prometheus scrape updates, Jenkins job scoping) is next.
-- User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab), designed in [specs/analytics.md](specs/analytics.md). Slice A (plumbing) is the next build chunk.
-- **dev-app is now a client-model service**: lives at `~/.blissful-infra/clients/dev/app/` (client `dev`, service `app`). The old `dev-app/` directory at the repo root has been removed. `dev.sh` rebuilt to use `blissful-infra client up dev`. Eat-your-own-dogfood is now the client model. The legacy `blissful-infra start` flat-model path still works for users who want it, but is no longer used internally.
-- **Template hot-reload (`blissful-infra dev --templates <project>`) needs porting** to client-model paths, currently expects a project dir under cwd, would need to accept a client-model service path like `~/.blissful-infra/clients/dev/app`. Niche template-developer feature; defer until needed.
-- **AWS Lambda backend template (`lambda-python`)** is shipped, runs on LocalStack locally, has its own `blissful-infra lambda deploy/invoke/logs` CLI. Cloud deploy adapter for real AWS Lambda is intentionally deferred (see [docs/adr/0007-aws-lambda-local-via-localstack.md](docs/adr/0007-aws-lambda-local-via-localstack.md)). Future runtimes (`lambda-node`, `lambda-go`) follow the same pattern.
-- **Client-level platform services (ADR-0008/0009/0010)**: ClickHouse, LocalStack, Keycloak, MLflow, Mage are all promotable to client-level infrastructure. All opt-in (default off) via `infrastructure.{name}: true` in the client config. **Template wiring is live** (2026-05-04): the spring-boot service compose adds `KEYCLOAK_ISSUER_URI` + `AWS_ENDPOINT_URL` + `depends_on` when client-level keycloak/localstack are enabled, and `{{#IF_KEYCLOAK}} / {{#IF_LOCALSTACK}}` template guards in spring-boot/react-vite fire from the client-level state too. Lambda services use the client-level LocalStack. **ai-pipeline (ADR-0010)** now connects to the client-level ClickHouse + MLflow on the shared infra net in client-mode `service add`, co-deployed instances are gone for client model. Flat-model `blissful-infra start --plugins ai-pipeline` still bundles them for backwards compat (flat model is deprecated).
-- **Service infra-dependency manifest** (`packages/cli/src/utils/infra-deps.ts`), every backend / frontend / plugin can declare required + optional client-level infra. `service add` diffs against the client config and prompts (or auto-enables with `--yes`) before scaffolding. New `client infra add/remove <client> <component>` toggles a flag on an existing client.
-- **Compliance-grade audit logging (ADR-0011)**: proposed: client-level infra `infrastructure.audit: true` adding **immudb** as the integrity-anchored source of truth, with Kafka `audit.events` topic fan-out and a ClickHouse query mirror. CloudEvents-shaped schema, `blissful-infra audit verify/export <client>` CLI, default 7-year retention. Audit payloads are **pseudonymous-only** (subject IDs, never raw PII) so right-to-erasure stays compatible. Distinct from the Spring Boot app-level audit trail (timeline §6.10.10), that's domain history, this is regulatory integrity. See [docs/adr/0011-compliance-grade-audit-logging.md](docs/adr/0011-compliance-grade-audit-logging.md).
-- **Data governance + DSAR enforcement (ADR-0012)**: proposed: every template ships a `data-classification.yaml` declaring fields, classification (pii/sensitive/pseudonymous/public), legal basis, retention, residency, erasure mode. Client-level **identity vault** (Postgres schema) holds the only `subject_id ↔ PII` mapping; tombstoning severs the link without violating ADR-0011's immutability. New `blissful-infra gdpr inventory/export/erase <client>` commands walk the manifest across every backend (Postgres, Redis, Kafka, ClickHouse, Loki, S3, immudb). Retention enforcer is a scheduled job driven by the same manifest. Hard-coupled to ADR-0011, both must ship together. See [docs/adr/0012-data-governance-and-dsar-enforcement.md](docs/adr/0012-data-governance-and-dsar-enforcement.md).
-- **Multiple Postgres instances per client (ADR-0014)** — implemented (2026-05-05): `infrastructure.postgres` accepts a boolean shorthand or an array of named instances `[{ name, version, tuning? }]`. Boolean `true` normalizes to a single instance named `default`. The `default` instance keeps existing names (service key `postgres`, container `${client}-postgres`, volume `postgres-data`, host port `ports.postgres`) so existing clients are untouched; non-default instances get suffixed names + ports from an expansion range (`5600 + blockIndex*10 + extraIndex`, max 10 extras per client). `js-yaml` promoted to a runtime dep for the array-form parse path. Service infra-deps now carry an optional `postgres: { instance, databases }` binding so service templates can target a specific instance. The `storage:` qualifier in [ADR-0012](docs/adr/0012-data-governance-and-dsar-enforcement.md) data-classification manifest is now `postgres:<instance>:<database>`. See [docs/adr/0014-multiple-postgres-instances-per-client.md](docs/adr/0014-multiple-postgres-instances-per-client.md).
-- **Local Kubernetes story (future)**: bring k8s back as a *local* runtime option (kind/minikube) with **ArgoCD as the GitOps layer**, bootstrapped via **Terraform** (cluster provisioning + Helm-based ArgoCD install). Distinct from cloud deploy: cloud stays Cloudflare/Vercel/AWS-first per [specs/cloud-deploy.md](specs/cloud-deploy.md), and ArgoCD does **not** return to the cloud path. Terraform is **scoped to this work only**: not the lambda template, not the AWS cloud-deploy target. Deferred until the cloud-deploy dispatcher rewrite (which removes the legacy ArgoCD/kubectl code from `deploy.ts`) lands.
+- **Current state (2026-07-27):** the tenant/project/service hierarchy (ADR-0017) is the only model — the flat and client models were purged in the 2.0 cleanup (see CHANGELOG). The **local Kubernetes golden path shipped** ([ADR-0020](docs/adr/0020-local-kubernetes-runtime.md)): `cluster up` Terraform-provisions a per-tenant kind cluster with ArgoCD + Argo Rollouts + Gitea; `project create --runtime kubernetes` + `deploy` runs build → kind load → gitops push → ArgoCD sync → pause-based canary, drivable from the CLI and the dashboard's Canary card.
+- **Re-key `perf` / `chaos` / `compare` to tenant coordinates.** They still compile against the deprecated `utils/config.ts` flat-model reader and error politely at runtime. Same one-import-swap pattern used for deploy/rollback/canary/pipeline.
+- **ADR-0020 follow-ups:** in-cluster project infra (Postgres/Kafka) so kubernetes-runtime services can keep their DB binding (currently stripped at scaffold time), and in-cluster Prometheus to bring back metric-driven canary analysis (the analysis steps were removed from the Rollout template).
+- **Port the `lambda-python` template to the tenant model.** The `lambda` command was removed with the client model; the template stays on disk. Needs a tenant-era serverless compose shape + command surface.
+- **Gateway route generation (ADR-0018, proposed):** every project ships a Caddy gateway with a placeholder Caddyfile; the registry-generated path-prefix routing model awaits review/implementation.
+- User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab), designed in [specs/analytics.md](specs/analytics.md) — spec predates the tenant model and needs a re-read before building.
+- **Compliance-grade audit logging (ADR-0011)** and **data governance / DSAR (ADR-0012)** remain proposed; both were written in client-model vocabulary and should be re-scoped to tenant/project levels before implementation.
+- **L3 integration coverage:** the client-model L3 suite went with the purge. A `k8s-golden-path` integration test (gated on kind+terraform being installed) is the intended replacement; until then the golden path is verified manually per the README quickstart.
 
 ## What this repo is
 
@@ -30,12 +25,10 @@ blissful-infra/
 ├── packages/
 │   ├── cli/          # @blissful-infra/cli: the published npm package (Node.js CLI + API server)
 │   └── dashboard/    # React web dashboard (served by the CLI's API server)
-├── examples/         # Example apps scaffolded by the CLI (copied into CLI dist at build)
 ├── site/             # Astro + Starlight docs site → blissful-infra.com (Cloudflare Pages)
 ├── docs/             # Learning guides and internal documentation
 ├── specs/            # Product vision, agent architecture, timeline specs
-├── package.json      # Root workspace: workspaces: ["packages/*"]
-└── wrangler.toml     # Cloudflare config (root-level, mostly unused: site/ has its own)
+└── package.json      # Root workspace: workspaces: ["packages/*"]
 ```
 
 ---
@@ -110,10 +103,10 @@ implementation details.
 |---|---|
 | Shared schemas / type contracts between packages | [packages/shared/CLAUDE.md](packages/shared/CLAUDE.md) |
 | CLI commands, scaffolding, server API, MCP, utils | [packages/cli/CLAUDE.md](packages/cli/CLAUDE.md) |
-| Scaffold templates (Jenkinsfile, docker-compose, Spring Boot, etc.) | [packages/cli/src/templates/CLAUDE.md](packages/cli/src/templates/CLAUDE.md) |
+| Scaffold templates (Jenkinsfile, terraform, gitops manifests, Spring Boot, etc.) | [packages/cli/templates/CLAUDE.md](packages/cli/templates/CLAUDE.md) |
 | Dashboard UI (React tabs, charts, log viewer) | [packages/dashboard/CLAUDE.md](packages/dashboard/CLAUDE.md) |
 | Docs website (content, SEO, Cloudflare Pages deploy) | [site/CLAUDE.md](site/CLAUDE.md) |
-| Example applications (content-recommender, etc.) | [examples/CLAUDE.md](examples/CLAUDE.md) |
+| Example applications (content-recommender, etc.) | [packages/cli/examples/CLAUDE.md](packages/cli/examples/CLAUDE.md) |
 
 ---
 
@@ -145,10 +138,9 @@ implementation details.
 
 These patterns appear across multiple packages and should stay consistent:
 
-**Docker Compose** is the runtime unit. Three generations coexist:
-- **Flat model** (legacy): `blissful-infra start <name>` creates a single `docker-compose.yaml` with all services and infra in one file.
-- **Client model** (legacy, Phase 6): Each client gets `docker-compose.infra.yaml` (shared Kafka, Postgres, Jenkins, observability) plus per-service `docker-compose.yaml` files that join the client's `{name}_infra` Docker network. Config and data live under `~/.blissful-infra/clients/`.
-- **Tenant model** (current, ADR-0017): three levels. The tenant compose (`docker-compose.tenant.yaml`) runs dashboard, Jenkins and the observability stack. Each project compose (`docker-compose.project.yaml`) runs Kafka, Postgres and the API gateway on an isolated Docker network. Each service has its own `docker-compose.yaml` joining the project network. Config and data live under `~/.blissful-infra/tenants/`.
+**Two runtimes** under the tenant model (ADR-0017 + ADR-0020):
+- **Compose (default):** the tenant compose (`docker-compose.tenant.yaml`) runs Jenkins and the observability stack; each project compose (`docker-compose.project.yaml`) runs Kafka, Postgres and the API gateway on an isolated Docker network; each service has its own `docker-compose.yaml` joining the project network. The dashboard is host-level (one control plane for all tenants). Config and data live under `~/.blissful-infra/tenants/`.
+- **Kubernetes (`project create --runtime kubernetes`):** the tenant owns a kind cluster (`blissful-<tenant>`, Terraform workspace at `tenants/<t>/cluster/`) running ArgoCD, Argo Rollouts and Gitea. Projects are namespaces; services are Argo Rollouts synced by ArgoCD from the tenant's gitops repo (checkout at `tenants/<t>/gitops/`). `deploy` drives the loop.
 
 **API server** (`packages/cli/src/server/api.ts`) runs on **port 3002** and is the single integration point between the CLI, the dashboard, and Jenkins pipelines. The dashboard talks to it over `http://localhost:3002`. Jenkins pipelines reach it via `http://host.docker.internal:3002`.
 
@@ -183,7 +175,7 @@ npm run test:all      # everything
 - Each integration test gets a unique `BLISSFUL_HOME` (via `mkdtemp`) so it doesn't pollute the user's real registry. The CLI honors this env var when set
 - Each integration test uses a unique client name (timestamp + random suffix) so parallel CI runs don't collide
 - No mocks, tests hit real services (Vitest runs in node, `execa` invokes real `docker`)
-- Cleanup is `afterAll` and best-effort, even on failure, do `client remove`
+- Cleanup is `afterAll` and best-effort, even on failure, do `tenant remove`
 
 **When to add what:**
 - Changed a schema or pure function → add an L1 test

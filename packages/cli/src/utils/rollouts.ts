@@ -30,6 +30,10 @@ export interface AnalysisResult {
   }>;
 }
 
+function ctxArgs(context?: string): string[] {
+  return context ? ["--context", context] : [];
+}
+
 async function checkKubectlPlugin(): Promise<boolean> {
   try {
     await execa("kubectl", ["argo", "rollouts", "version"], { stdio: "pipe" });
@@ -53,16 +57,18 @@ export async function ensureRolloutsAvailable(): Promise<boolean> {
 
 export async function getRolloutStatus(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<RolloutStatus | null> {
   try {
     const { stdout } = await execa("kubectl", [
-      "argo", "rollouts", "status", name,
+      "argo", "rollouts", "get", "rollout", name,
       "-n", namespace,
       "--no-color",
+      ...ctxArgs(context),
     ], { stdio: "pipe", timeout: 10000 });
 
-    // Parse the status output
+    // Parse the `get rollout` header block
     const lines = stdout.split("\n");
     const status: RolloutStatus = {
       name,
@@ -77,7 +83,7 @@ export async function getRolloutStatus(
 
     for (const line of lines) {
       if (line.includes("Status:")) {
-        status.status = line.split("Status:")[1]?.trim() || "Unknown";
+        status.status = (line.split("Status:")[1]?.trim() || "Unknown").replace(/^[^A-Za-z]+/, "");
       }
       if (line.includes("Step:")) {
         const stepMatch = line.match(/Step:\s*(\d+)\/(\d+)/);
@@ -105,13 +111,15 @@ export async function getRolloutStatus(
 
 export async function getRolloutDetails(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<string> {
   try {
     const { stdout } = await execa("kubectl", [
       "argo", "rollouts", "get", "rollout", name,
       "-n", namespace,
       "--no-color",
+      ...ctxArgs(context),
     ], { stdio: "pipe", timeout: 10000 });
     return stdout;
   } catch (error) {
@@ -123,10 +131,11 @@ export async function getRolloutDetails(
 export async function promoteRollout(
   name: string,
   namespace: string,
-  full: boolean = false
+  full: boolean = false,
+  context?: string
 ): Promise<boolean> {
   try {
-    const args = ["argo", "rollouts", "promote", name, "-n", namespace];
+    const args = ["argo", "rollouts", "promote", name, "-n", namespace, ...ctxArgs(context)];
     if (full) args.push("--full");
 
     await execa("kubectl", args, { stdio: "pipe" });
@@ -138,12 +147,14 @@ export async function promoteRollout(
 
 export async function abortRollout(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<boolean> {
   try {
     await execa("kubectl", [
       "argo", "rollouts", "abort", name,
       "-n", namespace,
+      ...ctxArgs(context),
     ], { stdio: "pipe" });
     return true;
   } catch {
@@ -153,12 +164,14 @@ export async function abortRollout(
 
 export async function retryRollout(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<boolean> {
   try {
     await execa("kubectl", [
       "argo", "rollouts", "retry", "rollout", name,
       "-n", namespace,
+      ...ctxArgs(context),
     ], { stdio: "pipe" });
     return true;
   } catch {
@@ -168,12 +181,14 @@ export async function retryRollout(
 
 export async function pauseRollout(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<boolean> {
   try {
     await execa("kubectl", [
       "argo", "rollouts", "pause", name,
       "-n", namespace,
+      ...ctxArgs(context),
     ], { stdio: "pipe" });
     return true;
   } catch {
@@ -183,12 +198,14 @@ export async function pauseRollout(
 
 export async function resumeRollout(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<boolean> {
   try {
     await execa("kubectl", [
       "argo", "rollouts", "promote", name,
       "-n", namespace,
+      ...ctxArgs(context),
     ], { stdio: "pipe" });
     return true;
   } catch {
@@ -200,13 +217,15 @@ export async function setRolloutImage(
   name: string,
   namespace: string,
   container: string,
-  image: string
+  image: string,
+  context?: string
 ): Promise<boolean> {
   try {
     await execa("kubectl", [
       "argo", "rollouts", "set", "image", name,
       `${container}=${image}`,
       "-n", namespace,
+      ...ctxArgs(context),
     ], { stdio: "pipe" });
     return true;
   } catch {
@@ -217,10 +236,11 @@ export async function setRolloutImage(
 export async function undoRollout(
   name: string,
   namespace: string,
-  revision?: string
+  revision?: string,
+  context?: string
 ): Promise<boolean> {
   try {
-    const args = ["argo", "rollouts", "undo", name, "-n", namespace];
+    const args = ["argo", "rollouts", "undo", name, "-n", namespace, ...ctxArgs(context)];
     if (revision) args.push("--to-revision", revision);
 
     await execa("kubectl", args, { stdio: "pipe" });
@@ -232,13 +252,15 @@ export async function undoRollout(
 
 export async function getRolloutHistory(
   name: string,
-  namespace: string
+  namespace: string,
+  context?: string
 ): Promise<string> {
   try {
     const { stdout } = await execa("kubectl", [
       "argo", "rollouts", "get", "rollout", name,
       "-n", namespace,
       "--no-color",
+      ...ctxArgs(context),
     ], { stdio: "pipe", timeout: 10000 });
     return stdout;
   } catch {

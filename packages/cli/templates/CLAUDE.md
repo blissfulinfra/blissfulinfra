@@ -15,34 +15,27 @@ templates/
 │   ├── src/test/         # Unit and integration test stubs
 │   ├── Dockerfile        # Multi-stage build with OpenTelemetry Java agent
 │   ├── Dockerfile.dev    # Dev image (no multi-stage, faster rebuild)
-│   ├── Jenkinsfile       # CI/CD pipeline (deploys via blissful-infra API)
+│   ├── Jenkinsfile       # CI pipeline (build/test/scan; deploys are CLI-driven)
 │   ├── build.gradle.kts  # Gradle build: Kotlin, Spring Boot, Kafka, JPA
-│   ├── k8s/              # Kubernetes manifests (base + staging/ephemeral overlays)
 │   └── k6/               # k6 load test scripts
 ├── react-vite/           # React + Vite + TypeScript + TailwindCSS frontend
 │   ├── src/              # React app (pages, components, hooks, lib)
 │   ├── Dockerfile        # nginx-based production image
 │   └── nginx.conf        # nginx config (proxies /api/ and /ws/ to backend)
-├── jenkins/              # Shared Jenkins CI server (started once, shared across projects)
+├── lambda-python/        # Serverless backend (awaiting tenant-model port)
+├── jenkins/              # Tenant Jenkins CI server image
 │   ├── Dockerfile        # Jenkins LTS with pre-installed plugins
 │   ├── casc.yaml         # Jenkins Configuration as Code
 │   ├── plugins.txt       # Plugin list for jenkins-plugin-cli
 │   └── docker-compose.yaml
-├── grafana/              # Grafana provisioning + pre-built dashboards
-│   ├── dashboards/       # JSON dashboard definitions
-│   └── provisioning/     # Datasource + dashboard provider configs
-├── prometheus/
-│   └── prometheus.yml    # Scrape config (targets: backend /actuator/prometheus)
-├── loki/
-│   ├── loki-config.yaml
-│   └── promtail-config.yaml
-├── cluster/              # Kubernetes cluster config (Argo Rollouts, etc.)
-│   └── argo-rollouts/
-└── plugins/              # Optional plugin overlays added on top of base stack
-    ├── ai-pipeline/      # FastAPI ML service with ClickHouse + MLflow
-    ├── agent-service/    # Python AI agent service
-    └── scraper/          # Scrapy web scraper base (minimal placeholder)
+├── cluster/terraform/    # ADR-0020: kind cluster + ArgoCD + Argo Rollouts +
+│                         # Gitea, rendered to tenants/<t>/cluster/ by `cluster up`
+└── gitops/service/       # ADR-0020: per-service manifests (Rollout, canary/
+                          # stable Services, ConfigMap, ArgoCD Application),
+                          # rendered into the tenant's gitops repo by `deploy`
 ```
+
+Observability configs (Prometheus, Grafana, Loki, Tempo) are generated inline by `src/utils/tenant-compose.ts`, not templated. The pre-2.0 plugin overlay templates were removed with the client model.
 
 ---
 
@@ -53,7 +46,7 @@ At scaffold time, `src/utils/template.ts` walks every template file and applies 
 ### Variable substitution
 
 ```
-{{PROJECT_NAME}}     →  the project name passed to `blissful-infra start`
+{{PROJECT_NAME}}     →  the service name (`service add` maps it into this role)
 {{REGISTRY_URL}}     →  Docker registry URL (default: localhost:5050)
 ```
 
@@ -77,27 +70,19 @@ Blocks are removed (along with their content) when the condition is false. Nesti
 
 ---
 
-## Plugin overlay system
+## Cluster + gitops rendering (ADR-0020)
 
-Plugins add services on top of the base stack. When a project includes `--plugins ai-pipeline`, the CLI:
-1. Scaffolds the base stack normally
-2. Copies `templates/plugins/ai-pipeline/` into the project directory (overlaying or adding files)
-3. Adds the plugin service to the generated `docker-compose.yaml`
+Two template sets render outside the scaffold flow, with a plain `{{VAR}}`
+string replace (no conditional blocks):
 
-Plugin services declare their type in `blissful-infra.yaml` under `plugins:`. The `start.ts` command's `generateDockerCompose()` function reads plugins and adds the corresponding service blocks.
-
-**Example plugin service block (ai-pipeline):**
-```yaml
-ai-pipeline:
-  build: { context: ./ai-pipeline, dockerfile: Dockerfile }
-  container_name: my-app-ai-pipeline
-  environment:
-    KAFKA_BOOTSTRAP_SERVERS: kafka:9094
-    CLICKHOUSE_HOST: clickhouse
-  depends_on:
-    kafka: { condition: service_healthy }
-    clickhouse: { condition: service_healthy }
-```
+- `cluster/terraform/` → rendered by `utils/terraform.ts` to
+  `~/.blissful-infra/tenants/<t>/cluster/` on `cluster up`. Vars:
+  `TENANT_NAME`, `KUBE_API_PORT`, `ARGOCD_PORT`, `GITEA_PORT`. Chart and
+  provider versions are pinned here — bump them here.
+- `gitops/service/` → rendered by `utils/gitops.ts` into the tenant's gitops
+  checkout on first `deploy`. Vars: `TENANT_NAME`, `PROJECT_NAME`,
+  `SERVICE_NAME`, `IMAGE_NAME`, `IMAGE_TAG`, `GITOPS_REPO_URL`. Subsequent
+  deploys only rewrite the kustomization `newTag`.
 
 ---
 
@@ -121,7 +106,7 @@ The Jenkinsfile is the most complex template. Key behaviors:
 - **Push:** Pushes to local Docker registry at `{{REGISTRY_URL}}`.
 - **Deploy:** Calls `/api/projects/{{PROJECT_NAME}}/up` to restart containers, then health-checks `/actuator/health`.
 - **Post success/failure:** PATCHes the deployment record with final status + sends Slack notification (optional).
-- **Kubernetes conditional:** `{{#IF_KUBERNETES}}` wraps ephemeral PR environments and Argo CD staging deploy.
+- Kubernetes-runtime deploys do NOT go through Jenkins — `blissful-infra deploy` owns that path (ADR-0020).
 
 ---
 
@@ -130,13 +115,14 @@ The Jenkinsfile is the most complex template. Key behaviors:
 - **Stack:** React 19, Vite, TypeScript, TailwindCSS, React Router, Zustand
 - **Production image:** nginx multi-stage build. nginx serves static assets and proxies `/api/` → `backend:8080`.
 - **nginx.conf:** Handles SPA routing (`try_files $uri $uri/ /index.html`), WebSocket upgrade for `/ws/`, and API proxy.
-- Note: `react-vite/node_modules/` is checked in (pre-installed deps for faster `npm install` in generated projects). Do not modify these; they are the template's own installed packages.
+- `react-vite/node_modules/` is never checked in (gitignored build residue).
 
 ---
 
-## Adding a new template or plugin
+## Adding a new template
 
-1. Create `templates/plugins/<name>/` with at minimum a `Dockerfile` and `requirements.txt` (or `package.json`).
-2. Add plugin service generation logic in `packages/cli/src/commands/start.ts` → `generateDockerCompose()`.
-3. Register the plugin type in `packages/cli/src/utils/plugin-registry.ts`.
-4. If the plugin has an example app, add it under `examples/` and reference it from an example's `blissful-infra.yaml`.
+1. Create `templates/<name>/` with a `Dockerfile` and the app scaffold.
+2. Teach `service add` about it: extend the template validation in
+   `packages/cli/src/commands/service-v2.ts` (`buildServiceConfig`).
+3. Add an L2 test asserting the generated service compose is valid.
+

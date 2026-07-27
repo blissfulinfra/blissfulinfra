@@ -7,11 +7,11 @@ import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
-import { getTenant, listTenants } from "../utils/tenant-registry.js";
+import { getTenant, listTenants, findServiceProject, getServiceDir, readProjectRuntime } from "../utils/tenant-registry.js";
+import { kubeContext } from "../utils/kind.js";
 import {
-  loadOntology,
+  loadSavedOntology,
   saveOntology,
-  annotateStatus,
   getNodeConfig,
   setNodeConfig,
   wireEdge,
@@ -78,6 +78,8 @@ import {
   type ContainerMetrics,
   type HttpMetrics,
   type ProjectMetrics,
+  type CanaryStatus,
+  CanaryActionSchema,
   CreateDeploymentRequestSchema,
   UpdateDeploymentRequestSchema,
 } from "@blissful-infra/shared";
@@ -183,16 +185,15 @@ export function createApiServer(workingDir: string, port = 3002) {
         }
         // Look up host ports for the requested tenant so observability links
         // point at the right port block.
-        let tenantPorts: { grafana?: number; prometheus?: number; tempo?: number; jenkins?: number } = {};
+        let tenantPorts: { grafana?: number; prometheus?: number; tempo?: number; jenkins?: number; argocd?: number; gitea?: number } = {};
         if (currentTenant) {
           const t = await getTenant(currentTenant);
           if (t) tenantPorts = t.portBlock;
         }
         const links: Record<string, string | null> = {
-          // The dashboard's `links.clientName` badge predates the rename. We
-          // populate it from either env so the existing UI shows the right
-          // label without a UI change.
-          clientName: currentTenant || process.env.CLIENT_NAME || null,
+          // The dashboard's `links.clientName` badge predates the rename to
+          // tenants; it carries the tenant name until the UI field is renamed.
+          clientName: currentTenant,
           tenantName: currentTenant,
           projectName: contextProject,
           tempoUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/explore?left=${encodeURIComponent('{"datasource":"Tempo","queries":[{"refId":"A"}]}')}` : null,
@@ -200,6 +201,10 @@ export function createApiServer(workingDir: string, port = 3002) {
           grafanaUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/d/tenant-overview` : null,
           prometheusUrl: tenantPorts.prometheus ? `http://localhost:${tenantPorts.prometheus}` : null,
           jenkinsUrl: tenantPorts.jenkins ? `http://localhost:${tenantPorts.jenkins}` : null,
+          // Kubernetes runtime (ADR-0020) — only present once cluster ports
+          // are allocated (cluster up backfills them).
+          argocdUrl: tenantPorts.argocd ? `http://localhost:${tenantPorts.argocd}` : null,
+          giteaUrl: tenantPorts.gitea ? `http://localhost:${tenantPorts.gitea}` : null,
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(links));
@@ -218,7 +223,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const projectMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
       if (req.method === "GET" && projectMatch) {
         const projectName = projectMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const status = await getProjectStatus(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(status));
@@ -228,7 +233,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       // POST /api/projects - Create new project
       if (req.method === "POST" && url.pathname === "/api/v1/projects") {
         const body = await readBody(req);
-        const { name, type, backend, frontend, database, plugins, autoStart } = JSON.parse(body);
+        const { name, type, backend, frontend, plugins, autoStart } = JSON.parse(body);
 
         if (!name) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -236,41 +241,23 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
 
-        // Three modes, in priority order:
-        //   1. tenant resolvable (env or ?tenant=) → new tenant/project/service
-        //      flow (ADR-0017). Project comes from context.json or the
-        //      ?project= query param when the control plane sends it.
-        //   2. CLIENT_NAME set → legacy client/service flow (scheduled for
-        //      deletion in phase 8).
-        //   3. neither → legacy flat-model create (scheduled for deletion).
+        // Tenant flow only (ADR-0017): tenant from env or ?tenant=, project
+        // from context.json or the ?project= query param.
         const tenantForCreate = tenantFromRequest();
-        const clientForCreate = process.env.CLIENT_NAME;
+        if (!tenantForCreate) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "No tenant resolvable (set ?tenant= or TENANT_NAME)" }));
+          return;
+        }
 
-        let result: { success: boolean; error?: string; project?: string };
-        if (tenantForCreate) {
-          result = await addServiceToTenant(tenantForCreate, {
+        const result: { success: boolean; error?: string; project?: string } =
+          await addServiceToTenant(tenantForCreate, {
             name,
             type: type || "backend",
             backend,
             frontend,
             plugins,
           });
-        } else if (clientForCreate) {
-          result = await addServiceToClient(clientForCreate, {
-            name,
-            backend: backend || "spring-boot",
-            frontend: frontend || "react-vite",
-            plugins,
-          });
-        } else {
-          result = await createProject(workingDir, {
-            name,
-            type: type || "fullstack",
-            backend: backend || "spring-boot",
-            frontend: frontend || "react-vite",
-            database,
-          });
-        }
 
         if (!result.success) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -453,7 +440,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const downMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/down$/);
       if (req.method === "POST" && downMatch) {
         const projectName = downMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         await execa("docker", ["compose", "down"], {
           cwd: projectDir,
           stdio: "pipe",
@@ -467,7 +454,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const logsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs$/);
       if (req.method === "GET" && logsMatch) {
         const projectName = logsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const logs = await collectDockerLogs(projectDir, { tail: 100 });
 
         // Persist logs to storage in background
@@ -601,7 +588,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const logsSearchMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/search$/);
       if (req.method === "GET" && logsSearchMatch) {
         const projectName = logsSearchMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         const service = url.searchParams.get("service") || undefined;
         const level = url.searchParams.get("level") || undefined;
@@ -630,7 +617,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const logConfigMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/config$/);
       if (req.method === "GET" && logConfigMatch) {
         const projectName = logConfigMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         const config = await loadLogConfig(projectDir);
         const stats = await getLogStorageStats(projectDir);
@@ -644,7 +631,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const logConfigUpdateMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/config$/);
       if (req.method === "PUT" && logConfigUpdateMatch) {
         const projectName = logConfigUpdateMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const config = JSON.parse(body) as LogRetentionConfig;
 
@@ -658,7 +645,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const logRotateMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/rotate$/);
       if (req.method === "POST" && logRotateMatch) {
         const projectName = logRotateMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         await forceRotate(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -670,7 +657,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const logClearMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/logs\/stored$/);
       if (req.method === "DELETE" && logClearMatch) {
         const projectName = logClearMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         await clearLogs(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -682,7 +669,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const agentMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/agent$/);
       if (req.method === "POST" && agentMatch) {
         const projectName = agentMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const { query, model: requestedModel, provider: requestedProvider } = JSON.parse(body);
 
@@ -712,7 +699,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const deleteMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
       if (req.method === "DELETE" && deleteMatch) {
         const projectName = deleteMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         // Stop containers first
         try {
@@ -748,7 +735,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const metricsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics$/);
       if (req.method === "GET" && metricsMatch) {
         const projectName = metricsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const metrics = await getContainerMetrics(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(metrics));
@@ -759,7 +746,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const healthMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/health$/);
       if (req.method === "GET" && healthMatch) {
         const projectName = healthMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const health = await checkServiceHealth(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(health));
@@ -770,7 +757,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const pluginsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/plugins$/);
       if (req.method === "GET" && pluginsMatch) {
         const projectName = pluginsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const plugins = await getPluginStatuses(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(plugins));
@@ -781,7 +768,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const historyMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/history$/);
       if (req.method === "GET" && historyMatch) {
         const projectName = historyMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         // Parse query params
         const startTime = url.searchParams.get("start")
@@ -804,7 +791,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const summaryMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/summary$/);
       if (req.method === "GET" && summaryMatch) {
         const projectName = summaryMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         const startTime = url.searchParams.get("start")
           ? parseInt(url.searchParams.get("start")!, 10)
@@ -823,7 +810,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const storageMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/storage$/);
       if (req.method === "GET" && storageMatch) {
         const projectName = storageMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         const info = await getStorageInfo(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -835,7 +822,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const exportMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics\/export$/);
       if (req.method === "POST" && exportMatch) {
         const projectName = exportMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const { format = "json", start, end } = JSON.parse(body || "{}");
 
@@ -864,7 +851,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const clearMetricsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/metrics$/);
       if (req.method === "DELETE" && clearMetricsMatch) {
         const projectName = clearMetricsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         await clearMetrics(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -876,7 +863,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const alertsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts$/);
       if (req.method === "GET" && alertsMatch) {
         const projectName = alertsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         await initializeAlerts(projectDir);
         const config = await loadAlertsConfig(projectDir);
@@ -892,7 +879,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const alertsConfigMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/config$/);
       if (req.method === "PUT" && alertsConfigMatch) {
         const projectName = alertsConfigMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const config = JSON.parse(body);
 
@@ -906,7 +893,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const addThresholdMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/thresholds$/);
       if (req.method === "POST" && addThresholdMatch) {
         const projectName = addThresholdMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const thresholdData = JSON.parse(body) as Omit<AlertThreshold, "id">;
 
@@ -921,7 +908,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       if (req.method === "PUT" && updateThresholdMatch) {
         const projectName = updateThresholdMatch[1];
         const thresholdId = updateThresholdMatch[2];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const updates = JSON.parse(body);
 
@@ -936,7 +923,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       if (req.method === "DELETE" && deleteThresholdMatch) {
         const projectName = deleteThresholdMatch[1];
         const thresholdId = deleteThresholdMatch[2];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         const success = await deleteThreshold(projectDir, thresholdId);
         res.writeHead(success ? 200 : 404, { "Content-Type": "application/json" });
@@ -948,7 +935,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const ackAlertsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alerts\/acknowledge$/);
       if (req.method === "POST" && ackAlertsMatch) {
         const projectName = ackAlertsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
 
         const count = await acknowledgeAlerts(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -982,8 +969,8 @@ export function createApiServer(workingDir: string, port = 3002) {
       const envsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/environments$/);
       if (req.method === "GET" && envsMatch) {
         const projectName = envsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
-        const environments = await getProjectEnvironments(projectDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
+        const environments = await getProjectEnvironments(projectDir, projectName, tenantFromRequest());
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ environments }));
         return;
@@ -994,12 +981,14 @@ export function createApiServer(workingDir: string, port = 3002) {
       if (req.method === "POST" && deployMatch) {
         const projectName = deployMatch[1];
         const body = await readBody(req);
-        const { env = "staging", image } = JSON.parse(body || "{}");
+        const { tag } = JSON.parse(body || "{}");
+        const deployTenant = tenantFromRequest();
 
         const cliPath = path.join(__dirname, "..", "index.js");
         try {
-          const args = ["deploy", projectName, "--env", env];
-          if (image) args.push("--image", image);
+          const args = ["deploy", projectName];
+          if (deployTenant) args.push("--tenant", deployTenant);
+          if (tag) args.push("--tag", tag);
 
           await execa("node", [cliPath, ...args], {
             cwd: workingDir,
@@ -1007,7 +996,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           });
 
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true, environment: env }));
+          res.end(JSON.stringify({ success: true }));
         } catch (error) {
           const execaError = toExecError(error);
           res.writeHead(500, { "Content-Type": "application/json" });
@@ -1020,15 +1009,76 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/rollback - Trigger rollback
+      // Canary rollout endpoints (kubernetes runtime). :name is the service;
+      // the owning project (= namespace) resolves through the registry.
+      const canaryStatusMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canary$/);
+      if (req.method === "GET" && canaryStatusMatch) {
+        const serviceName = canaryStatusMatch[1];
+        const canaryTenant = tenantFromRequest();
+        const owning = canaryTenant ? await findServiceProject(canaryTenant, serviceName) : null;
+        if (!owning) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ canary: null }));
+          return;
+        }
+        const { getRolloutStatus } = await import("../utils/rollouts.js");
+        const status = await getRolloutStatus(serviceName, owning.project, kubeContext(canaryTenant!));
+        const canary: CanaryStatus | null = status ? {
+          service: serviceName,
+          project: owning.project,
+          status: status.status,
+          step: status.step,
+          totalSteps: status.totalSteps,
+          currentWeight: status.currentWeight,
+          message: status.message,
+        } : null;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ canary }));
+        return;
+      }
+
+      const canaryActionMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canary\/([^/]+)$/);
+      if (req.method === "POST" && canaryActionMatch) {
+        const serviceName = canaryActionMatch[1];
+        const parsedAction = CanaryActionSchema.safeParse(canaryActionMatch[2]);
+        if (!parsedAction.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Unknown canary action '${canaryActionMatch[2]}'` }));
+          return;
+        }
+        const canaryTenant = tenantFromRequest();
+        const owning = canaryTenant ? await findServiceProject(canaryTenant, serviceName) : null;
+        if (!owning) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Service '${serviceName}' not found in tenant` }));
+          return;
+        }
+        const rollouts = await import("../utils/rollouts.js");
+        const namespace = owning.project;
+        const ctx = kubeContext(canaryTenant!);
+        const ok = await ({
+          "promote":      () => rollouts.promoteRollout(serviceName, namespace, false, ctx),
+          "promote-full": () => rollouts.promoteRollout(serviceName, namespace, true, ctx),
+          "abort":        () => rollouts.abortRollout(serviceName, namespace, ctx),
+          "pause":        () => rollouts.pauseRollout(serviceName, namespace, ctx),
+          "resume":       () => rollouts.resumeRollout(serviceName, namespace, ctx),
+        }[parsedAction.data])();
+        res.writeHead(ok ? 200 : 500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: ok }));
+        return;
+      }
+
       const rollbackMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/rollback$/);
       if (req.method === "POST" && rollbackMatch) {
         const projectName = rollbackMatch[1];
         const body = await readBody(req);
-        const { env = "staging", revision } = JSON.parse(body || "{}");
+        const { revision } = JSON.parse(body || "{}");
+        const rollbackTenant = tenantFromRequest();
 
         const cliPath = path.join(__dirname, "..", "index.js");
         try {
-          const args = ["rollback", projectName, "--env", env];
+          const args = ["rollback", projectName];
+          if (rollbackTenant) args.push("--tenant", rollbackTenant);
           if (revision) args.push("--revision", revision);
 
           await execa("node", [cliPath, ...args], {
@@ -1037,7 +1087,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           });
 
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true, environment: env }));
+          res.end(JSON.stringify({ success: true }));
         } catch (error) {
           const execaError = toExecError(error);
           res.writeHead(500, { "Content-Type": "application/json" });
@@ -1053,7 +1103,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const pipelineMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/pipeline$/);
       if (req.method === "GET" && pipelineMatch) {
         const projectName = pipelineMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const pipelineStatus = await getPipelineStatus(projectDir, projectName);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(pipelineStatus));
@@ -1103,7 +1153,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
 
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const gatlingDir = path.join(projectDir, "gatling");
         const job: GatlingJob = { status: "running", startedAt: Date.now(), logLines: [] };
         gatlingJobs.set(projectName, job);
@@ -1178,7 +1228,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const gatlingResultsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/perf\/gatling\/results$/);
       if (req.method === "GET" && gatlingResultsMatch) {
         const projectName = gatlingResultsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const reportsDir = path.join(projectDir, "gatling", "build", "reports", "gatling");
         try {
           const runs = await fs.readdir(reportsDir);
@@ -1226,7 +1276,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       const deploymentsMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/deployments$/);
       if (req.method === "GET" && deploymentsMatch) {
         const projectName = deploymentsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const limit = url.searchParams.get("limit")
           ? parseInt(url.searchParams.get("limit")!, 10)
           : 50;
@@ -1239,7 +1289,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       // POST /api/projects/:name/deployments - Create deployment record
       if (req.method === "POST" && deploymentsMatch) {
         const projectName = deploymentsMatch[1];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const parsed = CreateDeploymentRequestSchema.safeParse(JSON.parse(body || "{}"));
         if (!parsed.success) {
@@ -1276,7 +1326,7 @@ export function createApiServer(workingDir: string, port = 3002) {
       if (req.method === "PATCH" && deploymentByIdMatch) {
         const projectName = deploymentByIdMatch[1];
         const deploymentId = deploymentByIdMatch[2];
-        const projectDir = resolveProjectDir(workingDir, projectName);
+        const projectDir = await resolveProjectDir(workingDir, projectName, tenantFromRequest());
         const body = await readBody(req);
         const parsed = UpdateDeploymentRequestSchema.safeParse(JSON.parse(body || "{}"));
         if (!parsed.success) {
@@ -1325,139 +1375,53 @@ export function createApiServer(workingDir: string, port = 3002) {
       // jenkins, prometheus, grafana, tempo, loki at the tenant level;
       // kafka, postgres, gateway per project) with live container status.
       if (req.method === "GET" && url.pathname === "/api/v1/client/infra") {
-        const tenantName = process.env.TENANT_NAME;
-        const clientName = process.env.CLIENT_NAME;
-
+        const tenantName = tenantFromRequest();
         if (tenantName) {
           const infra = await collectTenantInfraStatus(tenantName);
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ client: tenantName, infra }));
           return;
         }
-        if (clientName) {
-          const clientDir = path.join(workingDir, clientName);
-          const graph = await loadOntology(clientDir, clientName);
-          const annotated = await annotateStatus(clientName, graph);
-          const infra = annotated.nodes
-            .filter(n => n.type !== "service")
-            .map(n => ({
-              id: n.id,
-              type: n.type,
-              label: n.label,
-              port: n.port,
-              status: n.status ?? "unknown",
-            }));
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ client: clientName, infra }));
-          return;
-        }
         res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Not running in tenant/client mode" }));
+        res.end(JSON.stringify({ error: "No tenant resolvable (set ?tenant= or TENANT_NAME)" }));
         return;
       }
 
-      // ── Ontology endpoints ─────────────────────────────────────────────
-      // Resolution: when CLIENT_NAME is set (dashboard inside a client's
-      // infra stack), the client dir is mounted at workingDir/<clientName>.
-      // From the host CLI, workingDir is the user's projects dir, so the
-      // same join works as long as the client config was created via
-      // `client create` and lives at ~/.blissful-infra/clients/<name>.
-      const ontologyClient = process.env.CLIENT_NAME;
-      const resolveClientDir = (clientName: string): string => path.join(workingDir, clientName);
+      // ── Ontology endpoints (tenant model, ADR-0017) ────────────────────
+      // The path param is the tenant name. When the server is bound to a
+      // tenant (TENANT_NAME), cross-tenant access is denied; in control-plane
+      // mode any registered tenant is reachable. The live graph is derived
+      // from the registry on every GET; user positions and hand-drawn edges
+      // overlay from ~/.blissful-infra/tenants/<tenant>/ontology.json.
+      const resolveOntologyTenant = async (name: string): Promise<string | null> => {
+        const bound = process.env.TENANT_NAME;
+        if (bound) return name === bound ? name : null;
+        return (await getTenant(name)) ? name : null;
+      };
 
       const ontologyGetMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)$/);
       if (req.method === "GET" && ontologyGetMatch) {
-        const clientName = ontologyGetMatch[1];
-        const tenantName = process.env.TENANT_NAME;
-
-        // Tenant mode (ADR-0017): build the graph from the registry walked
-        // across tenant + every project + every service. Status comes from
-        // a single docker ps. Saved positions/edges (if any) overlay from
-        // ~/.blissful-infra/tenants/<tenant>/ontology.json.
-        if (tenantName) {
-          if (clientName !== tenantName) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Cross-tenant ontology access denied" }));
-            return;
-          }
-          const graph = await buildTenantOntology(tenantName);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(graph));
+        const tenant = await resolveOntologyTenant(ontologyGetMatch[1]);
+        if (!tenant) {
+          res.writeHead(process.env.TENANT_NAME ? 403 : 404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unknown or inaccessible tenant" }));
           return;
         }
-
-        // Control-plane mode (no env binding): if the path param matches a
-        // tenant in the registry, treat it as tenant mode. Otherwise fall
-        // through to legacy client mode.
-        if (!ontologyClient) {
-          const t = await getTenant(clientName);
-          if (t) {
-            const graph = await buildTenantOntology(clientName);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(graph));
-            return;
-          }
-        }
-
-        // Legacy client-mode path.
-        if (ontologyClient && clientName !== ontologyClient) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
-          return;
-        }
-        const clientDir = resolveClientDir(clientName);
-        const graph = await loadOntology(clientDir, clientName);
-        const annotated = await annotateStatus(clientName, graph);
+        const graph = await buildTenantOntology(tenant);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(annotated));
+        res.end(JSON.stringify(graph));
         return;
       }
 
       if (req.method === "PUT" && ontologyGetMatch) {
-        const clientName = ontologyGetMatch[1];
-        const tenantName = process.env.TENANT_NAME;
-
-        // Tenant mode: persist under ~/.blissful-infra/tenants/<tenant>/ontology.json
-        if (tenantName) {
-          if (clientName !== tenantName) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Cross-tenant ontology access denied" }));
-            return;
-          }
-          const body = await readBody(req);
-          const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
-          const tenantDir = path.join(home, "tenants", tenantName);
-          await fs.mkdir(tenantDir, { recursive: true });
-          await fs.writeFile(path.join(tenantDir, "ontology.json"), body);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true }));
-          return;
-        }
-
-        // Control-plane mode: same tenant-dir persistence, picking the
-        // tenant from the path param.
-        if (!ontologyClient) {
-          const t = await getTenant(clientName);
-          if (t) {
-            const body = await readBody(req);
-            const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
-            const tenantDir = path.join(home, "tenants", clientName);
-            await fs.mkdir(tenantDir, { recursive: true });
-            await fs.writeFile(path.join(tenantDir, "ontology.json"), body);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: true }));
-            return;
-          }
-        }
-
-        // Legacy client mode
-        if (ontologyClient && clientName !== ontologyClient) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+        const tenant = await resolveOntologyTenant(ontologyGetMatch[1]);
+        if (!tenant) {
+          res.writeHead(process.env.TENANT_NAME ? 403 : 404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unknown or inaccessible tenant" }));
           return;
         }
         const body = await readBody(req);
-        await saveOntology(resolveClientDir(clientName), JSON.parse(body));
+        await saveOntology(tenant, JSON.parse(body));
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
         return;
@@ -1465,14 +1429,14 @@ export function createApiServer(workingDir: string, port = 3002) {
 
       const ontologyConfigMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)\/nodes\/([^/]+)\/config$/);
       if (req.method === "GET" && ontologyConfigMatch) {
-        const [, clientName, nodeId] = ontologyConfigMatch;
-        if (ontologyClient && clientName !== ontologyClient) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+        const tenant = await resolveOntologyTenant(ontologyConfigMatch[1]);
+        if (!tenant) {
+          res.writeHead(process.env.TENANT_NAME ? 403 : 404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unknown or inaccessible tenant" }));
           return;
         }
         try {
-          const config = await getNodeConfig(resolveClientDir(clientName), decodeURIComponent(nodeId));
+          const config = await getNodeConfig(tenant, decodeURIComponent(ontologyConfigMatch[2]));
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(config));
         } catch (error) {
@@ -1483,15 +1447,15 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       if (req.method === "PUT" && ontologyConfigMatch) {
-        const [, clientName, nodeId] = ontologyConfigMatch;
-        if (ontologyClient && clientName !== ontologyClient) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+        const tenant = await resolveOntologyTenant(ontologyConfigMatch[1]);
+        if (!tenant) {
+          res.writeHead(process.env.TENANT_NAME ? 403 : 404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unknown or inaccessible tenant" }));
           return;
         }
         const body = await readBody(req);
         const { content } = JSON.parse(body);
-        await setNodeConfig(resolveClientDir(clientName), decodeURIComponent(nodeId), content);
+        await setNodeConfig(tenant, decodeURIComponent(ontologyConfigMatch[2]), content);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
         return;
@@ -1499,24 +1463,24 @@ export function createApiServer(workingDir: string, port = 3002) {
 
       const ontologyWireMatch = url.pathname.match(/^\/api\/v1\/ontology\/([^/]+)\/edges\/([^/]+)\/wire$/);
       if (req.method === "POST" && ontologyWireMatch) {
-        const [, clientName, edgeId] = ontologyWireMatch;
-        if (ontologyClient && clientName !== ontologyClient) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Cross-client ontology access denied" }));
+        const tenant = await resolveOntologyTenant(ontologyWireMatch[1]);
+        if (!tenant) {
+          res.writeHead(process.env.TENANT_NAME ? 403 : 404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unknown or inaccessible tenant" }));
           return;
         }
-        const clientDir = resolveClientDir(clientName);
-        const graph = await loadOntology(clientDir, clientName);
-        const edge = graph.edges.find(e => e.id === decodeURIComponent(edgeId));
-        if (!edge) {
+        const saved = await loadSavedOntology(tenant);
+        const edgeId = decodeURIComponent(ontologyWireMatch[2]);
+        const edge = saved?.edges.find(e => e.id === edgeId);
+        if (!saved || !edge) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Edge not found" }));
+          res.end(JSON.stringify({ error: "Edge not found (only saved, hand-drawn edges can be wired)" }));
           return;
         }
         try {
-          const result = await wireEdge(clientDir, edge);
-          const updated = { ...graph, edges: graph.edges.map(e => e.id === result.edge.id ? result.edge : e) };
-          await saveOntology(clientDir, updated);
+          const result = await wireEdge(tenant, edge);
+          const updated = { ...saved, edges: saved.edges.map(e => e.id === result.edge.id ? result.edge : e) };
+          await saveOntology(tenant, updated);
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ...result.edge, codegen: { written: result.written, warnings: result.warnings } }));
         } catch (error) {
@@ -1669,20 +1633,22 @@ function buildJaegerTraceUrl(startMs: number, endMs: number): string {
 /**
  * Resolve the on-disk directory for a project/service URL parameter.
  *
- * Flat model:    workingDir = ~/projects             → workingDir/<name>
- * Client model:  workingDir = /projects (mounted),
- *                CLIENT_NAME = "dev"                 → workingDir/<CLIENT_NAME>/<name>
- *
  * Every endpoint that takes `:name` from a `/api/v1/projects/:name/...` route
- * MUST use this helper instead of `path.join(workingDir, name)` directly,
- * otherwise it 404s in client mode (services live one level deeper than
- * the working dir suggests).
+ * MUST use this helper instead of `path.join(workingDir, name)` directly.
+ * With a tenant, `:name` is a service name — the registry is scanned for the
+ * owning project and the service dir is returned
+ * (~/.blissful-infra/tenants/<t>/projects/<p>/services/<name>). Without one,
+ * fall back to a plain join under workingDir.
  */
 // Exported for testing.
-export function resolveProjectDir(workingDir: string, name: string): string {
-  const clientName = process.env.CLIENT_NAME;
-  if (clientName) {
-    return path.join(workingDir, clientName, name);
+export async function resolveProjectDir(
+  workingDir: string,
+  name: string,
+  tenant?: string | null,
+): Promise<string> {
+  if (tenant) {
+    const found = await findServiceProject(tenant, name);
+    if (found) return getServiceDir(tenant, found.project, name);
   }
   return path.join(workingDir, name);
 }
@@ -1696,99 +1662,8 @@ async function listProjects(workingDir: string, currentTenant?: string | null): 
   if (tenantName) {
     return listTenantProjects(tenantName);
   }
-
-  // Client mode (legacy): the dashboard is running inside a client's infra
-  // stack and the working dir is the client's root. Each subdir with a
-  // service-type blissful-infra.yaml is a service.
-  const clientName = process.env.CLIENT_NAME;
-  if (clientName) {
-    return listClientServices(workingDir, clientName);
-  }
-
-  const projects: ProjectStatus[] = [];
-  try {
-    const entries = await fs.readdir(workingDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-
-      const projectDir = path.join(workingDir, entry.name);
-      const configPath = path.join(projectDir, "blissful-infra.yaml");
-
-      try {
-        await fs.access(configPath);
-        const status = await getProjectStatus(projectDir);
-        projects.push(status);
-      } catch {
-        // Not a blissful-infra project
-      }
-    }
-  } catch {
-    // Working directory doesn't exist or can't be read
-  }
-
-  return projects;
-}
-
-async function listClientServices(workingDir: string, clientName: string): Promise<ProjectStatus[]> {
-  // The dashboard mounts the host client dir at /projects/<clientName>.
-  const clientDir = path.join(workingDir, clientName);
-
-  let serviceNames: string[] = [];
-  try {
-    const yaml = await fs.readFile(path.join(clientDir, "blissful-infra.yaml"), "utf-8");
-    const matches = yaml.match(/^\s+-\s+name:\s*(.+)$/gm) || [];
-    serviceNames = matches.map(m => m.replace(/^\s+-\s+name:\s*/, "").trim());
-  } catch {
-    // No client config — fall through to empty list
-  }
-
-  if (serviceNames.length === 0) return [];
-
-  // One docker ps call gets statuses for all containers in this client's project
-  let containers: { name: string; state: string; health: string; ports: string }[] = [];
-  try {
-    const { stdout } = await execa("docker", [
-      "ps", "-a", "--no-trunc",
-      "--filter", `name=${clientName}-`,
-      "--format", "{{.Names}}|{{.State}}|{{.Status}}|{{.Ports}}",
-    ], { reject: false });
-    containers = stdout.trim().split("\n").filter(Boolean).map(line => {
-      const [name, state, status, ports] = line.split("|");
-      const health = /\((healthy|unhealthy|starting)\)/.exec(status || "")?.[1] || "";
-      return { name, state, health, ports };
-    });
-  } catch {
-    // docker not available
-  }
-
-  const projects: ProjectStatus[] = [];
-  for (const svcName of serviceNames) {
-    const prefix = `${clientName}-${svcName}-`;
-    const matched = containers.filter(c => c.name.startsWith(prefix));
-    const services: Service[] = matched.map(c => {
-      const role = c.name.slice(prefix.length); // "backend" | "frontend" | "localstack"
-      const isRunning = c.state === "running";
-      const isUnhealthy = isRunning && c.health === "unhealthy";
-      const portMatch = c.ports.match(/(\d+)->\d+/);
-      return {
-        name: role,
-        status: isUnhealthy ? "unhealthy" : isRunning ? "running" : "stopped",
-        port: portMatch ? Number(portMatch[1]) : undefined,
-      };
-    });
-
-    const anyRunning = services.some(s => s.status === "running");
-    projects.push({
-      name: svcName,
-      path: path.join(clientDir, svcName),
-      status: anyRunning ? "running" : "stopped",
-      type: "service",
-      services,
-    });
-  }
-
-  return projects;
+  // No tenant resolvable — nothing to list in the tenant model.
+  return [];
 }
 
 /**
@@ -2033,6 +1908,31 @@ async function buildTenantOntology(tenantName: string): Promise<{
       position: place(id, { x: 60 + i * 160, y: 40 }),
     });
   });
+
+  // Kubernetes runtime strip (ADR-0020) — shown when any project runs on the
+  // tenant's kind cluster. Component status proxies through the kind node
+  // container (they all run inside it); the docker ps name filter above
+  // already caught `blissful-<tenant>-control-plane` as a substring match.
+  const projectRuntimes = new Map<string, string>();
+  for (const p of tenant.projects) {
+    projectRuntimes.set(p.name, await readProjectRuntime(tenantName, p.name));
+  }
+  if ([...projectRuntimes.values()].includes("kubernetes")) {
+    const kindStatus = statusOf(`blissful-${tenantName}-control-plane`);
+    const fullBlock = tenant.portBlock as typeof tenant.portBlock & { argocd?: number; gitea?: number };
+    const k8sInfra: Array<[string, string, string, number | undefined]> = [
+      ["tenant:argocd",        "argocd",        "ArgoCD",        fullBlock.argocd],
+      ["tenant:gitea",         "gitea",         "Gitea",         fullBlock.gitea],
+      ["tenant:argo-rollouts", "argo-rollouts", "Argo Rollouts", undefined],
+    ];
+    k8sInfra.forEach(([id, type, label, port], i) => {
+      nodes.push({
+        id, type, label, port,
+        status: kindStatus,
+        position: place(id, { x: 60 + (tenantInfra.length + i) * 160, y: 40 }),
+      });
+    });
+  }
 
   // Per-project lane — infra + services side by side
   const PROJECT_LANE_HEIGHT = 240;
@@ -2512,91 +2412,6 @@ async function addServiceToTenant(
   }
 }
 
-async function addServiceToClient(
-  clientName: string,
-  options: {
-    name: string;
-    backend: string;
-    frontend: string;
-    plugins?: string;
-  }
-): Promise<{ success: boolean; error?: string }> {
-  const cliPath = path.join(__dirname, "..", "index.js");
-  const args = [
-    cliPath, "service", "add", clientName, options.name,
-    "--backend", options.backend,
-    "--frontend", options.frontend,
-    "--yes",
-  ];
-  if (options.plugins) {
-    args.push("--plugins", options.plugins);
-  }
-
-  try {
-    await execa("node", args, { stdio: "pipe" });
-    return { success: true };
-  } catch (error) {
-    const execError = toExecError(error);
-    return {
-      success: false,
-      error: execError.stderr || execError.message || "Failed to add service",
-    };
-  }
-}
-
-async function createProject(
-  workingDir: string,
-  options: {
-    name: string;
-    type: string;
-    backend: string;
-    frontend: string;
-    database?: string;
-  }
-): Promise<{ success: boolean; error?: string }> {
-  const { name, type, backend, frontend, database } = options;
-  const projectDir = path.join(workingDir, name);
-
-  // Check if project already exists
-  try {
-    await fs.access(projectDir);
-    return { success: false, error: "Project already exists" };
-  } catch {
-    // Good, doesn't exist
-  }
-
-  // Run the create command
-  try {
-    const args = ["create", name, "--template", type, "--deploy", "local-only"];
-
-    if (type !== "frontend") {
-      args.push("--backend", backend);
-    }
-    if (type !== "backend") {
-      args.push("--frontend", frontend);
-    }
-    // Always pass database to avoid interactive prompt
-    args.push("--database", database || "none");
-
-    // Get the CLI path
-    const cliPath = path.join(__dirname, "..", "index.js");
-
-    await execa("node", [cliPath, ...args], {
-      cwd: workingDir,
-      stdio: "pipe",
-    });
-
-    return { success: true };
-  } catch (error) {
-    // Extract stderr for more useful error messages
-    const execaError = toExecError(error);
-    const errorMessage = execaError.stderr || execaError.message || "Failed to create project";
-    return {
-      success: false,
-      error: errorMessage,
-    };
-  }
-}
 
 async function getContainerMetrics(projectDir: string, saveToStorage = true): Promise<ProjectMetrics> {
   const containers: ContainerMetrics[] = [];
@@ -2738,8 +2553,7 @@ async function getContainerMetrics(projectDir: string, saveToStorage = true): Pr
  */
 async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
   const projectName = path.basename(projectDir);
-  const clientName = process.env.CLIENT_NAME;
-  const containerPrefix = clientName ? `${clientName}-${projectName}-` : `${projectName}-`;
+  const containerPrefix = `${projectName}-`;
 
   const services: ServiceHealth[] = [];
   let containers: Array<{ name: string; state: string; status: string }> = [];
@@ -3090,10 +2904,10 @@ interface PipelineStatus {
 
 async function getProjectEnvironments(
   projectDir: string,
-  projectName: string
+  projectName: string,
+  tenant?: string | null,
 ): Promise<EnvironmentInfo[]> {
   const environments: EnvironmentInfo[] = [];
-  const config = await loadConfig(projectDir);
 
   // Check local environment
   try {
@@ -3125,42 +2939,18 @@ async function getProjectEnvironments(
     // Local environment not available
   }
 
-  // Check Kubernetes environments if not local-only
-  if ((config?.deploy?.target ?? "local-only") !== "local-only") {
-    const kubeEnvs = ["staging", "production"];
-
-    for (const env of kubeEnvs) {
-      const namespace = `${projectName}-${env}`;
-
-      try {
-        // Try to get deployment status
-        const { stdout } = await execa("kubectl", [
-          "get",
-          "deployment",
-          projectName,
-          "-n",
-          namespace,
-          "-o",
-          "json",
-        ], { stdio: "pipe", reject: false });
-
-        if (stdout) {
-          const deployment = JSON.parse(stdout);
-          const available = deployment.status?.availableReplicas || 0;
-          const desired = deployment.spec?.replicas || 0;
-          const imageTag = deployment.spec?.template?.spec?.containers?.[0]?.image?.split(":")[1] || "latest";
-
-          environments.push({
-            name: env,
-            version: imageTag.substring(0, 7),
-            status: available === desired ? "Synced" : "Progressing",
-            health: available === desired ? "Healthy" : "Progressing",
-            replicas: `${available}/${desired}`,
-          });
-        }
-      } catch {
+  // Kubernetes runtime (ADR-0017 + local kind cluster): one env per project,
+  // namespace = project name, workload = Argo Rollout (Deployment fallback).
+  if (tenant) {
+    const owning = await findServiceProject(tenant, projectName);
+    if (owning && (await readProjectRuntime(tenant, owning.project)) === "kubernetes") {
+      const namespace = owning.project;
+      const workload = await readK8sWorkload(projectName, namespace, kubeContext(tenant));
+      if (workload) {
+        environments.push(workload);
+      } else {
         environments.push({
-          name: env,
+          name: namespace,
           version: "-",
           status: "Missing",
           health: "Missing",
@@ -3168,54 +2958,45 @@ async function getProjectEnvironments(
         });
       }
     }
-
-    // Check for ephemeral environments
-    try {
-      const { stdout } = await execa("kubectl", [
-        "get",
-        "namespaces",
-        "-l",
-        "ephemeral=true",
-        "-o",
-        "jsonpath={.items[*].metadata.name}",
-      ], { stdio: "pipe", reject: false });
-
-      const namespaces = stdout.split(" ").filter((n: string) => n.startsWith(`${projectName}-pr-`));
-
-      for (const ns of namespaces) {
-        const prNumber = ns.replace(`${projectName}-pr-`, "");
-        try {
-          const { stdout: depOutput } = await execa("kubectl", [
-            "get",
-            "deployment",
-            projectName,
-            "-n",
-            ns,
-            "-o",
-            "json",
-          ], { stdio: "pipe" });
-
-          const deployment = JSON.parse(depOutput);
-          const available = deployment.status?.availableReplicas || 0;
-          const desired = deployment.spec?.replicas || 0;
-
-          environments.push({
-            name: `PR #${prNumber}`,
-            version: deployment.spec?.template?.spec?.containers?.[0]?.image?.split(":")[1]?.substring(0, 7) || "latest",
-            status: available === desired ? "Synced" : "Progressing",
-            health: available === desired ? "Healthy" : "Progressing",
-            replicas: `${available}/${desired}`,
-          });
-        } catch {
-          // Skip if deployment not found
-        }
-      }
-    } catch {
-      // No ephemeral namespaces or kubectl not available
-    }
   }
 
   return environments;
+}
+
+/**
+ * Read the service's workload in the project namespace: Rollout first (the
+ * k8s-runtime deploy shape), plain Deployment as a fallback.
+ */
+async function readK8sWorkload(service: string, namespace: string, context: string): Promise<EnvironmentInfo | null> {
+  for (const kind of ["rollout", "deployment"]) {
+    try {
+      const { stdout } = await execa("kubectl", [
+        "--context", context, "get", kind, service, "-n", namespace, "-o", "json",
+      ], { stdio: "pipe", timeout: 10000 });
+      if (!stdout) continue;
+      const obj = JSON.parse(stdout);
+      const available = obj.status?.availableReplicas ?? obj.status?.readyReplicas ?? 0;
+      const desired = obj.spec?.replicas ?? 0;
+      const imageTag = obj.spec?.template?.spec?.containers?.[0]?.image?.split(":")[1] || "latest";
+      const phase = obj.status?.phase as string | undefined; // Rollouts set this (Healthy/Progressing/Paused/Degraded)
+      const healthy = phase ? phase === "Healthy" : available === desired && desired > 0;
+      const health: EnvironmentInfo["health"] =
+        phase === "Healthy" ? "Healthy" :
+        phase === "Degraded" ? "Degraded" :
+        phase ? "Progressing" :
+        healthy ? "Healthy" : "Progressing";
+      return {
+        name: namespace,
+        version: imageTag.substring(0, 7),
+        status: healthy ? "Synced" : "Progressing",
+        health,
+        replicas: `${available}/${desired}`,
+      };
+    } catch {
+      // Try the next kind
+    }
+  }
+  return null;
 }
 
 async function getPipelineStatus(

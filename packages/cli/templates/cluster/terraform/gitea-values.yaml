@@ -1,0 +1,42 @@
+# Gitea as the tenant's local GitOps origin. Dev-grade on purpose: sqlite,
+# in-memory cache/session, fixed admin credentials, single replica. ArgoCD
+# pulls over in-cluster DNS (http://gitea-http.gitea.svc.cluster.local:3000);
+# the CLI pushes from the host via the NodePort mapping.
+replicaCount: 1
+
+service:
+  http:
+    type: NodePort
+    nodePort: 30300
+
+gitea:
+  admin:
+    username: blissful
+    password: blissful-dev-pw
+    email: dev@blissful.localhost
+  config:
+    database:
+      DB_TYPE: sqlite3
+    session:
+      PROVIDER: memory
+    cache:
+      ADAPTER: memory
+    queue:
+      TYPE: level
+    server:
+      DOMAIN: localhost
+      ROOT_URL: http://localhost:{{GITEA_PORT}}/
+    service:
+      DISABLE_REGISTRATION: true
+
+persistence:
+  enabled: true
+  size: 2Gi
+
+# The chart's bundled HA dependencies are all off — sqlite + single pod.
+postgresql:
+  enabled: false
+postgresql-ha:
+  enabled: false
+redis-cluster:
+  enabled: false

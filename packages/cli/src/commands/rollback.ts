@@ -1,287 +1,129 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { execa } from "execa";
-import { loadConfig, findProjectDir, type LegacyProjectConfig } from "../utils/config.js";
+import { resolveServiceCoords } from "./deploy.js";
+import { readProjectRuntime, ensureClusterPorts } from "../utils/tenant-registry.js";
+import { kubeContext } from "../utils/kind.js";
+import { ensureGiteaReachable, ensureOrgRepo } from "../utils/gitea.js";
+import { ensureCheckout, revertLastDeploy } from "../utils/gitops.js";
+import {
+  ensureRolloutsAvailable,
+  getRolloutHistory,
+  undoRollout,
+  getRolloutStatus,
+} from "../utils/rollouts.js";
 
 interface RollbackOptions {
-  env: string;
+  tenant?: string;
+  project?: string;
   revision?: string;
+  immediate?: boolean;
   dryRun?: boolean;
 }
 
-async function checkArgoCDAvailable(): Promise<boolean> {
-  try {
-    await execa("argocd", ["version", "--client"], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function checkKubectlAvailable(): Promise<boolean> {
-  try {
-    await execa("kubectl", ["version", "--client"], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function getArgoCDHistory(appName: string): Promise<Array<{ id: string; revision: string; deployedAt: string }>> {
-  try {
-    const { stdout } = await execa("argocd", [
-      "app",
-      "history",
-      appName,
-      "-o",
-      "json",
-    ], { stdio: "pipe" });
-
-    const history = JSON.parse(stdout);
-    return history.map((item: { id: number; revision: string; deployedAt: string }) => ({
-      id: String(item.id),
-      revision: item.revision?.substring(0, 7) || "unknown",
-      deployedAt: item.deployedAt || "unknown",
-    }));
-  } catch {
-    return [];
-  }
-}
-
-async function rollbackWithArgoCD(
-  config: LegacyProjectConfig,
-  opts: RollbackOptions
-): Promise<void> {
-  const appName = `${config.name}-${opts.env}`;
-  const spinner = ora(`Rolling back ${config.name} in ${opts.env}...`).start();
-
-  try {
-    // Get history
-    spinner.text = "Fetching deployment history...";
-    const history = await getArgoCDHistory(appName);
-
-    if (history.length === 0) {
-      spinner.fail("No deployment history found");
-      return;
-    }
-
-    // Show history if no revision specified
-    if (!opts.revision) {
-      spinner.stop();
-      console.log(chalk.bold(`\nDeployment history for ${appName}:\n`));
-      console.log(chalk.dim("  ID    Revision   Deployed At"));
-      console.log(chalk.dim("  ────  ─────────  ────────────────────"));
-      for (const item of history.slice(0, 10)) {
-        console.log(`  ${item.id.padEnd(4)}  ${item.revision.padEnd(9)}  ${item.deployedAt}`);
-      }
-      console.log();
-      console.log(chalk.dim("To rollback, specify a revision:"));
-      console.log(chalk.cyan(`  blissful-infra rollback --env ${opts.env} --revision <ID>`));
-      return;
-    }
-
-    if (opts.dryRun) {
-      spinner.info("Dry run - would rollback to:");
-      console.log(chalk.dim(`  argocd app rollback ${appName} ${opts.revision}`));
-      return;
-    }
-
-    // Perform rollback
-    spinner.text = `Rolling back to revision ${opts.revision}...`;
-    await execa("argocd", [
-      "app",
-      "rollback",
-      appName,
-      opts.revision,
-    ], { stdio: "pipe" });
-
-    // Wait for sync
-    spinner.text = "Waiting for rollback to complete...";
-    await execa("argocd", [
-      "app",
-      "wait",
-      appName,
-      "--sync",
-      "--timeout",
-      "300",
-    ], { stdio: "pipe" });
-
-    spinner.succeed(`Rolled back ${config.name} to revision ${opts.revision}`);
-
-    // Get new status
-    const { stdout } = await execa("argocd", [
-      "app",
-      "get",
-      appName,
-      "-o",
-      "json",
-    ], { stdio: "pipe" });
-
-    const status = JSON.parse(stdout);
-    console.log();
-    console.log(chalk.dim("Status:"), chalk.green(status.status?.sync?.status || "Unknown"));
-    console.log(chalk.dim("Health:"), chalk.green(status.status?.health?.status || "Unknown"));
-  } catch (error) {
-    spinner.fail("Rollback failed");
-    throw error;
-  }
-}
-
-async function rollbackWithKubectl(
-  config: LegacyProjectConfig,
-  opts: RollbackOptions
-): Promise<void> {
-  const namespace = `${config.name}-${opts.env}`;
-  const spinner = ora(`Rolling back ${config.name} in ${opts.env}...`).start();
-
-  try {
-    // Get rollout history
-    spinner.text = "Fetching rollout history...";
-    const { stdout: historyOutput } = await execa("kubectl", [
-      "rollout",
-      "history",
-      `deployment/${config.name}`,
-      "-n",
-      namespace,
-    ], { stdio: "pipe" });
-
-    if (!opts.revision) {
-      spinner.stop();
-      console.log(chalk.bold(`\nRollout history for ${config.name}:\n`));
-      console.log(historyOutput);
-      console.log();
-      console.log(chalk.dim("To rollback to a specific revision:"));
-      console.log(chalk.cyan(`  blissful-infra rollback --env ${opts.env} --revision <number>`));
-      console.log();
-      console.log(chalk.dim("To rollback to previous revision:"));
-      console.log(chalk.cyan(`  blissful-infra rollback --env ${opts.env} --revision 0`));
-      return;
-    }
-
-    if (opts.dryRun) {
-      spinner.info("Dry run - would rollback deployment");
-      return;
-    }
-
-    // Perform rollback
-    spinner.text = `Rolling back to revision ${opts.revision}...`;
-
-    const rollbackArgs = [
-      "rollout",
-      "undo",
-      `deployment/${config.name}`,
-      "-n",
-      namespace,
-    ];
-
-    // Revision 0 means previous, otherwise specify the revision
-    if (opts.revision !== "0") {
-      rollbackArgs.push(`--to-revision=${opts.revision}`);
-    }
-
-    await execa("kubectl", rollbackArgs, { stdio: "pipe" });
-
-    // Wait for rollout
-    spinner.text = "Waiting for rollback to complete...";
-    await execa("kubectl", [
-      "rollout",
-      "status",
-      `deployment/${config.name}`,
-      "-n",
-      namespace,
-      "--timeout=300s",
-    ], { stdio: "pipe" });
-
-    spinner.succeed(`Rolled back ${config.name} in ${opts.env}`);
-
-    // Get deployment status
-    const { stdout } = await execa("kubectl", [
-      "get",
-      "deployment",
-      config.name,
-      "-n",
-      namespace,
-      "-o",
-      "jsonpath={.status.availableReplicas}/{.spec.replicas}",
-    ], { stdio: "pipe" });
-
-    console.log();
-    console.log(chalk.dim("Replicas:"), chalk.green(stdout || "0/0"));
-  } catch (error) {
-    spinner.fail("Rollback failed");
-    throw error;
-  }
-}
-
+/**
+ * Roll a kubernetes-runtime service back.
+ *
+ * Default path is GitOps: revert the last deploy commit for the service in
+ * the tenant's gitops repo and push — ArgoCD (auto-sync + selfHeal) converges
+ * the cluster back to the previous state. This is the only rollback that
+ * *sticks* while selfHeal is on.
+ *
+ * `--immediate` is the imperative escape hatch: `kubectl argo rollouts undo`
+ * shifts traffic now, but ArgoCD will re-sync the repo state afterwards —
+ * use it to stop the bleeding, then land the git revert.
+ */
 export async function rollbackAction(
-  name: string | undefined,
-  opts: RollbackOptions
+  serviceName: string | undefined,
+  opts: RollbackOptions,
 ): Promise<void> {
-  // Find project directory
-  const projectDir = await findProjectDir(name);
-  if (!projectDir) {
-    if (name) {
-      console.error(chalk.red(`Project '${name}' not found.`));
-    } else {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Run from project directory or specify project name:"));
-      console.error(chalk.cyan("  blissful-infra rollback my-app --env staging"));
+  const coords = await resolveServiceCoords(serviceName, opts);
+  const runtime = await readProjectRuntime(coords.tenant, coords.project);
+
+  if (runtime !== "kubernetes") {
+    console.error(chalk.red(`Project '${coords.project}' runs on the compose runtime — nothing to roll back.`));
+    console.error(chalk.dim("Compose services redeploy from source:"));
+    console.error(chalk.cyan(`  blissful-infra service up ${coords.service}`));
+    process.exit(1);
+  }
+
+  if (opts.immediate) {
+    await immediateRollback(coords.service, coords.project, kubeContext(coords.tenant), opts);
+    return;
+  }
+
+  if (opts.dryRun) {
+    console.log(chalk.dim(
+      `Dry run — would git-revert the last deploy commit for projects/${coords.project}/${coords.service} ` +
+      `in the '${coords.tenant}-gitops' repo and push (ArgoCD syncs the cluster back).`,
+    ));
+    return;
+  }
+
+  const spinner = ora(`Reverting last deploy of ${coords.project}/${coords.service} in the gitops repo...`).start();
+  try {
+    const ports = await ensureClusterPorts(coords.tenant);
+    await ensureGiteaReachable(ports.gitea!);
+    const { pushUrl } = await ensureOrgRepo(coords.tenant, ports.gitea!);
+    await ensureCheckout(coords.tenant, pushUrl);
+    const reverted = await revertLastDeploy(coords);
+    if (!reverted) {
+      spinner.fail(`No deploy commits found for ${coords.project}/${coords.service} — nothing to roll back.`);
+      process.exit(1);
     }
+    spinner.succeed(`Reverted deploy commit ${reverted.slice(0, 7)} and pushed — ArgoCD is syncing back.`);
+    console.log(chalk.dim("  Watch: ") + chalk.cyan(`blissful-infra canary status ${coords.service}`));
+  } catch (err) {
+    spinner.fail("GitOps rollback failed");
+    console.error(chalk.red((err as Error).message));
     process.exit(1);
   }
+}
 
-  // Load project config
-  const config = await loadConfig(projectDir);
-  if (!config) {
-    console.error(chalk.red("No blissful-infra.yaml found."));
+async function immediateRollback(service: string, namespace: string, context: string, opts: RollbackOptions): Promise<void> {
+  if (!(await ensureRolloutsAvailable())) process.exit(1);
+
+  if (!opts.revision) {
+    const history = await getRolloutHistory(service, namespace, context);
+    if (!history) {
+      console.error(chalk.red(`No rollout history for '${service}' in namespace '${namespace}'.`));
+      process.exit(1);
+    }
+    console.log(chalk.bold(`\nRollout history for ${service} (namespace ${namespace}):\n`));
+    console.log(history);
+    console.log(chalk.dim("\nTo roll back immediately:"));
+    console.log(chalk.cyan(`  blissful-infra rollback ${service} --immediate --revision <n>`));
+    return;
+  }
+
+  if (opts.dryRun) {
+    console.log(chalk.dim(`Dry run — would execute: kubectl argo rollouts undo ${service} -n ${namespace} --to-revision=${opts.revision}`));
+    return;
+  }
+
+  const spinner = ora(`Rolling back ${service} to revision ${opts.revision}...`).start();
+  const ok = await undoRollout(service, namespace, opts.revision === "0" ? undefined : opts.revision, context);
+  if (!ok) {
+    spinner.fail("Rollback failed");
     process.exit(1);
   }
-
-  // Check deploy target
-  if ((config.deploy?.target ?? "local-only") === "local-only") {
-    console.error(chalk.red("Rollback requires kubernetes or cloud target."));
-    process.exit(1);
+  spinner.succeed(`Rolled back ${service} to revision ${opts.revision}`);
+  const status = await getRolloutStatus(service, namespace, context);
+  if (status) {
+    console.log(chalk.dim("Status:"), status.status);
   }
-
-  // Validate environment
-  const validEnvs = ["staging", "production"];
-  if (!validEnvs.includes(opts.env)) {
-    console.error(chalk.red(`Invalid environment for rollback: ${opts.env}`));
-    console.error(chalk.dim("Valid environments: staging, production"));
-    process.exit(1);
-  }
-
-  // Production rollback warning
-  if (opts.env === "production" && !opts.dryRun) {
-    console.log(chalk.yellow("Warning: Rolling back production!"));
-    console.log(chalk.dim("Use --dry-run to preview first."));
-    console.log();
-  }
-
-  // Check for Argo CD or kubectl
-  const hasArgoCD = await checkArgoCDAvailable();
-  const hasKubectl = await checkKubectlAvailable();
-
-  if (!hasArgoCD && !hasKubectl) {
-    console.error(chalk.red("Neither argocd nor kubectl CLI found."));
-    process.exit(1);
-  }
-
-  // Rollback using available tool
-  if (hasArgoCD) {
-    await rollbackWithArgoCD(config, opts);
-  } else {
-    await rollbackWithKubectl(config, opts);
-  }
+  console.log(chalk.yellow("\nNote: ArgoCD selfHeal will re-sync the gitops state. Land the durable"));
+  console.log(chalk.yellow(`rollback too:  blissful-infra rollback ${service}`));
 }
 
 export const rollbackCommand = new Command("rollback")
-  .description("Rollback to a previous deployment revision")
-  .argument("[name]", "Project name (if running from parent directory)")
-  .option("-e, --env <environment>", "Target environment (staging, production)", "staging")
-  .option("-r, --revision <id>", "Revision ID to rollback to (omit to see history)")
+  .description("Roll a kubernetes-runtime service back (git revert in the gitops repo; ArgoCD syncs)")
+  .argument("[service]", "Service name (resolves through `use` context)")
+  .option("--tenant <tenant>", "Tenant (defaults to context)")
+  .option("--project <project>", "Project (defaults to context, falls back to registry scan)")
+  .option("--immediate", "Imperative kubectl-argo-rollouts undo (does not survive ArgoCD selfHeal)")
+  .option("-r, --revision <id>", "Rollout revision for --immediate (omit to see history)")
   .option("--dry-run", "Show what would be rolled back without applying")
-  .action(async (name: string | undefined, opts: RollbackOptions) => {
-    await rollbackAction(name, opts);
+  .action(async (service: string | undefined, opts: RollbackOptions) => {
+    await rollbackAction(service, opts);
   });

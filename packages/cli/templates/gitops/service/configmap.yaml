@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{SERVICE_NAME}}-config
+  labels:
+    app: {{SERVICE_NAME}}
+data:
+  # Identity tags picked up by the Spring Boot template's micrometer config.
+  TENANT_NAME: "{{TENANT_NAME}}"
+  PROJECT_NAME: "{{PROJECT_NAME}}"
+  SERVICE_NAME: "{{SERVICE_NAME}}"
+  LOGGING_LEVEL_ROOT: "INFO"

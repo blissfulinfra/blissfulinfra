@@ -37,11 +37,21 @@ export const ProjectServiceRefSchema = z.object({
   type: z.enum(["backend", "frontend", "worker"]),
 });
 
+/**
+ * Where the project's services execute.
+ *   compose:    docker compose on the project network (default)
+ *   kubernetes: the tenant's local kind cluster — services deploy as Argo
+ *               Rollouts via the GitOps flow (ArgoCD syncs from the tenant's
+ *               Gitea repo), namespace = project name
+ */
+export const ProjectRuntimeSchema = z.enum(["compose", "kubernetes"]);
+
 export const ProjectConfigSchema = z.object({
   type: z.literal("project"),
   name: NameSchema,
   /** Parent tenant. Redundant with file path but explicit for portability. */
   tenant: NameSchema,
+  runtime: ProjectRuntimeSchema.default("compose"),
   infrastructure: ProjectInfrastructureSchema.default({
     kafka: true, postgres: true, redis: true, gateway: true,
   }),
@@ -71,6 +81,7 @@ export const ProjectPortBlockSchema = z.object({
   redisExporter:    z.number().int().positive(),
 });
 
+export type ProjectRuntime        = z.infer<typeof ProjectRuntimeSchema>;
 export type ProjectConfig         = z.infer<typeof ProjectConfigSchema>;
 export type ProjectInfrastructure = z.infer<typeof ProjectInfrastructureSchema>;
 export type ProjectServiceRef     = z.infer<typeof ProjectServiceRefSchema>;

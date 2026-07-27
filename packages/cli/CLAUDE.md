@@ -41,7 +41,7 @@ npm run test:watch            # vitest watch mode
 npm run test:integration      # L3 (slow, real Docker, builds CLI first)
 ```
 
-**Required for testability:** [tenant-registry.ts](src/utils/tenant-registry.ts) (and the legacy [client-registry.ts](src/utils/client-registry.ts)) resolve `BLISSFUL_HOME` on every call (defaults to `~/.blissful-infra`). Tests set it to a temp dir via `mkdtemp` so the real registry is never touched.
+**Required for testability:** [tenant-registry.ts](src/utils/tenant-registry.ts) resolves `BLISSFUL_HOME` on every call (defaults to `~/.blissful-infra`). Tests set it to a temp dir via `mkdtemp` so the real registry is never touched.
 
 ---
 
@@ -62,50 +62,28 @@ Positional args resolve through context: `service up orders-api` fills tenant + 
 
 The dashboard is **host-level** since the ADR-0017 revision of 2026-05-26 (`utils/host-dashboard-compose.ts`): one dashboard container on port 3002 acts as a control plane for all tenants, reading the global registry and reaching each tenant's services via host-published ports. It is no longer part of any tenant's compose.
 
-### Core (Phase 1, flat model, legacy)
+### Kubernetes golden path (ADR-0020)
 | Command | File | What it does |
 |---|---|---|
-| `start <name>` | `start.ts` | Scaffolds project dir + boots full stack (flat model) |
-| `up` / `down` / `logs` | `up.ts` etc. | Lifecycle for a flat-model project |
-| `dev` | `dev.ts` | Hot-reload mode with file watching (chokidar) |
-| `agent` | `agent.ts` | Interactive AI chat session against the running stack |
-| `example <name>` | `example.ts` | Scaffold an example app from `dist/examples/` |
-| `mcp` | `mcp.ts` | Start the MCP server for Claude Desktop / Claude Code |
-| `create` / `init` | `create.ts`, `init.ts` | Project creation helpers |
-| `generate` | `generate.ts` | Schema-first code generation |
+| `cluster up/down/status` | `cluster.ts` | Terraform-provision the tenant's kind cluster (ArgoCD + Argo Rollouts + Gitea) |
+| `deploy <service>` | `deploy.ts` → `deploy/kubernetes.ts` | Build → kind load → gitops push → ArgoCD sync → Rollout canary |
+| `canary status/promote/abort/pause/resume/test` | `canary.ts` | Drive the Argo Rollout (namespace = project, rollout = service) |
+| `rollback <service>` | `rollback.ts` | GitOps revert (default) or `--immediate` kubectl-argo-rollouts undo |
 
-### Client Model (Phase 6, legacy, superseded by ADR-0017)
+These take tenant coordinates: positional service + `--tenant`/`--project` flags; the `use` context and a registry scan fill the rest (`resolveServiceCoords` in `deploy.ts`).
+
+### CI + intelligence
 | Command | File | What it does |
 |---|---|---|
-| `client create/list/up/down/status/remove` | `client.ts` | Client environment lifecycle (isolated infra per client) |
-| `client infra add/remove <client> <component>` | `client.ts` | Toggle a client-level infra flag |
-| `service …` (old form) | `service.ts` | Client-model service lifecycle |
-
-Still works, no longer the target of new work. Data under `~/.blissful-infra/clients/`.
-
-### Lambda (serverless backend on LocalStack)
-| Command | File | What it does |
-|---|---|---|
-| `lambda deploy <client> <svc>` | `lambda.ts` | Re-package handler + register with LocalStack |
-| `lambda invoke <client> <svc>` | `lambda.ts` | Invoke the function with a JSON payload |
-| `lambda logs <client> <svc>` | `lambda.ts` | Tail Lambda logs (CloudWatch emulated by LocalStack) |
-
-Lambda services are created via `--backend lambda-python`. Compose generation branches on `isServerlessBackend(backend)`: `generateLambdaServiceCompose` produces the `localstack + deployer` sidecar shape instead of a long-running backend container. Cloud deploy adapter for real AWS Lambda is intentionally deferred, see [ADR-0007](../../docs/adr/0007-aws-lambda-local-via-localstack.md). Command args still use client-model coordinates.
-
-### CI/CD (Phase 2)
-| Command | File | What it does |
-|---|---|---|
-| `deploy` / `rollback` | `deploy.ts`, `rollback.ts` | Trigger deployment / roll back image tag |
-| `status` | `status.ts` | Show project health + deployment status |
-| `pipeline` / `jenkins` | `pipeline.ts`, `jenkins.ts` | Jenkins pipeline + server management |
-
-### Resilience & Intelligence (Phases 4–5)
-| Command | File | What it does |
-|---|---|---|
-| `perf` | `perf.ts` | Performance benchmarking |
-| `chaos` | `chaos.ts` | Chaos engineering (kill containers, inject latency) |
-| `compare` / `canary` | `compare.ts`, `canary.ts` | Build comparison / canary release management |
+| `pipeline` / `jenkins` | `pipeline.ts`, `jenkins.ts` | Local pipeline stages / tenant Jenkins management |
+| `status` | `status.ts` | Context-aware tenant/project/service status |
+| `agent` | `agent.ts` | Interactive AI chat session |
 | `analyze` / `suggest` | `analyze.ts` | AI-powered log and metrics analysis |
+| `generate` | `generate.ts` | Schema-first code generation |
+| `mcp` | `mcp.ts` | Start the MCP server for Claude Desktop / Claude Code |
+
+### Deferred (still flat-model-keyed)
+`perf`, `chaos`, `compare` compile against the deprecated `utils/config.ts` and error politely at runtime; re-keying them to tenant coordinates is an open follow-up. The `lambda` command was removed with the client model (the `lambda-python` template stays on disk for a future tenant-model port).
 
 ---
 
@@ -123,32 +101,29 @@ Each util is a focused module. Key ones:
 
 | File | Purpose |
 |---|---|
-| `tenant-registry.ts` | Tenant/project/service registry + hierarchical port allocation (`registry.json`, honors `BLISSFUL_HOME`) |
+| `tenant-registry.ts` | Tenant/project/service registry + hierarchical port allocation (`registry.json`, honors `BLISSFUL_HOME`); `readProjectConfig/Runtime`, `findServiceProject`, `ensureClusterPorts` |
 | `context.ts` | Persistent working set (like kubectl context), `~/.blissful-infra/context.json`, positional-arg resolution |
 | `tenant-compose.ts` | Generates the tenant-level compose (Jenkins, observability) |
 | `project-compose.ts` | Generates the project-level compose (Kafka, Postgres, gateway, network) |
 | `service-compose-v2.ts` | Generates a service's own compose |
 | `host-dashboard-compose.ts` | Host-level control-plane dashboard compose (`docker-compose.dashboard.yaml`, port 3002) |
-| `infra-deps.ts` | Service infra-dependency manifest (required + optional infra per template/plugin) |
+| `terraform.ts` / `kind.ts` | Cluster workspace render + terraform init/apply/destroy; kind prereqs, image load, kubeconfig |
+| `gitea.ts` / `gitops.ts` | In-cluster Gitea REST (org/repo ensure) + gitops checkout, manifest render, tag bump, revert |
+| `rollouts.ts` | Argo Rollouts wrapper (`kubectl argo rollouts` status/promote/abort/pause/resume/undo) |
 | `infra-images.ts` | Infra image resolution (e.g. ensures the dashboard image exists) |
-| `ontology.ts` | Ontology graph model backing the dashboard's system view |
+| `ontology.ts` | Tenant-keyed node config + edge wiring for the dashboard graph (graph itself derives in api.ts) |
 | `claude.ts` | Claude integration: Anthropic SDK + `claude -p` CLI path with MCP tool access |
-| `ai-provider.ts` | Abstraction over AI providers |
-| `ollama.ts` | Local model support via Ollama |
+| `ai-provider.ts` / `ollama.ts` | AI provider abstraction, local models via Ollama |
 | `knowledge-base.ts` | Per-project contextual knowledge stored as JSON |
 | `analyzer.ts` / `collectors.ts` | Log/metric anomaly analysis, Docker + Prometheus collection |
 | `deployment-storage.ts` | JSONL-based deployment record storage (append-only) |
 | `metrics-storage.ts` / `log-storage.ts` | Local time-series metric and log storage |
 | `alerts.ts` | Alert rule evaluation and notification |
 | `chaos.ts` / `scorecard.ts` | Chaos helpers + resilience scorecard over time |
-| `rollouts.ts` | Argo Rollouts canary utilities |
-| `config.ts` | Read/write `blissful-infra.yaml` project config |
+| `config.ts` | **Deprecated** legacy flat-model config reader — only the deferred perf/chaos/compare/analyze/agent/generate path may use it |
 | `template.ts` | Template variable substitution engine |
-| `errors.ts` | Typed error classes + message extraction |
-| `ports.ts` | Port-in-use checks |
-| `registry.ts` / `client-registry.ts` / `client-config-edit.ts` | Legacy flat-model and client-model registries |
-| `plugin-system.ts` / `plugin-registry.ts` | Plugin loading, overlays, available plugin types |
-| `infra-compose.ts` | Legacy client-model infra compose + Prometheus/Loki/Grafana configs |
+| `errors.ts` / `ports.ts` | Typed error classes; port-in-use checks |
+| `plugin-registry.ts` | Static plugin metadata consumed by the dashboard's plugin views |
 
 ---
 
@@ -197,8 +172,7 @@ Implements the Model Context Protocol over **stdio** transport, designed to be s
 
 ```bash
 blissful-infra mcp                             # default: host dashboard on :3002, auto-starts it if down
-blissful-infra mcp --client dev                # legacy: auto-discover a client's dashboard port from registry.json
-blissful-infra mcp --api http://localhost:3013 # explicit URL, overrides --client
+blissful-infra mcp --api http://localhost:3013 # explicit URL override
 ```
 
 The dashboard's own AI chat uses the same server: in Docker the chat runs `claude -p` with `/app/.mcp.json` (`--mcp-config` + `--allowed-tools mcp__blissful-infra`), so the agent retrieves logs/metrics on demand instead of relying on prompt stuffing (see `utils/claude.ts`).
@@ -261,14 +235,6 @@ The Jenkinsfile template calls the API to register a deployment on start and pat
 
 ## Config files
 
-- **Tenant model:** `tenant.yaml`, `project.yaml`, `service.yaml` at each level under `~/.blissful-infra/tenants/…` (see ADR-0017 for the layout).
-- **Flat / client model (legacy):** `blissful-infra.yaml` in the generated project root, source of truth used by `up` to regenerate `docker-compose.yaml`:
-
-```yaml
-name: my-app
-backend: spring-boot        # spring-boot | lambda-python
-frontend: react-vite        # react-vite
-database: postgres          # none | postgres | redis | postgres-redis
-plugins: []                 # ai-pipeline | gatling | agent-service
-monitoring: true
-```
+- **Tenant model:** `tenant.yaml`, `project.yaml` (carries `runtime: compose | kubernetes`), `service.yaml` at each level under `~/.blissful-infra/tenants/…` (see ADR-0017 / ADR-0020 for the layout).
+- **Kubernetes runtime state:** the Terraform workspace lives at `tenants/<t>/cluster/`, the gitops checkout at `tenants/<t>/gitops/`.
+- `blissful-infra.yaml` (legacy flat model) is only read by the deprecated `utils/config.ts` path for the deferred perf/chaos/compare commands.

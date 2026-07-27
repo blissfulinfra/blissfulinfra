@@ -1,16 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import yaml from "js-yaml";
-import { execa } from "execa";
 import {
   ClientOntologySchema,
   type ClientOntology,
-  type OntologyNode,
-  type OntologyNodeType,
   type OntologyEdge,
 } from "@blissful-infra/shared";
-import { getClientPortBlock } from "./client-registry.js";
-import { parseClientConfigYaml } from "./infra-compose.js";
+import { getTenantDir, getProjectDir, getServiceDir } from "./tenant-registry.js";
 import { generateTypescriptClient } from "../codegen/typescript.js";
 
 export interface WireResult {
@@ -22,182 +18,76 @@ export interface WireResult {
 const ONTOLOGY_FILE = "ontology.json";
 
 /**
- * Derive nodes from the client config on disk. Services come from the services
- * list; infra nodes from the infrastructure flags. Positions are not assigned
- * here — they're filled in by mergeWithDiscovered.
- *
- * `clientDir` is provided by the caller because the resolution differs between
- * host CLI usage (~/.blissful-infra/clients/<name>) and the dashboard container
- * (/projects/<name>, a bind mount over the same host dir).
+ * Node id conventions (must match buildTenantOntology in server/api.ts):
+ *   service:<project>:<service>   one service container
+ *   project:<project>:<role>      project infra (kafka | postgres | gateway)
+ *   tenant:<component>            tenant infra (jenkins, loki, tempo, ...)
  */
-export async function discoverNodes(clientDir: string, clientName: string): Promise<Omit<OntologyNode, "position">[]> {
-  const configPath = path.join(clientDir, "blissful-infra.yaml");
+interface ParsedNodeId {
+  kind: "service" | "project" | "tenant";
+  project?: string;
+  name: string;
+}
 
-  let content: string;
-  try {
-    content = await fs.readFile(configPath, "utf-8");
-  } catch {
-    return [];
+function parseNodeId(nodeId: string): ParsedNodeId {
+  const parts = nodeId.split(":");
+  if (parts[0] === "service" && parts.length === 3) {
+    return { kind: "service", project: parts[1], name: parts[2] };
   }
-
-  const { infrastructure, serviceRefs } = parseClientConfigYaml(content);
-
-  // Port block lookup is best-effort: from inside the dashboard container the
-  // registry isn't mounted, so we'd get null. That's fine — port labels are
-  // decorative.
-  let ports: Awaited<ReturnType<typeof getClientPortBlock>> = null;
-  try {
-    ports = await getClientPortBlock(clientName);
-  } catch {
-    ports = null;
+  if (parts[0] === "project" && parts.length === 3) {
+    return { kind: "project", project: parts[1], name: parts[2] };
   }
-
-  const nodes: Omit<OntologyNode, "position">[] = [];
-
-  for (const ref of serviceRefs) {
-    nodes.push({ id: `service:${ref.name}`, type: "service", label: ref.name });
+  if (parts[0] === "tenant" && parts.length === 2) {
+    return { kind: "tenant", name: parts[1] };
   }
-
-  const infraNode = (id: OntologyNodeType, label: string, port?: number) => {
-    nodes.push({ id: `infra:${id}`, type: id, label, port });
-  };
-
-  if (infrastructure.kafka)      infraNode("kafka", "Kafka", ports?.kafka);
-  if (infrastructure.postgres)   infraNode("postgres", "Postgres", ports?.postgres);
-  if (infrastructure.jenkins)    infraNode("jenkins", "Jenkins", ports?.jenkins);
-  if (infrastructure.keycloak)   infraNode("keycloak", "Keycloak", ports?.keycloak);
-  if (infrastructure.localstack) infraNode("localstack", "floci (AWS)", ports?.localstack);
-  if (infrastructure.clickhouse) infraNode("clickhouse", "ClickHouse", ports?.clickhouse);
-  if (infrastructure.mlflow)     infraNode("mlflow", "MLflow", ports?.mlflow);
-  if (infrastructure.mage)       infraNode("mage", "Mage", ports?.mage);
-
-  const obs = infrastructure.observability;
-  if (obs?.grafana)    infraNode("grafana", "Grafana", ports?.grafana);
-  if (obs?.prometheus) infraNode("prometheus", "Prometheus", ports?.prometheus);
-  if (obs?.tempo)      infraNode("tempo", "Tempo", ports?.tempo);
-  if (obs?.loki)       infraNode("loki", "Loki");
-
-  infraNode("dashboard", "Dashboard", ports?.dashboard);
-
-  return nodes;
+  throw new Error(`Unrecognized ontology node id: ${nodeId}`);
 }
 
 /**
- * Lay out nodes that don't have a saved position. Services in the left column,
- * infra in the right column, evenly spaced top-to-bottom.
+ * The saved overlay: user-arranged positions and hand-drawn edges persisted
+ * at ~/.blissful-infra/tenants/<tenant>/ontology.json. The live graph itself
+ * is derived from the registry on every GET (buildTenantOntology).
  */
-export function autoLayout(nodes: Omit<OntologyNode, "position">[]): OntologyNode[] {
-  const services = nodes.filter(n => n.type === "service");
-  const infra = nodes.filter(n => n.type !== "service");
-  const COL_LEFT = 80;
-  const COL_RIGHT = 520;
-  const ROW_HEIGHT = 110;
-  const TOP_Y = 60;
-
-  return [
-    ...services.map((n, i) => ({ ...n, position: { x: COL_LEFT, y: TOP_Y + i * ROW_HEIGHT } })),
-    ...infra.map((n, i) => ({ ...n, position: { x: COL_RIGHT, y: TOP_Y + i * ROW_HEIGHT } })),
-  ];
-}
-
-/**
- * Merge saved graph with currently-discovered nodes:
- *   - keep saved positions for nodes that still exist
- *   - assign default positions to new nodes
- *   - drop saved nodes that no longer match the config
- *   - drop edges that reference dropped nodes
- *   - preserve all surviving edges
- */
-export function mergeWithDiscovered(
-  saved: ClientOntology | null,
-  discovered: Omit<OntologyNode, "position">[],
-  clientName: string,
-): ClientOntology {
-  const discoveredIds = new Set(discovered.map(n => n.id));
-  const savedById = new Map((saved?.nodes ?? []).map(n => [n.id, n] as const));
-
-  const laidOut = autoLayout(discovered);
-  const nodes: OntologyNode[] = laidOut.map(n => {
-    const savedNode = savedById.get(n.id);
-    return savedNode
-      ? { ...n, position: savedNode.position }
-      : n;
-  });
-
-  const edges: OntologyEdge[] = (saved?.edges ?? []).filter(
-    e => discoveredIds.has(e.source) && discoveredIds.has(e.target),
-  );
-
-  return { clientName, nodes, edges };
-}
-
-export async function loadOntology(clientDir: string, clientName: string): Promise<ClientOntology> {
-  const discovered = await discoverNodes(clientDir, clientName);
-  let saved: ClientOntology | null = null;
+export async function loadSavedOntology(tenant: string): Promise<ClientOntology | null> {
   try {
-    const raw = await fs.readFile(path.join(clientDir, ONTOLOGY_FILE), "utf-8");
-    saved = ClientOntologySchema.parse(JSON.parse(raw));
+    const raw = await fs.readFile(path.join(getTenantDir(tenant), ONTOLOGY_FILE), "utf-8");
+    return ClientOntologySchema.parse(JSON.parse(raw));
   } catch {
-    // no saved ontology yet, or parse failed — fall back to discovery
+    return null;
   }
-  return mergeWithDiscovered(saved, discovered, clientName);
 }
 
-export async function saveOntology(clientDir: string, graph: ClientOntology): Promise<void> {
+export async function saveOntology(tenant: string, graph: ClientOntology): Promise<void> {
   const validated = ClientOntologySchema.parse(graph);
-  await fs.writeFile(path.join(clientDir, ONTOLOGY_FILE), JSON.stringify(validated, null, 2), "utf-8");
+  const tenantDir = getTenantDir(tenant);
+  await fs.mkdir(tenantDir, { recursive: true });
+  await fs.writeFile(path.join(tenantDir, ONTOLOGY_FILE), JSON.stringify(validated, null, 2), "utf-8");
 }
 
 /**
- * Annotate nodes with their current docker container status. Pure I/O — does
- * not mutate stored ontology, runs at request time.
+ * Read the compose YAML backing a node. Services own docker-compose.yaml in
+ * their service dir; project infra shares docker-compose.project.yaml; tenant
+ * infra shares docker-compose.tenant.yaml. The UI scopes the shared files.
  */
-export async function annotateStatus(clientName: string, graph: ClientOntology): Promise<ClientOntology> {
-  let containers: { name: string; state: string }[] = [];
-  try {
-    const { stdout } = await execa("docker", [
-      "ps", "-a", "--no-trunc",
-      "--filter", `name=${clientName}-`,
-      "--format", "{{.Names}}|{{.State}}",
-    ], { reject: false });
-    containers = stdout.trim().split("\n").filter(Boolean).map(line => {
-      const [name, state] = line.split("|");
-      return { name, state };
-    });
-  } catch {
-    // docker not available — leave statuses as unknown
+export async function getNodeConfig(tenant: string, nodeId: string): Promise<{ path: string; content: string }> {
+  const parsed = parseNodeId(nodeId);
+  let filePath: string;
+  switch (parsed.kind) {
+    case "service":
+      filePath = path.join(getServiceDir(tenant, parsed.project!, parsed.name), "docker-compose.yaml");
+      break;
+    case "project":
+      filePath = path.join(getProjectDir(tenant, parsed.project!), "docker-compose.project.yaml");
+      break;
+    case "tenant":
+      filePath = path.join(getTenantDir(tenant), "docker-compose.tenant.yaml");
+      break;
   }
-
-  const nodes = graph.nodes.map(node => {
-    const localName = node.id.startsWith("service:")
-      ? node.id.slice("service:".length)
-      : node.id.slice("infra:".length);
-    const containerName = `${clientName}-${localName}`;
-    const match = containers.find(c => c.name === containerName || c.name.startsWith(`${containerName}-`));
-    if (!match) return { ...node, status: "unknown" as const };
-    return { ...node, status: match.state === "running" ? "running" as const : "stopped" as const };
-  });
-
-  return { ...graph, nodes };
-}
-
-/**
- * Read the raw compose YAML for a node. Services have their own
- * docker-compose.yaml on disk; infra components share docker-compose.infra.yaml
- * — we return the whole infra file for infra nodes and let the UI scope it.
- */
-export async function getNodeConfig(clientDir: string, nodeId: string): Promise<{ path: string; content: string }> {
-  if (nodeId.startsWith("service:")) {
-    const serviceName = nodeId.slice("service:".length);
-    const filePath = path.join(clientDir, serviceName, "docker-compose.yaml");
-    return { path: filePath, content: await fs.readFile(filePath, "utf-8") };
-  }
-  const filePath = path.join(clientDir, "docker-compose.infra.yaml");
   return { path: filePath, content: await fs.readFile(filePath, "utf-8") };
 }
 
-export async function setNodeConfig(clientDir: string, nodeId: string, content: string): Promise<void> {
-  const { path: filePath } = await getNodeConfig(clientDir, nodeId);
+export async function setNodeConfig(tenant: string, nodeId: string, content: string): Promise<void> {
+  const { path: filePath } = await getNodeConfig(tenant, nodeId);
   await fs.writeFile(filePath, content, "utf-8");
 }
 
@@ -208,31 +98,32 @@ export async function setNodeConfig(clientDir: string, nodeId: string, content: 
  *      directory and run codegen so the source service has a typed client/
  *      producer it can import.
  *
- * Returns the updated edge plus a list of files written and any warnings.
+ * Only service-originated edges can be wired; the target may be another
+ * service in the same project or a project infra component.
  */
-export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<WireResult> {
-  if (!edge.source.startsWith("service:")) {
+export async function wireEdge(tenant: string, edge: OntologyEdge): Promise<WireResult> {
+  const source = parseNodeId(edge.source);
+  if (source.kind !== "service") {
     throw new Error("Wiring promotion currently only supported for service-originated edges");
   }
-  const sourceName = edge.source.slice("service:".length);
-  const targetLocal = edge.target.startsWith("service:")
-    ? edge.target.slice("service:".length)
-    : edge.target.slice("infra:".length);
+  const target = parseNodeId(edge.target);
+  const targetLocal = target.name;
 
-  const sourceDir = path.join(clientDir, sourceName);
+  const sourceDir = getServiceDir(tenant, source.project!, source.name);
   const composePath = path.join(sourceDir, "docker-compose.yaml");
   const raw = await fs.readFile(composePath, "utf-8");
   const doc = (yaml.load(raw) ?? {}) as Record<string, unknown>;
   const services = (doc.services ?? {}) as Record<string, Record<string, unknown>>;
-  const sourceService = services[sourceName];
+  const sourceService = services[source.name];
   if (!sourceService) {
-    throw new Error(`Service '${sourceName}' not found in ${composePath}`);
+    throw new Error(`Service '${source.name}' not found in ${composePath}`);
   }
 
   const env = (sourceService.environment ?? {}) as Record<string, string>;
-  const depends = Array.isArray(sourceService.depends_on)
-    ? (sourceService.depends_on as string[])
-    : [];
+  const dependsRaw = sourceService.depends_on;
+  const depends: Record<string, { condition: string }> = Array.isArray(dependsRaw)
+    ? Object.fromEntries((dependsRaw as string[]).map(d => [d, { condition: "service_started" }]))
+    : ((dependsRaw ?? {}) as Record<string, { condition: string }>);
 
   const envKey = `${targetLocal.toUpperCase().replace(/-/g, "_")}_URL`;
   switch (edge.type) {
@@ -244,7 +135,7 @@ export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<W
       env[`${targetLocal.toUpperCase()}_PORT`] = "5432";
       break;
     case "kafka":
-      env.KAFKA_BOOTSTRAP_SERVERS = `${targetLocal}:29092`;
+      env.KAFKA_BOOTSTRAP_SERVERS = `${targetLocal}:9092`;
       break;
     case "custom":
       if (edge.properties?.envKey && edge.properties?.envValue) {
@@ -253,13 +144,13 @@ export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<W
       break;
   }
 
-  if (!depends.includes(targetLocal)) {
-    depends.push(targetLocal);
+  if (!depends[targetLocal]) {
+    depends[targetLocal] = { condition: "service_started" };
   }
 
   sourceService.environment = env;
   sourceService.depends_on = depends;
-  services[sourceName] = sourceService;
+  services[source.name] = sourceService;
   doc.services = services;
 
   await fs.writeFile(composePath, yaml.dump(doc, { lineWidth: 120 }), "utf-8");
@@ -299,42 +190,4 @@ export async function wireEdge(clientDir: string, edge: OntologyEdge): Promise<W
   }
 
   return { edge: { ...edge, wired: true }, written, warnings };
-}
-
-/**
- * Auto-wire helper: stamp a default kafka edge from `serviceName` → infra:kafka
- * into the client's ontology. Used by `service add` when ai-pipeline is enabled
- * so the data-pipeline shape appears in the Graph tab without user intervention.
- * No-op if the edge already exists.
- */
-export async function autoWireKafkaEdge(clientDir: string, clientName: string, serviceName: string): Promise<void> {
-  const graph = await loadOntology(clientDir, clientName);
-  const sourceId = `service:${serviceName}`;
-  const targetId = "infra:kafka";
-  if (!graph.nodes.find(n => n.id === targetId)) return;
-  if (graph.edges.find(e => e.source === sourceId && e.target === targetId)) return;
-
-  const defaultAvro = `{
-  "type": "record",
-  "name": "Event",
-  "namespace": "${clientName}.${serviceName}",
-  "fields": [
-    { "name": "id", "type": "string" },
-    { "name": "timestamp", "type": "long" },
-    { "name": "payload", "type": "string" }
-  ]
-}
-`;
-
-  graph.edges.push({
-    id: `${sourceId}__${targetId}__${Date.now()}`,
-    source: sourceId,
-    target: targetId,
-    type: "kafka",
-    label: "publishes events",
-    contract: { format: "avro", schema: defaultAvro },
-    wired: false,
-  });
-
-  await saveOntology(clientDir, graph);
 }

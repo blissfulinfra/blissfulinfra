@@ -13,6 +13,10 @@ export const DeploymentRecordSchema = z.object({
   latencyDelta: z.number().optional(),
   regression: z.boolean(),
   jaegerTraceUrl: z.string().optional(),
+  // Kubernetes-runtime deploys (additive — old JSONL rows stay valid).
+  environment: z.string().optional(),
+  imageTag: z.string().optional(),
+  strategy: z.enum(["rolling", "canary"]).optional(),
 });
 
 /** Body POSTed by the Jenkinsfile when a deployment starts */

@@ -32,6 +32,9 @@ const PALETTE: Record<string, string> = {
   clickhouse: '#f59e0b',
   mlflow:     '#3b82f6',
   mage:       '#10b981',
+  'argocd':        '#fb923c',
+  'gitea':         '#4ade80',
+  'argo-rollouts': '#818cf8',
 }
 
 // External UIs that a user might want to open straight from the card.
