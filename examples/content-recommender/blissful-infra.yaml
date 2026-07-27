@@ -1,5 +1,0 @@
-project: content-recommender
-backend: spring-boot
-database: postgres
-plugins:
-  - type: ai-pipeline

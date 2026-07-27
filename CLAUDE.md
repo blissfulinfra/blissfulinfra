@@ -30,12 +30,10 @@ blissful-infra/
 ├── packages/
 │   ├── cli/          # @blissful-infra/cli: the published npm package (Node.js CLI + API server)
 │   └── dashboard/    # React web dashboard (served by the CLI's API server)
-├── examples/         # Example apps scaffolded by the CLI (copied into CLI dist at build)
 ├── site/             # Astro + Starlight docs site → blissful-infra.com (Cloudflare Pages)
 ├── docs/             # Learning guides and internal documentation
 ├── specs/            # Product vision, agent architecture, timeline specs
-├── package.json      # Root workspace: workspaces: ["packages/*"]
-└── wrangler.toml     # Cloudflare config (root-level, mostly unused: site/ has its own)
+└── package.json      # Root workspace: workspaces: ["packages/*"]
 ```
 
 ---
@@ -113,7 +111,7 @@ implementation details.
 | Scaffold templates (Jenkinsfile, docker-compose, Spring Boot, etc.) | [packages/cli/src/templates/CLAUDE.md](packages/cli/src/templates/CLAUDE.md) |
 | Dashboard UI (React tabs, charts, log viewer) | [packages/dashboard/CLAUDE.md](packages/dashboard/CLAUDE.md) |
 | Docs website (content, SEO, Cloudflare Pages deploy) | [site/CLAUDE.md](site/CLAUDE.md) |
-| Example applications (content-recommender, etc.) | [examples/CLAUDE.md](examples/CLAUDE.md) |
+| Example applications (content-recommender, etc.) | [packages/cli/examples/CLAUDE.md](packages/cli/examples/CLAUDE.md) |
 
 ---
 
