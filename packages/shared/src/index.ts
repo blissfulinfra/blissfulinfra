@@ -6,6 +6,7 @@ export * from "./schemas/logs.js";
 export * from "./schemas/metrics.js";
 export * from "./schemas/plugins.js";
 export * from "./schemas/ontology.js";
+export * from "./schemas/canary.js";
 
 // Tenant / Project / Service hierarchy (ADR-0017). Replaces the legacy
 // client/service flat-model schemas in config.ts — those are scheduled for

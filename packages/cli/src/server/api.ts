@@ -77,6 +77,8 @@ import {
   type ContainerMetrics,
   type HttpMetrics,
   type ProjectMetrics,
+  type CanaryStatus,
+  CanaryActionSchema,
   CreateDeploymentRequestSchema,
   UpdateDeploymentRequestSchema,
 } from "@blissful-infra/shared";
@@ -182,7 +184,7 @@ export function createApiServer(workingDir: string, port = 3002) {
         }
         // Look up host ports for the requested tenant so observability links
         // point at the right port block.
-        let tenantPorts: { grafana?: number; prometheus?: number; tempo?: number; jenkins?: number } = {};
+        let tenantPorts: { grafana?: number; prometheus?: number; tempo?: number; jenkins?: number; argocd?: number; gitea?: number } = {};
         if (currentTenant) {
           const t = await getTenant(currentTenant);
           if (t) tenantPorts = t.portBlock;
@@ -198,6 +200,10 @@ export function createApiServer(workingDir: string, port = 3002) {
           grafanaUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/d/tenant-overview` : null,
           prometheusUrl: tenantPorts.prometheus ? `http://localhost:${tenantPorts.prometheus}` : null,
           jenkinsUrl: tenantPorts.jenkins ? `http://localhost:${tenantPorts.jenkins}` : null,
+          // Kubernetes runtime (ADR-0020) — only present once cluster ports
+          // are allocated (cluster up backfills them).
+          argocdUrl: tenantPorts.argocd ? `http://localhost:${tenantPorts.argocd}` : null,
+          giteaUrl: tenantPorts.gitea ? `http://localhost:${tenantPorts.gitea}` : null,
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(links));
@@ -1002,6 +1008,64 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/rollback - Trigger rollback
+      // Canary rollout endpoints (kubernetes runtime). :name is the service;
+      // the owning project (= namespace) resolves through the registry.
+      const canaryStatusMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canary$/);
+      if (req.method === "GET" && canaryStatusMatch) {
+        const serviceName = canaryStatusMatch[1];
+        const canaryTenant = tenantFromRequest();
+        const owning = canaryTenant ? await findServiceProject(canaryTenant, serviceName) : null;
+        if (!owning) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ canary: null }));
+          return;
+        }
+        const { getRolloutStatus } = await import("../utils/rollouts.js");
+        const status = await getRolloutStatus(serviceName, owning.project);
+        const canary: CanaryStatus | null = status ? {
+          service: serviceName,
+          project: owning.project,
+          status: status.status,
+          step: status.step,
+          totalSteps: status.totalSteps,
+          currentWeight: status.currentWeight,
+          message: status.message,
+        } : null;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ canary }));
+        return;
+      }
+
+      const canaryActionMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canary\/([^/]+)$/);
+      if (req.method === "POST" && canaryActionMatch) {
+        const serviceName = canaryActionMatch[1];
+        const parsedAction = CanaryActionSchema.safeParse(canaryActionMatch[2]);
+        if (!parsedAction.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Unknown canary action '${canaryActionMatch[2]}'` }));
+          return;
+        }
+        const canaryTenant = tenantFromRequest();
+        const owning = canaryTenant ? await findServiceProject(canaryTenant, serviceName) : null;
+        if (!owning) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Service '${serviceName}' not found in tenant` }));
+          return;
+        }
+        const rollouts = await import("../utils/rollouts.js");
+        const namespace = owning.project;
+        const ok = await ({
+          "promote":      () => rollouts.promoteRollout(serviceName, namespace, false),
+          "promote-full": () => rollouts.promoteRollout(serviceName, namespace, true),
+          "abort":        () => rollouts.abortRollout(serviceName, namespace),
+          "pause":        () => rollouts.pauseRollout(serviceName, namespace),
+          "resume":       () => rollouts.resumeRollout(serviceName, namespace),
+        }[parsedAction.data])();
+        res.writeHead(ok ? 200 : 500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: ok }));
+        return;
+      }
+
       const rollbackMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/rollback$/);
       if (req.method === "POST" && rollbackMatch) {
         const projectName = rollbackMatch[1];
@@ -1842,6 +1906,31 @@ async function buildTenantOntology(tenantName: string): Promise<{
       position: place(id, { x: 60 + i * 160, y: 40 }),
     });
   });
+
+  // Kubernetes runtime strip (ADR-0020) — shown when any project runs on the
+  // tenant's kind cluster. Component status proxies through the kind node
+  // container (they all run inside it); the docker ps name filter above
+  // already caught `blissful-<tenant>-control-plane` as a substring match.
+  const projectRuntimes = new Map<string, string>();
+  for (const p of tenant.projects) {
+    projectRuntimes.set(p.name, await readProjectRuntime(tenantName, p.name));
+  }
+  if ([...projectRuntimes.values()].includes("kubernetes")) {
+    const kindStatus = statusOf(`blissful-${tenantName}-control-plane`);
+    const fullBlock = tenant.portBlock as typeof tenant.portBlock & { argocd?: number; gitea?: number };
+    const k8sInfra: Array<[string, string, string, number | undefined]> = [
+      ["tenant:argocd",        "argocd",        "ArgoCD",        fullBlock.argocd],
+      ["tenant:gitea",         "gitea",         "Gitea",         fullBlock.gitea],
+      ["tenant:argo-rollouts", "argo-rollouts", "Argo Rollouts", undefined],
+    ];
+    k8sInfra.forEach(([id, type, label, port], i) => {
+      nodes.push({
+        id, type, label, port,
+        status: kindStatus,
+        position: place(id, { x: 60 + (tenantInfra.length + i) * 160, y: 40 }),
+      });
+    });
+  }
 
   // Per-project lane — infra + services side by side
   const PROJECT_LANE_HEIGHT = 240;
