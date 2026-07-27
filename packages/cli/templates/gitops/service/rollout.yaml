@@ -1,54 +1,49 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
-  name: {{PROJECT_NAME}}
+  name: {{SERVICE_NAME}}
   labels:
-    app: {{PROJECT_NAME}}
+    app: {{SERVICE_NAME}}
+    com.blissful/tenant: {{TENANT_NAME}}
+    com.blissful/project: {{PROJECT_NAME}}
 spec:
-  replicas: 3
+  replicas: 2
   revisionHistoryLimit: 5
   selector:
     matchLabels:
-      app: {{PROJECT_NAME}}
+      app: {{SERVICE_NAME}}
   strategy:
     canary:
-      canaryService: {{PROJECT_NAME}}-canary
-      stableService: {{PROJECT_NAME}}-stable
+      canaryService: {{SERVICE_NAME}}-canary
+      stableService: {{SERVICE_NAME}}-stable
+      # Pause-based canary (ADR-0020 v1): no in-cluster Prometheus yet, so no
+      # analysis steps — each pause is promotable early from the CLI
+      # (`blissful-infra canary promote`) or the dashboard.
       steps:
         - setWeight: 10
         - pause: { duration: 2m }
-        - analysis:
-            templates:
-              - templateName: {{PROJECT_NAME}}-analysis
         - setWeight: 25
         - pause: { duration: 2m }
-        - analysis:
-            templates:
-              - templateName: {{PROJECT_NAME}}-analysis
         - setWeight: 50
         - pause: { duration: 5m }
-        - analysis:
-            templates:
-              - templateName: {{PROJECT_NAME}}-analysis
         - setWeight: 100
-      antiAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-          weight: 100
   template:
     metadata:
       labels:
-        app: {{PROJECT_NAME}}
+        app: {{SERVICE_NAME}}
     spec:
-      serviceAccountName: {{PROJECT_NAME}}
       containers:
-        - name: {{PROJECT_NAME}}
-          image: {{REGISTRY_URL}}/{{PROJECT_NAME}}:latest
+        - name: {{SERVICE_NAME}}
+          image: {{IMAGE_NAME}}:{{IMAGE_TAG}}
+          # kind-loaded images exist only on the node — never pull.
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 8080
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: {{PROJECT_NAME}}-config
+                name: {{SERVICE_NAME}}-config
           resources:
             requests:
               memory: "256Mi"
@@ -56,23 +51,25 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          # Spring Boot actuator serves /actuator/health; the scaffolded app
+          # has no /ready or /live endpoints.
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /actuator/health
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /live
+              path: /actuator/health
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 3
           startupProbe:
             httpGet:
-              path: /health
+              path: /actuator/health
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5

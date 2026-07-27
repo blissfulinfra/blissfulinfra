@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# application.yaml is deliberately NOT listed: the ArgoCD Application CR is
+# applied to the argocd namespace by the CLI, not synced into the project
+# namespace with the workload.
+resources:
+  - rollout.yaml
+  - service-stable.yaml
+  - service-canary.yaml
+  - configmap.yaml
+
+images:
+  - name: {{IMAGE_NAME}}
+    newTag: "{{IMAGE_TAG}}"

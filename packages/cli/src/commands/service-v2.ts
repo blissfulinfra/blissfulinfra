@@ -102,7 +102,12 @@ export async function serviceAddV2Action(
       type: serviceType,
       template: opts.template,
       runtime: opts.runtime,
+      // Kubernetes-runtime projects have no in-cluster Postgres yet (the
+      // compose infra doesn't follow the service into kind) — a DB binding
+      // would make every pod fail Flyway at boot. In-cluster data services
+      // are an ADR-0020 follow-up.
       projectHasPostgres: project.portBlock !== undefined && tenant !== null
+        && (await readProjectRuntime(tenantName, projectName)) !== "kubernetes"
         && (await projectHasPostgresEnabled(tenantName, projectName))
         && !opts.noDatabase
         && serviceType !== "frontend",

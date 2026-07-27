@@ -1,0 +1,31 @@
+# ArgoCD Application for this service. Lives in the gitops repo for
+# auditability but is applied to the argocd namespace by the CLI (it is not
+# part of the kustomize resources synced into the project namespace).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{PROJECT_NAME}}-{{SERVICE_NAME}}
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{GITOPS_REPO_URL}}
+    targetRevision: main
+    path: projects/{{PROJECT_NAME}}/{{SERVICE_NAME}}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{PROJECT_NAME}}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 2m

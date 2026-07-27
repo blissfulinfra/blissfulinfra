@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{SERVICE_NAME}}-canary
+  labels:
+    app: {{SERVICE_NAME}}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  # Argo Rollouts injects rollouts-pod-template-hash into this selector to
+  # pin the Service to the canary ReplicaSet.
+  selector:
+    app: {{SERVICE_NAME}}
