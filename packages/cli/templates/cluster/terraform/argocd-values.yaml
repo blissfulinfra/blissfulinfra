@@ -1,0 +1,28 @@
+# ArgoCD tuned for a single-node local kind cluster: one replica of
+# everything, no HA, plain HTTP on a NodePort the kind node maps to the host.
+configs:
+  params:
+    server.insecure: true
+
+server:
+  service:
+    type: NodePort
+    nodePortHttp: 30080
+
+redis-ha:
+  enabled: false
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false

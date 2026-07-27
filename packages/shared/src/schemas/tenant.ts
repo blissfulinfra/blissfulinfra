@@ -65,6 +65,14 @@ export const TenantPortBlockSchema = z.object({
   prometheus: z.number().int().positive(),
   tempo:      z.number().int().positive(),
   loki:       z.number().int().positive(),
+  /**
+   * Kubernetes-runtime ports (kind cluster + ArgoCD UI + Gitea). Optional:
+   * lazily backfilled by ensureClusterPorts() on `cluster up`, so registry
+   * entries created before the k8s runtime existed stay valid.
+   */
+  kubeApi: z.number().int().positive().optional(),
+  argocd:  z.number().int().positive().optional(),
+  gitea:   z.number().int().positive().optional(),
 });
 
 export type TenantConfig         = z.infer<typeof TenantConfigSchema>;

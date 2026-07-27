@@ -24,6 +24,7 @@ import { tenantCommand } from "./commands/tenant.js";
 import { projectCommand } from "./commands/project.js";
 import { serviceCommandV2 } from "./commands/service-v2.js";
 import { useCommand } from "./commands/use.js";
+import { clusterCommand } from "./commands/cluster.js";
 
 const program = new Command();
 
@@ -38,6 +39,7 @@ program.addCommand(useCommand);
 program.addCommand(tenantCommand);
 program.addCommand(projectCommand);
 program.addCommand(serviceCommandV2);
+program.addCommand(clusterCommand);
 program.addCommand(dashboardCommand);
 
 // CI/CD and deployment
