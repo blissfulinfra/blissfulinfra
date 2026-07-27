@@ -1,5 +1,7 @@
 # Blissful Infra. Client Environment Model
 
+> **Legacy (superseded 2026-05-14):** the client model described here was replaced by the tenant / project / service hierarchy in [ADR-0017](../docs/adr/0017-tenant-project-service-hierarchy.md). The `client` and old `service` commands still work but receive no new features. This spec is kept for historical context on the isolation design, which the tenant model inherits.
+
 ## Vision
 
 A solo developer or agency managing multiple client projects needs complete environment isolation, not just per-service isolation, but per-client isolation. Each client gets their own Jenkins, Kafka, Postgres, Grafana, and observability stack, all running locally in Docker with zero interference between clients.

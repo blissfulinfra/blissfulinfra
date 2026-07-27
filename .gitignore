@@ -38,3 +38,6 @@ __pycache__/
 .venv/
 
 .continue/
+# Gradle metadata (e.g. from running gradle inside a scaffold template)
+.gradle/
+packages/cli/templates/plugins/gatling/bin/

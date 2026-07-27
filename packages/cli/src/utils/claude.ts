@@ -115,11 +115,27 @@ async function claudeChatViaCli(messages: ChatMessage[]): Promise<string> {
   const { prompt, system } = messagesToCliPrompt(messages);
   const args = ["-p", prompt, "--output-format", "text"];
   if (system) args.push("--append-system-prompt", system);
+  // RAG-via-MCP: load /app/.mcp.json explicitly with --mcp-config rather
+  // than relying on cwd-discovery (project-scope .mcp.json requires an
+  // approval prompt that hangs in -p mode). --allowed-tools whitelists
+  // ONLY our MCP server's tools, which pre-approves them without needing
+  // the global bypassPermissions mode (Claude Code refuses to bypass
+  // permissions when running as root, which the container does). Anything
+  // not on the allow list — bash, edit, write — silently no-ops.
+  const cwd = process.env.DOCKER_MODE === "true" ? "/app" : undefined;
+  if (cwd) {
+    args.push("--mcp-config", "/app/.mcp.json");
+    args.push("--allowed-tools", "mcp__blissful-infra");
+  }
   // `stdin: "ignore"` closes stdin immediately. Without it, `claude -p` waits
   // ~3s for piped input it'll never get and emits a spurious warning. The
   // prompt is already in argv, so there's nothing more to feed it.
   try {
-    const { stdout } = await execa("claude", args, { stdin: "ignore", reject: true });
+    const { stdout } = await execa("claude", args, {
+      stdin: "ignore",
+      reject: true,
+      cwd,
+    });
     return stdout.trim();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

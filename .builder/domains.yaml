@@ -1,6 +1,6 @@
 # Example domains.yaml for the blissful-infra pilot target.
-# Once stable, copy this to `/Users/cavanpage/repos/blissful-infra/.builder/domains.yaml`
-# so pravi can find it without an --domains-file override.
+# Lives at `.builder/domains.yaml` in the repo root so pravi can find it
+# without an --domains-file override.
 domains:
   - name: shared
     paths: ["packages/shared/**"]

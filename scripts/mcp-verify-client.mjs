@@ -1,7 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-const cliBin = "/Users/cavanpage/repos/blissful-infra/packages/cli/dist/index.js";
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const cliBin = path.join(repoRoot, "packages", "cli", "dist", "index.js");
 
 const transport = new StdioClientTransport({
   command: "node",
