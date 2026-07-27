@@ -15,6 +15,7 @@ import {
   bumpImageTag,
   serviceManifestDir,
   commitAndPush,
+  headSha,
 } from "../utils/gitops.js";
 import { saveDeployment } from "../utils/deployment-storage.js";
 
@@ -33,23 +34,38 @@ async function resolveTag(serviceDir: string, explicit?: string): Promise<string
   }
 }
 
-async function waitForArgoSync(coords: ServiceCoords, timeoutMs = 240000): Promise<string> {
+/**
+ * Nudge ArgoCD to poll the repo now instead of waiting out its ~3 min default
+ * refresh interval, then wait until the app has synced the EXACT revision we
+ * pushed — matching on sync status alone races the previous revision.
+ */
+async function waitForArgoSync(
+  coords: ServiceCoords,
+  targetRevision: string,
+  timeoutMs = 240000,
+): Promise<string> {
   const context = `kind-${clusterName(coords.tenant)}`;
   const app = `${coords.project}-${coords.service}`;
   const deadline = Date.now() + timeoutMs;
-  let last = "Unknown/Unknown";
+  let last = "Unknown/Unknown @ none";
+  await execa("kubectl", [
+    "--context", context, "-n", "argocd", "annotate", "application", app,
+    "argocd.argoproj.io/refresh=normal", "--overwrite",
+  ], { stdio: "pipe", timeout: 15000 }).catch(() => { /* first deploy: app just created */ });
   while (Date.now() < deadline) {
     try {
       const { stdout } = await execa("kubectl", [
         "--context", context, "-n", "argocd", "get", "application", app,
-        "-o", "jsonpath={.status.sync.status}/{.status.health.status}",
+        "-o", "jsonpath={.status.sync.status}/{.status.health.status} @ {.status.sync.revision}",
       ], { stdio: "pipe", timeout: 10000 });
       last = stdout || last;
-      const [sync, health] = last.split("/");
-      // A canary mid-steps reports Synced/Progressing (or Suspended while
-      // paused) — that's a successful deploy handoff, the Rollout takes over.
-      if (sync === "Synced" && health && health !== "Missing" && health !== "Unknown") {
-        return last;
+      const [state, revision] = last.split(" @ ");
+      const [sync, health] = (state ?? "").split("/");
+      // A canary mid-steps reports Synced/Progressing (or Paused) — that's a
+      // successful handoff, the Rollout takes over from here.
+      if (sync === "Synced" && revision === targetRevision
+          && health && health !== "Missing" && health !== "Unknown") {
+        return state;
       }
     } catch {
       // App may not exist yet right after apply
@@ -57,7 +73,7 @@ async function waitForArgoSync(coords: ServiceCoords, timeoutMs = 240000): Promi
     await sleep(5000);
   }
   throw new DeployFailedError(
-    `ArgoCD app '${app}' did not reach Synced within ${timeoutMs / 1000}s (last: ${last}).\n` +
+    `ArgoCD app '${app}' did not sync revision ${targetRevision.slice(0, 7)} within ${timeoutMs / 1000}s (last: ${last}).\n` +
     `Inspect it in the ArgoCD UI or: kubectl -n argocd get application ${app} -o yaml`,
   );
 }
@@ -138,9 +154,10 @@ export async function deployKubernetes(
     appSpinner.succeed(`ArgoCD Application '${coords.project}-${coords.service}' registered`);
   }
 
-  const syncSpinner = ora("Waiting for ArgoCD to sync...").start();
-  const status = await waitForArgoSync(coords);
-  syncSpinner.succeed(`ArgoCD synced (${status})`);
+  const targetRevision = await headSha(coords.tenant);
+  const syncSpinner = ora(`Waiting for ArgoCD to sync ${targetRevision.slice(0, 7)}...`).start();
+  const status = await waitForArgoSync(coords, targetRevision);
+  syncSpinner.succeed(`ArgoCD synced ${targetRevision.slice(0, 7)} (${status})`);
 
   await saveDeployment(serviceDir, {
     id: `deploy-${Date.now()}`,

@@ -97,6 +97,11 @@ export async function bumpImageTag(coords: GitopsCoords, imageTag: string): Prom
   await fs.writeFile(file, updated);
 }
 
+/** HEAD commit sha of the gitops checkout (what ArgoCD must sync to). */
+export async function headSha(tenant: string): Promise<string> {
+  return (await git(getGitopsDir(tenant), ["rev-parse", "HEAD"])).trim();
+}
+
 /** Commit + push everything staged under the checkout. False if no changes. */
 export async function commitAndPush(tenant: string, message: string): Promise<boolean> {
   const dir = getGitopsDir(tenant);

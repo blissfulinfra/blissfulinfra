@@ -9,7 +9,7 @@ Tests in blissful-infra serve two distinct purposes that require different appro
 
 The platform is TypeScript running on Node. The templates generate applications in Kotlin, Python, Go, and TypeScript. These require entirely different test tooling and strategies.
 
-**Current state:** No automated test suite exists. This document defines the target state and the order in which to build toward it.
+**Current state (2026-07-27):** the three-layer suite exists and gates CI — L1 schema/pure-logic tests, L2 compose/terraform/kustomize validation, and (post-2.0) a manually-run kubernetes golden path standing in for L3 until an automated `k8s-golden-path` integration test lands. This document defines the fuller target state.
 
 ---
 

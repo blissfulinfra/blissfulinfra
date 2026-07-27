@@ -7,16 +7,20 @@ import { setTimeout as sleep } from "node:timers/promises";
  */
 export const GITEA_USER = "blissful";
 export const GITEA_PASSWORD = "blissful-dev-pw";
-export const GITEA_ORG = "blissful";
+/**
+ * Repos live under the admin user (an org named like an existing user is a
+ * Gitea name collision), so the owner segment of every repo URL is the user.
+ */
+export const GITEA_OWNER = GITEA_USER;
 
 /** In-cluster URL ArgoCD's repo-server uses (gitea chart's http Service). */
 export function giteaInClusterRepoUrl(tenant: string): string {
-  return `http://gitea-http.gitea.svc.cluster.local:3000/${GITEA_ORG}/${tenant}-gitops.git`;
+  return `http://gitea-http.gitea.svc.cluster.local:3000/${GITEA_OWNER}/${tenant}-gitops.git`;
 }
 
 /** Host-side push URL with embedded credentials (NodePort mapping). */
 export function giteaPushUrl(tenant: string, giteaPort: number): string {
-  return `http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${giteaPort}/${GITEA_ORG}/${tenant}-gitops.git`;
+  return `http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${giteaPort}/${GITEA_OWNER}/${tenant}-gitops.git`;
 }
 
 function authHeader(): string {
@@ -63,23 +67,15 @@ export async function ensureGiteaReachable(giteaPort: number, timeoutMs = 120000
 }
 
 /**
- * Ensure the blissful org and the tenant's gitops repo exist. Idempotent —
+ * Ensure the tenant's gitops repo exists under the admin user. Idempotent —
  * 409/422 responses (already exists) are success.
  */
 export async function ensureOrgRepo(
   tenant: string,
   giteaPort: number,
 ): Promise<{ pushUrl: string; inClusterUrl: string }> {
-  const orgRes = await giteaFetch(giteaPort, "/orgs", {
-    method: "POST",
-    body: JSON.stringify({ username: GITEA_ORG }),
-  });
-  if (!orgRes.ok && orgRes.status !== 409 && orgRes.status !== 422) {
-    throw new Error(`Gitea org create failed: HTTP ${orgRes.status} ${await orgRes.text().catch(() => "")}`);
-  }
-
   const repoName = `${tenant}-gitops`;
-  const repoRes = await giteaFetch(giteaPort, `/orgs/${GITEA_ORG}/repos`, {
+  const repoRes = await giteaFetch(giteaPort, "/user/repos", {
     method: "POST",
     body: JSON.stringify({
       name: repoName,

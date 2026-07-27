@@ -3,6 +3,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { resolveServiceCoords } from "./deploy.js";
 import { readProjectRuntime, ensureClusterPorts } from "../utils/tenant-registry.js";
+import { kubeContext } from "../utils/kind.js";
 import { ensureGiteaReachable, ensureOrgRepo } from "../utils/gitea.js";
 import { ensureCheckout, revertLastDeploy } from "../utils/gitops.js";
 import {
@@ -47,7 +48,7 @@ export async function rollbackAction(
   }
 
   if (opts.immediate) {
-    await immediateRollback(coords.service, coords.project, opts);
+    await immediateRollback(coords.service, coords.project, kubeContext(coords.tenant), opts);
     return;
   }
 
@@ -79,11 +80,11 @@ export async function rollbackAction(
   }
 }
 
-async function immediateRollback(service: string, namespace: string, opts: RollbackOptions): Promise<void> {
+async function immediateRollback(service: string, namespace: string, context: string, opts: RollbackOptions): Promise<void> {
   if (!(await ensureRolloutsAvailable())) process.exit(1);
 
   if (!opts.revision) {
-    const history = await getRolloutHistory(service, namespace);
+    const history = await getRolloutHistory(service, namespace, context);
     if (!history) {
       console.error(chalk.red(`No rollout history for '${service}' in namespace '${namespace}'.`));
       process.exit(1);
@@ -101,13 +102,13 @@ async function immediateRollback(service: string, namespace: string, opts: Rollb
   }
 
   const spinner = ora(`Rolling back ${service} to revision ${opts.revision}...`).start();
-  const ok = await undoRollout(service, namespace, opts.revision === "0" ? undefined : opts.revision);
+  const ok = await undoRollout(service, namespace, opts.revision === "0" ? undefined : opts.revision, context);
   if (!ok) {
     spinner.fail("Rollback failed");
     process.exit(1);
   }
   spinner.succeed(`Rolled back ${service} to revision ${opts.revision}`);
-  const status = await getRolloutStatus(service, namespace);
+  const status = await getRolloutStatus(service, namespace, context);
   if (status) {
     console.log(chalk.dim("Status:"), status.status);
   }

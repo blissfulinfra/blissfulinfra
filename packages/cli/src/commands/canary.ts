@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import { resolveServiceCoords, type ServiceCoords } from "./deploy.js";
+import { kubeContext } from "../utils/kind.js";
 import {
   ensureRolloutsAvailable,
   getRolloutStatus,
@@ -26,7 +27,7 @@ async function showCanaryStatus(coords: ServiceCoords): Promise<void> {
   console.log(chalk.blue.bold(`\nCanary Status: ${coords.service}`));
   console.log(chalk.gray(`Tenant: ${coords.tenant}  Namespace: ${coords.project}\n`));
 
-  const status = await getRolloutStatus(coords.service, coords.project);
+  const status = await getRolloutStatus(coords.service, coords.project, kubeContext(coords.tenant));
   if (!status) {
     console.log(chalk.yellow("No active rollout found."));
     console.log(chalk.gray(`Deploy with: blissful-infra deploy ${coords.service}`));
@@ -54,7 +55,7 @@ async function showCanaryStatus(coords: ServiceCoords): Promise<void> {
   }
 
   console.log();
-  const details = await getRolloutDetails(coords.service, coords.project);
+  const details = await getRolloutDetails(coords.service, coords.project, kubeContext(coords.tenant));
   if (details) {
     console.log(chalk.gray(details));
   }
@@ -64,7 +65,7 @@ async function showCanaryStatus(coords: ServiceCoords): Promise<void> {
 
 async function runCanaryMutation(
   coords: ServiceCoords,
-  mutate: (name: string, namespace: string) => Promise<boolean>,
+  mutate: (name: string, namespace: string, context: string) => Promise<boolean>,
   progress: string,
   success: string,
   failure: string,
@@ -74,7 +75,7 @@ async function runCanaryMutation(
     return;
   }
   const spinner = ora(progress).start();
-  const ok = await mutate(coords.service, coords.project);
+  const ok = await mutate(coords.service, coords.project, kubeContext(coords.tenant));
   if (ok) {
     spinner.succeed(success);
   } else {
@@ -86,22 +87,22 @@ async function runCanaryMutation(
 const promoteCanary = (coords: ServiceCoords, full: boolean) =>
   runCanaryMutation(
     coords,
-    (n, ns) => promoteRollout(n, ns, full),
+    (n, ns, ctx) => promoteRollout(n, ns, full, ctx),
     full ? "Fully promoting canary..." : "Promoting to next step...",
     full ? "Canary fully promoted to 100%" : "Promoted to next step",
     "Failed to promote canary",
   );
 
 const abortCanary = (coords: ServiceCoords) =>
-  runCanaryMutation(coords, abortRollout,
+  runCanaryMutation(coords, (n, ns, ctx) => abortRollout(n, ns, ctx),
     "Aborting canary rollout...", "Canary aborted - traffic shifted to stable", "Failed to abort canary");
 
 const pauseCanary = (coords: ServiceCoords) =>
-  runCanaryMutation(coords, pauseRollout,
+  runCanaryMutation(coords, (n, ns, ctx) => pauseRollout(n, ns, ctx),
     "Pausing canary rollout...", "Canary paused", "Failed to pause canary");
 
 const resumeCanary = (coords: ServiceCoords) =>
-  runCanaryMutation(coords, resumeRollout,
+  runCanaryMutation(coords, (n, ns, ctx) => resumeRollout(n, ns, ctx),
     "Resuming canary rollout...", "Canary resumed", "Failed to resume canary");
 
 // --- Canary Test (rollback drill) ---
@@ -121,7 +122,7 @@ async function testCanary(
     console.log(chalk.white("Running full rollback drill...\n"));
 
     let spinner = ora("Checking current rollout state...").start();
-    const status = await getRolloutStatus(coords.service, coords.project);
+    const status = await getRolloutStatus(coords.service, coords.project, kubeContext(coords.tenant));
     if (!status) {
       spinner.fail(`No active rollout found. Deploy first with: blissful-infra deploy ${coords.service}`);
       process.exitCode = 1;
@@ -130,7 +131,7 @@ async function testCanary(
     spinner.succeed(`Current state: ${status.status} (weight: ${status.currentWeight}%)`);
 
     spinner = ora("Simulating failure detection - triggering rollback...").start();
-    const aborted = await abortRollout(coords.service, coords.project);
+    const aborted = await abortRollout(coords.service, coords.project, kubeContext(coords.tenant));
     if (!aborted) {
       spinner.fail("Failed to trigger rollback");
       process.exitCode = 1;
@@ -144,7 +145,7 @@ async function testCanary(
 
     for (let i = 0; i < 60; i++) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      const currentStatus = await getRolloutStatus(coords.service, coords.project);
+      const currentStatus = await getRolloutStatus(coords.service, coords.project, kubeContext(coords.tenant));
       if (currentStatus?.status === "Healthy" || currentStatus?.status === "Degraded") {
         recovered = true;
         break;

@@ -6,6 +6,11 @@ export function clusterName(tenant: string): string {
   return `blissful-${tenant}`;
 }
 
+/** kubectl context name kind registers for the tenant's cluster. */
+export function kubeContext(tenant: string): string {
+  return `kind-${clusterName(tenant)}`;
+}
+
 export async function ensureKind(): Promise<void> {
   try {
     await execa("kind", ["version"], { stdio: "pipe" });

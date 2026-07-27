@@ -8,6 +8,7 @@ import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
 import { getTenant, listTenants, findServiceProject, getServiceDir, readProjectRuntime } from "../utils/tenant-registry.js";
+import { kubeContext } from "../utils/kind.js";
 import {
   loadSavedOntology,
   saveOntology,
@@ -1021,7 +1022,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
         const { getRolloutStatus } = await import("../utils/rollouts.js");
-        const status = await getRolloutStatus(serviceName, owning.project);
+        const status = await getRolloutStatus(serviceName, owning.project, kubeContext(canaryTenant!));
         const canary: CanaryStatus | null = status ? {
           service: serviceName,
           project: owning.project,
@@ -1054,12 +1055,13 @@ export function createApiServer(workingDir: string, port = 3002) {
         }
         const rollouts = await import("../utils/rollouts.js");
         const namespace = owning.project;
+        const ctx = kubeContext(canaryTenant!);
         const ok = await ({
-          "promote":      () => rollouts.promoteRollout(serviceName, namespace, false),
-          "promote-full": () => rollouts.promoteRollout(serviceName, namespace, true),
-          "abort":        () => rollouts.abortRollout(serviceName, namespace),
-          "pause":        () => rollouts.pauseRollout(serviceName, namespace),
-          "resume":       () => rollouts.resumeRollout(serviceName, namespace),
+          "promote":      () => rollouts.promoteRollout(serviceName, namespace, false, ctx),
+          "promote-full": () => rollouts.promoteRollout(serviceName, namespace, true, ctx),
+          "abort":        () => rollouts.abortRollout(serviceName, namespace, ctx),
+          "pause":        () => rollouts.pauseRollout(serviceName, namespace, ctx),
+          "resume":       () => rollouts.resumeRollout(serviceName, namespace, ctx),
         }[parsedAction.data])();
         res.writeHead(ok ? 200 : 500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: ok }));
@@ -2943,7 +2945,7 @@ async function getProjectEnvironments(
     const owning = await findServiceProject(tenant, projectName);
     if (owning && (await readProjectRuntime(tenant, owning.project)) === "kubernetes") {
       const namespace = owning.project;
-      const workload = await readK8sWorkload(projectName, namespace);
+      const workload = await readK8sWorkload(projectName, namespace, kubeContext(tenant));
       if (workload) {
         environments.push(workload);
       } else {
@@ -2965,11 +2967,11 @@ async function getProjectEnvironments(
  * Read the service's workload in the project namespace: Rollout first (the
  * k8s-runtime deploy shape), plain Deployment as a fallback.
  */
-async function readK8sWorkload(service: string, namespace: string): Promise<EnvironmentInfo | null> {
+async function readK8sWorkload(service: string, namespace: string, context: string): Promise<EnvironmentInfo | null> {
   for (const kind of ["rollout", "deployment"]) {
     try {
       const { stdout } = await execa("kubectl", [
-        "get", kind, service, "-n", namespace, "-o", "json",
+        "--context", context, "get", kind, service, "-n", namespace, "-o", "json",
       ], { stdio: "pipe", timeout: 10000 });
       if (!stdout) continue;
       const obj = JSON.parse(stdout);

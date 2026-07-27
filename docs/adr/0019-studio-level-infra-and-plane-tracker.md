@@ -1,4 +1,7 @@
-# 0016. Studio-level infrastructure layer with Plane
+# 0019. Studio-level infrastructure layer with Plane
+
+> Renumbered from 0016 (2026-07-27): the number was accidentally shared with
+> [0016-tempo-replaces-jaeger](./0016-tempo-replaces-jaeger.md), which keeps it.
 
 - **Status:** Proposed
 - **Date:** 2026-05-05

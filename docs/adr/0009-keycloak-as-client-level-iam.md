@@ -1,6 +1,6 @@
 # 0009. Keycloak is the client-level identity provider
 
-- **Status:** Accepted (Spring Boot + React-Vite template wiring landed 2026-05-04)
+- **Status:** Superseded by [0017](./0017-tenant-project-service-hierarchy.md) (the client model was replaced by the tenant hierarchy)
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 

@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import { execa } from "execa";
 import { resolveOrExit } from "../utils/context.js";
 import { getTenant, ensureClusterPorts, getClusterDir } from "../utils/tenant-registry.js";
-import { ensureKind, ensureKubectl, clusterExists, clusterName, writeKubeconfig } from "../utils/kind.js";
+import { ensureKind, ensureKubectl, clusterExists, clusterName, kubeContext, writeKubeconfig } from "../utils/kind.js";
 import {
   ensureTerraform,
   renderClusterWorkspace,
@@ -16,8 +16,6 @@ import {
 } from "../utils/terraform.js";
 import { PrereqMissingError } from "../deploy/errors.js";
 import { toExecError } from "../utils/errors.js";
-
-const kubeContext = (tenant: string) => `kind-${clusterName(tenant)}`;
 
 async function ensurePrereqs(): Promise<void> {
   await ensureTerraform();
