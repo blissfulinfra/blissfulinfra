@@ -217,66 +217,8 @@ function replaceVariables(content: string, variables: TemplateVariables): string
   return result;
 }
 
-/** Exposed for template-watch mode in dev.ts */
 export { replaceVariables, isBinaryFile };
-
-/** Core project templates (backend / frontend scaffolding). */
-export function getAvailableTemplates(): string[] {
-  return ["spring-boot", "react-vite", "lambda-python"];
-}
-
-/** Built-in plugin types that live under templates/plugins/.
- *
- * NOTE: localstack and keycloak templates still exist on disk but are no
- * longer advertised as service-scoped plugins (ADRs 0008/0009). They were
- * promoted to client-level infrastructure. The templates remain so the
- * decommission doesn't break old service configs that still reference
- * `plugins: localstack` — those configs are filtered at read time
- * instead. New service scaffolding should not pick these up.
- */
-export function getAvailablePlugins(): string[] {
-  return ["ai-pipeline", "agent-service", "gatling"];
-}
-
-/** Plugin types that have been promoted to client-level infrastructure
- *  and should NOT be scaffolded as per-service plugins, even if a user
- *  passes them via `--plugins` or has them in an old config. */
-export const PROMOTED_TO_CLIENT_LEVEL_PLUGINS = new Set([
-  "localstack",
-  "keycloak",
-  // ai-pipeline isn't fully decomposed yet (ADR-0010 implementation pending),
-  // so it stays as a per-service plugin for now.
-]);
 
 export function getTemplateDir(templateName: string): string {
   return path.join(__dirname, "..", "..", "templates", templateName);
-}
-
-/**
- * Copy a built-in plugin template into destDir.
- * Resolves to templates/plugins/<pluginType>/.
- */
-export async function copyPlugin(
-  pluginType: string,
-  destDir: string,
-  variables: TemplateVariables
-): Promise<void> {
-  return copyTemplate(`plugins/${pluginType}`, destDir, variables);
-}
-
-export async function linkTemplate(
-  templateName: string,
-  destDir: string
-): Promise<void> {
-  const templateDir = getTemplateDir(templateName);
-
-  // Check if template exists
-  try {
-    await fs.access(templateDir);
-  } catch {
-    throw new Error(`Template '${templateName}' not found at ${templateDir}`);
-  }
-
-  // Create symlink to template directory
-  await fs.symlink(templateDir, destDir, "dir");
 }

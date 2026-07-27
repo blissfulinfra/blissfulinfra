@@ -1,123 +1,141 @@
-import { describe, it, expect } from "vitest";
-import type { ClientOntology, OntologyNode } from "@blissful-infra/shared";
-import { autoLayout, mergeWithDiscovered } from "../ontology.js";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import yaml from "js-yaml";
+import type { ClientOntology, OntologyEdge } from "@blissful-infra/shared";
+import { loadSavedOntology, saveOntology, getNodeConfig, wireEdge } from "../ontology.js";
 
-const discovered = (id: string, type: OntologyNode["type"], label: string): Omit<OntologyNode, "position"> =>
-  ({ id, type, label });
+let testHome: string;
 
-describe("autoLayout", () => {
-  it("places services on the left and infra on the right", () => {
-    const out = autoLayout([
-      discovered("service:api", "service", "api"),
-      discovered("infra:postgres", "postgres", "Postgres"),
-    ]);
-    const api = out.find(n => n.id === "service:api")!;
-    const pg = out.find(n => n.id === "infra:postgres")!;
-    expect(api.position.x).toBeLessThan(pg.position.x);
+beforeEach(async () => {
+  testHome = await mkdtemp(join(tmpdir(), "binf-ontology-"));
+  process.env.BLISSFUL_HOME = testHome;
+});
+
+afterEach(async () => {
+  delete process.env.BLISSFUL_HOME;
+  await rm(testHome, { recursive: true, force: true });
+});
+
+const TENANT = "acme";
+const tenantDir = () => join(testHome, "tenants", TENANT);
+const serviceDir = (project: string, service: string) =>
+  join(tenantDir(), "projects", project, "services", service);
+
+async function seedServiceCompose(project: string, service: string): Promise<string> {
+  const dir = serviceDir(project, service);
+  await mkdir(dir, { recursive: true });
+  const composePath = join(dir, "docker-compose.yaml");
+  await writeFile(composePath, yaml.dump({
+    services: {
+      [service]: {
+        container_name: `${TENANT}-${project}-${service}`,
+        build: { context: "." },
+        environment: { SERVICE_NAME: service },
+      },
+    },
+  }));
+  return composePath;
+}
+
+describe("saveOntology / loadSavedOntology", () => {
+  it("round-trips a graph through the tenant dir", async () => {
+    const graph: ClientOntology = {
+      clientName: TENANT,
+      nodes: [{ id: "service:shop:api", type: "service", label: "api", position: { x: 1, y: 2 } }],
+      edges: [],
+    };
+    await saveOntology(TENANT, graph);
+    const loaded = await loadSavedOntology(TENANT);
+    expect(loaded?.nodes[0].id).toBe("service:shop:api");
+    expect(loaded?.nodes[0].position).toEqual({ x: 1, y: 2 });
   });
 
-  it("stacks nodes of the same column vertically", () => {
-    const out = autoLayout([
-      discovered("service:a", "service", "a"),
-      discovered("service:b", "service", "b"),
-    ]);
-    const a = out.find(n => n.id === "service:a")!;
-    const b = out.find(n => n.id === "service:b")!;
-    expect(a.position.x).toBe(b.position.x);
-    expect(b.position.y).toBeGreaterThan(a.position.y);
+  it("returns null when no overlay exists", async () => {
+    expect(await loadSavedOntology(TENANT)).toBeNull();
   });
 
-  it("returns nodes with valid positions for every input", () => {
-    const out = autoLayout([
-      discovered("service:api", "service", "api"),
-      discovered("infra:kafka", "kafka", "Kafka"),
-      discovered("infra:postgres", "postgres", "Postgres"),
-    ]);
-    expect(out).toHaveLength(3);
-    for (const n of out) {
-      expect(typeof n.position.x).toBe("number");
-      expect(typeof n.position.y).toBe("number");
-    }
+  it("rejects graphs that fail schema validation", async () => {
+    await expect(
+      saveOntology(TENANT, { nope: true } as unknown as ClientOntology),
+    ).rejects.toThrow();
   });
 });
 
-describe("mergeWithDiscovered", () => {
-  const baseDiscovered: Omit<OntologyNode, "position">[] = [
-    discovered("service:api", "service", "api"),
-    discovered("infra:postgres", "postgres", "Postgres"),
-  ];
-
-  it("uses auto-layout positions when no saved graph exists", () => {
-    const out = mergeWithDiscovered(null, baseDiscovered, "dev");
-    expect(out.nodes).toHaveLength(2);
-    expect(out.edges).toEqual([]);
-    expect(out.clientName).toBe("dev");
+describe("getNodeConfig", () => {
+  it("resolves service nodes to the service compose file", async () => {
+    const composePath = await seedServiceCompose("shop", "api");
+    const config = await getNodeConfig(TENANT, "service:shop:api");
+    expect(config.path).toBe(composePath);
+    expect(config.content).toContain("acme-shop-api");
   });
 
-  it("preserves saved positions for nodes that still exist", () => {
-    const saved: ClientOntology = {
-      clientName: "dev",
-      nodes: [
-        { id: "service:api", type: "service", label: "api", position: { x: 999, y: 888 } },
-      ],
-      edges: [],
-    };
-    const out = mergeWithDiscovered(saved, baseDiscovered, "dev");
-    const api = out.nodes.find(n => n.id === "service:api")!;
-    expect(api.position).toEqual({ x: 999, y: 888 });
+  it("resolves project nodes to the project compose file", async () => {
+    const projectDir = join(tenantDir(), "projects", "shop");
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(join(projectDir, "docker-compose.project.yaml"), "services: {}\n");
+    const config = await getNodeConfig(TENANT, "project:shop:kafka");
+    expect(config.path).toBe(join(projectDir, "docker-compose.project.yaml"));
   });
 
-  it("drops saved nodes that are no longer discovered", () => {
-    const saved: ClientOntology = {
-      clientName: "dev",
-      nodes: [
-        { id: "service:api", type: "service", label: "api", position: { x: 0, y: 0 } },
-        { id: "service:gone", type: "service", label: "gone", position: { x: 0, y: 0 } },
-      ],
-      edges: [],
-    };
-    const out = mergeWithDiscovered(saved, baseDiscovered, "dev");
-    expect(out.nodes.map(n => n.id).sort()).toEqual(["infra:postgres", "service:api"]);
+  it("resolves tenant nodes to the tenant compose file", async () => {
+    await mkdir(tenantDir(), { recursive: true });
+    await writeFile(join(tenantDir(), "docker-compose.tenant.yaml"), "services: {}\n");
+    const config = await getNodeConfig(TENANT, "tenant:loki");
+    expect(config.path).toBe(join(tenantDir(), "docker-compose.tenant.yaml"));
   });
 
-  it("drops edges whose endpoints no longer exist", () => {
-    const saved: ClientOntology = {
-      clientName: "dev",
-      nodes: [],
-      edges: [
-        { id: "e1", source: "service:api", target: "infra:postgres", type: "database", wired: false },
-        { id: "e2", source: "service:api", target: "service:ghost", type: "http", wired: false },
-      ],
+  it("throws on unrecognized node ids", async () => {
+    await expect(getNodeConfig(TENANT, "bogus")).rejects.toThrow(/Unrecognized/);
+  });
+});
+
+describe("wireEdge", () => {
+  it("injects kafka env + depends_on into the source service compose", async () => {
+    const composePath = await seedServiceCompose("shop", "api");
+    const edge: OntologyEdge = {
+      id: "e1",
+      source: "service:shop:api",
+      target: "project:shop:kafka",
+      type: "kafka",
+      wired: false,
     };
-    const out = mergeWithDiscovered(saved, baseDiscovered, "dev");
-    expect(out.edges.map(e => e.id)).toEqual(["e1"]);
+    const result = await wireEdge(TENANT, edge);
+    expect(result.edge.wired).toBe(true);
+
+    const doc = yaml.load(await readFile(composePath, "utf-8")) as {
+      services: Record<string, { environment: Record<string, string>; depends_on: Record<string, unknown> }>;
+    };
+    expect(doc.services.api.environment.KAFKA_BOOTSTRAP_SERVERS).toBe("kafka:9092");
+    expect(doc.services.api.depends_on).toHaveProperty("kafka");
   });
 
-  it("preserves edges that reference still-existing nodes", () => {
-    const saved: ClientOntology = {
-      clientName: "dev",
-      nodes: [],
-      edges: [
-        { id: "e1", source: "service:api", target: "infra:postgres", type: "database", label: "main db", wired: true },
-      ],
+  it("injects http env for service-to-service edges", async () => {
+    const composePath = await seedServiceCompose("shop", "web");
+    await seedServiceCompose("shop", "orders-api");
+    const edge: OntologyEdge = {
+      id: "e2",
+      source: "service:shop:web",
+      target: "service:shop:orders-api",
+      type: "http",
+      wired: false,
     };
-    const out = mergeWithDiscovered(saved, baseDiscovered, "dev");
-    expect(out.edges).toHaveLength(1);
-    expect(out.edges[0].label).toBe("main db");
-    expect(out.edges[0].wired).toBe(true);
+    await wireEdge(TENANT, edge);
+    const doc = yaml.load(await readFile(composePath, "utf-8")) as {
+      services: Record<string, { environment: Record<string, string> }>;
+    };
+    expect(doc.services.web.environment.ORDERS_API_URL).toBe("http://orders-api:8080");
   });
 
-  it("adds new nodes that weren't in the saved graph", () => {
-    const saved: ClientOntology = {
-      clientName: "dev",
-      nodes: [{ id: "service:api", type: "service", label: "api", position: { x: 0, y: 0 } }],
-      edges: [],
+  it("refuses non-service-originated edges", async () => {
+    const edge: OntologyEdge = {
+      id: "e3",
+      source: "tenant:loki",
+      target: "service:shop:api",
+      type: "http",
+      wired: false,
     };
-    const expanded = [
-      ...baseDiscovered,
-      discovered("infra:kafka", "kafka", "Kafka"),
-    ];
-    const out = mergeWithDiscovered(saved, expanded, "dev");
-    expect(out.nodes.find(n => n.id === "infra:kafka")).toBeDefined();
+    await expect(wireEdge(TENANT, edge)).rejects.toThrow(/service-originated/);
   });
 });
