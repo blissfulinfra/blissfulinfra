@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import yaml from "js-yaml";
 import {
+  ProjectConfigSchema,
+  type ProjectConfig,
+  type ProjectRuntime,
   TenantRegistrySchema,
   type TenantRegistry,
   type RegistryTenantEntry,
@@ -332,4 +336,35 @@ export async function listServices(tenant: string, project: string): Promise<Reg
 export async function getService(tenant: string, project: string, service: string): Promise<RegistryServiceEntry | null> {
   const services = await listServices(tenant, project);
   return services.find(s => s.name === service) ?? null;
+}
+
+/**
+ * Find which project inside a tenant owns a service with this name.
+ * Returns the first match (service names are unique per project, not per
+ * tenant — ambiguity is resolved by passing an explicit project).
+ */
+export async function findServiceProject(
+  tenant: string,
+  service: string,
+): Promise<{ project: string; service: RegistryServiceEntry } | null> {
+  for (const p of await listProjects(tenant)) {
+    const match = p.services.find(s => s.name === service);
+    if (match) return { project: p.name, service: match };
+  }
+  return null;
+}
+
+/** Parse projects/<project>/project.yaml (throws if missing or invalid). */
+export async function readProjectConfig(tenant: string, project: string): Promise<ProjectConfig> {
+  const raw = await fs.readFile(path.join(getProjectDir(tenant, project), "project.yaml"), "utf-8");
+  return ProjectConfigSchema.parse(yaml.load(raw));
+}
+
+/** The project's runtime; defaults to compose when the config is unreadable. */
+export async function readProjectRuntime(tenant: string, project: string): Promise<ProjectRuntime> {
+  try {
+    return (await readProjectConfig(tenant, project)).runtime;
+  } catch {
+    return "compose";
+  }
 }

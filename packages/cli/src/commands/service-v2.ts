@@ -23,6 +23,7 @@ import {
   getService,
   getProjectDir,
   getServiceDir,
+  readProjectRuntime,
 } from "../utils/tenant-registry.js";
 import { copyTemplate } from "../utils/template.js";
 import { writeServiceCompose } from "../utils/service-compose-v2.js";
@@ -228,11 +229,13 @@ async function scaffoldServiceSource(
 ): Promise<void> {
   // Templates expect a "projectName" variable that drives package names,
   // image tags, app names, etc. In the new model the service name maps to
-  // that role.
+  // that role. deployTarget mirrors the parent project's runtime so the
+  // {{#IF_KUBERNETES}} template guards fire for kubernetes-runtime projects.
+  const runtime = await readProjectRuntime(tenantName, config.project);
   const vars = {
     projectName: config.name,
     database: config.database ? "postgres" : "none",
-    deployTarget: "local-only",
+    deployTarget: runtime === "kubernetes" ? "kubernetes" : "local-only",
     clientName: tenantName, // legacy var name some templates still read
   };
 
@@ -404,6 +407,14 @@ async function serviceUpV2Action(t: string, p: string, s: string): Promise<void>
   if (!await getService(t, p, s)) {
     console.error(chalk.red(`Service '${s}' not found in ${t}/${p}.`));
     process.exit(1);
+  }
+  // Kubernetes-runtime projects don't run services via compose — delegate to
+  // the deploy pipeline (build → kind load → gitops push → ArgoCD sync).
+  if (await readProjectRuntime(t, p) === "kubernetes") {
+    console.log(chalk.dim(`Project '${p}' runs on the kubernetes runtime — delegating to deploy.`));
+    const { deployAction } = await import("./deploy.js");
+    await deployAction(s, { tenant: t, project: p });
+    return;
   }
   const projectDir = getProjectDir(t, p);
   // Build & start ONLY this service's container family. Compose will resolve

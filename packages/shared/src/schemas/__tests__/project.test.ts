@@ -68,3 +68,21 @@ describe("ProjectPortBlockSchema", () => {
     })).toThrow();
   });
 });
+
+describe("ProjectConfigSchema.runtime", () => {
+  const base = { type: "project", name: "shop", tenant: "acme" };
+
+  it("defaults to compose", () => {
+    const cfg = ProjectConfigSchema.parse(base);
+    expect(cfg.runtime).toBe("compose");
+  });
+
+  it("accepts kubernetes", () => {
+    const cfg = ProjectConfigSchema.parse({ ...base, runtime: "kubernetes" });
+    expect(cfg.runtime).toBe("kubernetes");
+  });
+
+  it("rejects unknown runtimes", () => {
+    expect(() => ProjectConfigSchema.parse({ ...base, runtime: "nomad" })).toThrow();
+  });
+});

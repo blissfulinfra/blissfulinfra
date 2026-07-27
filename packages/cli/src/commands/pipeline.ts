@@ -4,13 +4,25 @@ import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig, findProjectDir, type LegacyProjectConfig } from "../utils/config.js";
+import { resolveServiceCoords } from "./deploy.js";
+import { getService, getTenant, getServiceDir } from "../utils/tenant-registry.js";
 
 interface PipelineOptions {
+  tenant?: string;
+  project?: string;
   local?: boolean;
   push?: boolean;
   skipTests?: boolean;
   skipScan?: boolean;
+}
+
+/** What the pipeline stages need to know about their target service. */
+interface PipelineTarget {
+  name: string;
+  backend?: string;
+  frontend?: string;
+  /** Base URL of the tenant's Jenkins. */
+  jenkinsBase: string;
 }
 
 interface PipelineStage {
@@ -112,7 +124,7 @@ function printStages(stages: PipelineStage[]): void {
 }
 
 async function runLocalPipeline(
-  config: LegacyProjectConfig,
+  config: PipelineTarget,
   projectDir: string,
   opts: PipelineOptions
 ): Promise<void> {
@@ -323,9 +335,9 @@ async function runLocalPipeline(
   }
 }
 
-async function isJenkinsRunning(): Promise<boolean> {
+async function isJenkinsRunning(jenkinsBase: string): Promise<boolean> {
   try {
-    const response = await fetch("http://localhost:8081/login", {
+    const response = await fetch(`${jenkinsBase}/login`, {
       signal: AbortSignal.timeout(3000),
     });
     return response.ok || response.status === 403;
@@ -334,10 +346,10 @@ async function isJenkinsRunning(): Promise<boolean> {
   }
 }
 
-async function showJenkinsPipelineStatus(config: LegacyProjectConfig): Promise<void> {
+async function showJenkinsPipelineStatus(config: PipelineTarget): Promise<void> {
   const spinner = ora("Fetching Jenkins pipeline status...").start();
 
-  if (!(await isJenkinsRunning())) {
+  if (!(await isJenkinsRunning(config.jenkinsBase))) {
     spinner.fail("Jenkins is not running");
     console.log();
     console.log(chalk.dim("Start Jenkins:"));
@@ -351,14 +363,14 @@ async function showJenkinsPipelineStatus(config: LegacyProjectConfig): Promise<v
   const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
 
   // Try to find the job (folder path first, then root)
-  let jobBaseUrl = `http://localhost:8081/job/blissful-projects/job/${config.name}`;
+  let jobBaseUrl = `${config.jenkinsBase}/job/blissful-projects/job/${config.name}`;
   let response = await fetch(`${jobBaseUrl}/api/json`, {
     headers: { Authorization: authHeader },
     signal: AbortSignal.timeout(5000),
   }).catch(() => null);
 
   if (!response?.ok) {
-    jobBaseUrl = `http://localhost:8081/job/${config.name}`;
+    jobBaseUrl = `${config.jenkinsBase}/job/${config.name}`;
     response = await fetch(`${jobBaseUrl}/api/json`, {
       headers: { Authorization: authHeader },
       signal: AbortSignal.timeout(5000),
@@ -473,7 +485,7 @@ async function showJenkinsPipelineStatus(config: LegacyProjectConfig): Promise<v
   }
 
   console.log();
-  console.log(chalk.dim("  Jenkins: ") + chalk.cyan(`http://localhost:8081/job/${config.name}`));
+  console.log(chalk.dim("  Jenkins: ") + chalk.cyan(`${config.jenkinsBase}/job/${config.name}`));
   console.log();
   console.log(chalk.dim("Commands:"));
   console.log(chalk.cyan("  blissful-infra jenkins build " + config.name) + chalk.dim("  # Trigger a build"));
@@ -484,36 +496,30 @@ export async function pipelineAction(
   name: string | undefined,
   opts: PipelineOptions
 ): Promise<void> {
-  // Find project directory
-  const projectDir = await findProjectDir(name);
-  if (!projectDir) {
-    if (name) {
-      console.error(chalk.red(`Project '${name}' not found.`));
-    } else {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Run from project directory or specify project name:"));
-      console.error(chalk.cyan("  blissful-infra pipeline my-app --local"));
-    }
-    process.exit(1);
-  }
+  const coords = await resolveServiceCoords(name, opts);
+  const entry = await getService(coords.tenant, coords.project, coords.service);
+  const tenant = await getTenant(coords.tenant);
+  const projectDir = getServiceDir(coords.tenant, coords.project, coords.service);
 
-  // Load project config
-  const config = await loadConfig(projectDir);
-  if (!config) {
-    console.error(chalk.red("No blissful-infra.yaml found."));
-    process.exit(1);
-  }
+  const target: PipelineTarget = {
+    name: coords.service,
+    backend:  entry?.type === "backend"  ? "backend"  : undefined,
+    frontend: entry?.type === "frontend" ? "frontend" : undefined,
+    jenkinsBase: `http://localhost:${tenant?.portBlock.jenkins ?? 8081}`,
+  };
 
   if (opts.local) {
-    await runLocalPipeline(config, projectDir, opts);
+    await runLocalPipeline(target, projectDir, opts);
   } else {
-    await showJenkinsPipelineStatus(config);
+    await showJenkinsPipelineStatus(target);
   }
 }
 
 export const pipelineCommand = new Command("pipeline")
   .description("Run CI/CD pipeline locally or view pipeline status")
-  .argument("[name]", "Project name (if running from parent directory)")
+  .argument("[service]", "Service name (resolves through `use` context)")
+  .option("--tenant <tenant>", "Tenant (defaults to context)")
+  .option("--project <project>", "Project (defaults to context, falls back to registry scan)")
   .option("--local", "Run pipeline locally (build, test, containerize)")
   .option("--push", "Push image to registry after build (requires --local)")
   .option("--skip-tests", "Skip test stage")

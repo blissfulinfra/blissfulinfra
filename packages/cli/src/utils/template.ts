@@ -118,9 +118,10 @@ function replaceVariables(content: string, variables: TemplateVariables): string
   const hasRedis = variables.database === "redis" || variables.database === "postgres-redis";
   const noDatabase = variables.database === "none";
 
-  // Deploy target conditionals
-  const isKubernetes = variables.deployTarget === "kubernetes" || variables.deployTarget === "cloud";
-  const isCloud = variables.deployTarget === "cloud";
+  // Deploy target conditionals — "kubernetes" here means the parent
+  // project's runtime is the local kind cluster (ADR-0017 runtime axis).
+  const isKubernetes = variables.deployTarget === "kubernetes";
+  const isCloud = false;
   const isLocalOnly = variables.deployTarget === "local-only";
 
   // Handle conditional blocks: {{#IF_POSTGRES}}...{{/IF_POSTGRES}}
