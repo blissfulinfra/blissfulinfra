@@ -1,5 +1,7 @@
 # API Schema-First Code Generation
 
+> **Partially shipped (as of 2026-07-29).** The `blissful-infra generate` command exists (`packages/cli/src/commands/generate.ts`) and generates client/server boilerplate from the OpenAPI spec in `blissful-infra.yaml`. Verify any specific capability below against the command's `--help` before relying on it.
+
 ## Overview
 
 blissful-infra can generate typed API clients, server controller stubs, and Zod schemas from an OpenAPI 3.x spec. Define the `api:` block in `blissful-infra.yaml`, point it at your spec file, and declare what to generate. The CLI handles the rest.

@@ -35,17 +35,26 @@ npm run preview   # Preview built output locally
 ```
 src/content/docs/
 ├── index.mdx                    # Landing page (hero + CardGrid + feature tables)
-├── getting-started.md           # Installation + quickstart guide
-├── commands/
-│   ├── start.md
-│   ├── dev.md
-│   ├── dashboard.md
-│   └── jenkins.md
-└── templates/
-    ├── overview.md
-    ├── spring-boot.md
-    └── react-vite.md
+├── getting-started.md           # Installation + quickstart
+├── about.md, philosophy.md
+├── paths/                       # start-here, build, learn, deliver
+├── guides/
+│   ├── tenant-model.md          # the tenant/project/service hierarchy
+│   ├── golden-path.md           # kubernetes + ArgoCD + canary
+│   └── compose-runtime.md       # the default runtime
+├── commands/                    # one page per command, mirrors the CLI surface
+│   ├── init.md, use.md, status.md
+│   ├── tenant.md, project.md, service.md
+│   ├── cluster.md, deploy.md, canary.md, rollback.md
+│   └── pipeline.md, jenkins.md, dashboard.md
+├── templates/                   # overview, spring-boot, react-vite, lambda-python
+└── blog/                        # long-form posts (pre-2.0, banner-marked)
 ```
+
+**Accuracy rule:** the `commands/` pages must match the real CLI surface.
+Before editing one, check the truth with `node packages/cli/dist/index.js
+<command> --help` — do not document a flag you have not seen in that output.
+The site drifted a full major version behind the CLI once already.
 
 All content files are Markdown (`.md`) or MDX (`.mdx`). MDX is only needed when importing Starlight components (like `<CardGrid>`, `<Card>`). Plain docs pages use `.md`.
 

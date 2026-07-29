@@ -47,7 +47,7 @@ A local sandbox running the same tools real engineering teams use — one comman
 
 All running locally. No cloud account required. Same patterns as production.
 
-> **Note on current vs planned:** The client model (per-client isolated environments), observability stack, Kafka, Postgres, Jenkins, AI inference, and studio layer are implemented. Features referenced later in this spec — Kubernetes orchestration, Argo CD GitOps, Chaos Mesh, parallel version comparison — are planned or deferred. See [specs/timeline.md](timeline.md) and the ADR index for current status.
+> **Note on current vs planned (updated 2026-07-29):** the observability stack, Kafka, Postgres, Jenkins and AI inference are implemented, now keyed to the **tenant / project / service** hierarchy ([ADR-0017](../docs/adr/0017-tenant-project-service-hierarchy.md)) rather than the client model this spec was written against — the client model was removed in 2.0. **Kubernetes orchestration and ArgoCD GitOps have since shipped** as the local Kubernetes runtime ([ADR-0020](../docs/adr/0020-local-kubernetes-runtime.md)): kind + Terraform + ArgoCD + Argo Rollouts, with pause-based canary deploys. Still planned or deferred: Chaos Mesh, parallel version comparison, the studio layer ([ADR-0019](../docs/adr/0019-studio-level-infra-and-plane-tracker.md)) and the hosted tier. See [specs/timeline.md](timeline.md) and the ADR index for current status.
 
 ## Fast Feedback Loops
 

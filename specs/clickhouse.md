@@ -1,5 +1,7 @@
 # Blissful Infra. Postgres → ClickHouse CDC Mirror
 
+> **Unimplemented design, written in client-model vocabulary (as of 2026-07-29).** Nothing here ships. The "client-level" resources this spec places ClickHouse alongside were removed in 2.0 — see [ADR-0017](../docs/adr/0017-tenant-project-service-hierarchy.md). Re-scope to tenant/project levels before building. Related: [ADR-0008](../docs/adr/0008-clickhouse-as-client-level-warehouse.md) (superseded).
+
 ## Vision
 
 Mirror Postgres tables into the client-level ClickHouse warehouse via change

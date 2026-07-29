@@ -3,6 +3,12 @@ title: "A Developer's Guide to IAM: Authentication, Authorization, and RBAC in M
 description: Learn the difference between authentication and authorization, how JWT and OAuth2/OIDC work, how to implement RBAC, and how to run a full IAM stack locally with Keycloak and Spring Boot.
 ---
 
+:::note[Written before blissful-infra 2.0]
+The IAM concepts in this post — authentication, authorization, JWT, OAuth2/OIDC, RBAC — are unchanged and stand on their own. The **blissful-infra commands are not**: this was written against the pre-2.0 CLI, and the Keycloak plugin it uses was removed in 2.0 along with the client model. There is currently no built-in local Keycloak setup.
+
+For the current CLI, start at [Getting Started](/getting-started).
+:::
+
 Identity and Access Management (IAM) is one of those topics that every developer knows they need to understand, but the surface area is wide enough that most people piece it together from Stack Overflow answers and half-understood OAuth flows. This guide covers the core concepts clearly, shows you how a real IAM stack fits together, and walks through running it locally with one command.
 
 ## Authentication vs Authorization

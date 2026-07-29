@@ -1,10 +1,10 @@
 ---
 title: Blissful Infra
-description: From idea to running POC in one command. Real Kafka, real Postgres, real CI on your laptop. The plumbing is handled so you can prove out the architecture today.
+description: An enterprise sandbox on your laptop. Real Kafka, real Postgres, real Kubernetes with ArgoCD and canary deploys. One command chain, no cloud account.
 template: splash
 hero:
-  tagline: One command spins up real Kafka, real Postgres and real CI on your laptop. The plumbing is handled so you can prove out the architecture today.
-  title: From idea to running POC, one command.
+  tagline: Real Kafka, real Postgres, real Kubernetes with ArgoCD and canary deploys — all on your laptop. Try an architecture pattern, throw it away, try the next one.
+  title: An enterprise sandbox on your laptop.
   actions:
     - text: Get Started
       link: /getting-started
@@ -22,37 +22,66 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-blissful-infra is built for fast POCs on enterprise-shape infrastructure. One command and the plumbing is gone. Compose files, ports, networks, observability and a CI pipeline are generated for you. What you get back is a real Kafka, real Postgres, real Jenkins, real Grafana stack on your laptop, ready to validate the experiment in your head.
+blissful-infra spins up a real enterprise-shaped stack on your laptop. A Spring Boot backend, a local Kubernetes cluster provisioned by Terraform, ArgoCD syncing your services from a real git repo, Argo Rollouts running canary deploys, and a dashboard where you watch traffic shift and press Promote.
+
+The point is that you should be able to try an architecture pattern, throw it away and try the next one in the time it usually takes to read the docs for one of them.
 
 ```bash
 npm install -g @blissful-infra/cli
-blissful-infra start my-app
+blissful-infra init
 ```
 
-Under a minute later your stack is running. Prove out the idea, throw it away, prove out the next one. No cloud account, no billing surprise.
+`init` walks you through your first tenant, project and service, then brings it all up. [Get started →](/getting-started)
 
-[Why I built this →](/about)
-
-## Built for POCs. Real infrastructure underneath.
+## Built for iteration. Real infrastructure underneath.
 
 <CardGrid>
   <Card title="Off the boilerplate" icon="rocket">
-    The plumbing is handled. One command scaffolds compose, ports, networks, schemas and a fresh git repo.
+    One command scaffolds compose files, ports, networks, database schemas and a git repo.
 
-    Observability (Prometheus scrape, Grafana dashboards, Loki, Tempo) is wired in from the start. Jenkins pipeline pre-configured. Local Docker registry pre-allocated. AI agent connected over MCP.
+    Observability (Prometheus scrape, Grafana dashboards, Loki, Tempo) is wired in from the start. Jenkins pipeline pre-configured. AI agent connected over MCP.
 
-    The POC is the first thing you touch and not the last.
+    The experiment is the first thing you touch, not the last.
   </Card>
   <Card title="Closer to the infrastructure" icon="open-book">
-    The pieces are real. Real Kafka, real Postgres, real Jenkins. Nothing is mocked when an OSS equivalent exists.
+    The pieces are real. Real Kafka, real Postgres, real ArgoCD. Nothing is mocked when an open-source equivalent exists.
 
-    Config files are plain (`docker-compose.yaml`, `Jenkinsfile`, `application.yml`). Read them, modify them, fork them. Watch a consumer group actually rebalance. Inspect a JWT round trip. Profile a JPA cascade.
+    Config files are plain (`docker-compose.yaml`, `Jenkinsfile`, `rollout.yaml`). Read them, modify them, fork them. Watch a consumer group actually rebalance. Watch a Rollout hold at 25% until you promote it.
 
-    When the POC raises a question about the architecture, the answer is right there in the repo.
+    When the experiment raises a question about the architecture, the answer is in the repo.
   </Card>
 </CardGrid>
 
-The system handles the parts you do not want to think about. The infrastructure underneath stays real, so the POC tells you something true.
+## The model: tenants, projects, services
+
+Everything hangs off a three-level hierarchy that mirrors how cloud providers structure things and how DDD structures domains.
+
+| Level | Maps to | Owns |
+|---|---|---|
+| **Tenant** | Organization | Dashboard, Jenkins, observability stack, and optionally a local Kubernetes cluster |
+| **Project** | Domain | Kafka event bus, Postgres, API gateway, isolated Docker network — and a runtime: `compose` or `kubernetes` |
+| **Service** | Bounded context | One process. Own DB schema. Talks to the world through the project's event bus or gateway |
+
+`blissful-infra use <tenant>/<project>` sets a persistent context so you rarely retype the path. Ports are allocated deterministically per level, so collisions are impossible by construction.
+
+[The full model →](/guides/tenant-model)
+
+## Two runtimes
+
+<CardGrid>
+  <Card title="Compose (default)" icon="seti:docker">
+    Every service is a container on the project's isolated Docker network. Backends get a dedicated Postgres schema, Kafka bootstrap servers, Prometheus scrape labels and Loki log shipping.
+
+    Fast to start, nothing to install beyond Docker.
+
+    [Compose runtime →](/guides/compose-runtime)
+  </Card>
+  <Card title="Kubernetes" icon="puzzle">
+    The tenant owns a kind cluster provisioned by Terraform, running ArgoCD, Argo Rollouts and Gitea. Projects are namespaces. Deploys are GitOps for real — manifests are pushed to the in-cluster Gitea repo and ArgoCD syncs them.
+
+    [The golden path →](/guides/golden-path)
+  </Card>
+</CardGrid>
 
 ## Choose your path
 
@@ -60,17 +89,17 @@ One toolchain. Pick the entry point that matches what you are trying to do.
 
 <CardGrid>
   <Card title="Build" icon="rocket">
-    **POC-first.** You have an architecture experiment or a product idea you need to validate. One command to a real stack you can pull apart. Skip the wiring, prove out the idea today.
+    **Prototype-first.** You have an architecture experiment or a product idea to validate. One command to a real stack you can pull apart.
 
     [Start the Build path →](/paths/build)
   </Card>
   <Card title="Learn" icon="open-book">
-    **Go deeper.** Students, new grads and engineers who want to understand how production systems work without an AWS bill. A guided course through Kafka, Postgres, Keycloak, CI/CD and observability. The same stack real teams run.
+    **Go deeper.** Students and engineers who want to understand how production systems work without a cloud bill. Kafka, Postgres, CI/CD, observability, GitOps and progressive delivery — the same stack real teams run.
 
     [Start the Learn path →](/paths/learn)
   </Card>
   <Card title="Deliver" icon="puzzle">
-    **Per client.** Indie studios and small teams running multiple client projects on one laptop. Per-client isolated stacks with their own Kafka, Postgres, observability and CI. No SaaS bill stacking up per client.
+    **Many projects, one laptop.** Indie studios and small teams. Each tenant gets its own isolated stack with its own Kafka, Postgres, observability and CI. No SaaS bill stacking up per project.
 
     [Start the Deliver path →](/paths/deliver)
   </Card>
@@ -78,52 +107,44 @@ One toolchain. Pick the entry point that matches what you are trying to do.
 
 Curious why blissful-infra runs real open-source services instead of bundling managed-service emulators? [Read the philosophy →](/philosophy)
 
-## What gets created
+## What you get
 
-Running `blissful-infra start my-app` scaffolds a complete project directory and boots all services:
+A tenant brings up its own observability and CI stack. A project brings up its own data infrastructure. Ports are derived from the tenant and project index, so a second tenant lands one port up from the first and never collides.
 
-| Service     | URL                        | Purpose                              |
-|-------------|----------------------------|--------------------------------------|
-| Frontend    | http://localhost:3000      | React + Vite app served via nginx    |
-| Backend API | http://localhost:8080      | Spring Boot REST + WebSocket API     |
-| Dashboard   | http://localhost:3002      | blissful-infra management UI         |
-| Grafana     | http://localhost:3001      | Pre-provisioned dashboards (metrics, logs, traces) |
-| Prometheus  | http://localhost:9090      | Metrics scraping from `/actuator`    |
-| Tempo       | http://localhost:3200      | Distributed tracing (view traces inside Grafana) |
-| Jenkins     | http://localhost:8081      | CI/CD pipelines (admin/admin)        |
-| Kafka       | localhost:9092             | Event streaming message bus          |
-| Postgres    | localhost:5432             | Primary relational database          |
-| Redis       | localhost:6379             | Cache layer (with postgres-redis)    |
-| Loki        | localhost:3100             | Structured log aggregation           |
-| Registry    | localhost:5050             | Local Docker image registry          |
+| Service | Level | First tenant lands on |
+|---|---|---|
+| Dashboard | Host (one for all tenants) | `localhost:3002` |
+| Grafana | Tenant | `localhost:3000` |
+| Loki | Tenant | `localhost:3100` |
+| Tempo | Tenant | `localhost:3200` |
+| Prometheus | Tenant | `localhost:9090` |
+| Jenkins | Tenant | `localhost:8081` |
+| ArgoCD | Tenant (kubernetes runtime) | `localhost:8440` |
+| Gitea | Tenant (kubernetes runtime) | `localhost:3300` |
+| Kafka | Project | `localhost:9092` |
+| Postgres | Project | `localhost:5432` |
+| Redis | Project | `localhost:6379` |
+| API gateway | Project | `localhost:8080` |
+
+Run `blissful-infra status` at any time to see the ports your tenants actually got.
 
 ## Your sandbox, your rules
 
-blissful-infra runs entirely on your laptop. Docker Desktop is the only external dependency. There are no cloud accounts to set up, no Kubernetes clusters to provision, no YAML to hand-write, and no per-hour costs ticking up while you work.
+blissful-infra runs entirely on your laptop. Docker Desktop is the only hard dependency; the Kubernetes runtime additionally needs `kind`, `kubectl` and `terraform`, all installable with one `brew install`. There are no cloud accounts to set up and no per-hour costs ticking up while you work.
 
-Spin up a project, experiment with the architecture, blow it away, and start fresh. The entire stack is isolated, reproducible, and disposable on demand. Everything that would normally require a DevOps team, service discovery, observability wiring, CI/CD pipelines, database migrations, is handled for you, and it all runs offline.
+Spin up a tenant, experiment, blow it away, start fresh. The whole stack is isolated, reproducible and disposable on demand.
 
-## Deploy in two commands
+## Progressive delivery, locally
 
-Build locally. Ship with one more command.
+The Kubernetes runtime runs real canary deploys. A rollout walks 10% → 25% → 50% → 100%, pausing at each step so you can promote early or abort:
 
 ```bash
-# Build your sandbox
-blissful-infra start my-app
-
-# When you're ready to go live
-blissful-infra deploy
-# → Live at https://my-app.blissful-infra.com
+blissful-infra deploy orders        # build → kind load → gitops push → ArgoCD sync
+blissful-infra canary status orders # 10% canary / 90% stable, step 1/7
+blissful-infra canary promote orders --full
+blissful-infra rollback orders      # git revert in the gitops repo; ArgoCD converges back
 ```
 
-Your local stack maps automatically to Cloudflare's edge infrastructure, no config changes, no cloud account to set up. The same `blissful-infra.yaml` that defines your local environment defines your production one.
+Every deploy is a commit in the tenant's Gitea repo — open it to see the audit trail ArgoCD syncs from. The dashboard's Environments tab shows the same rollout with a live weight bar and Promote / Abort buttons.
 
-| Local service | Hosted equivalent |
-|---|---|
-| React + Vite frontend | Cloudflare Pages |
-| Express / Go backend | Cloudflare Worker |
-| Postgres | Cloudflare D1 |
-| Redis | Cloudflare KV |
-| Kafka | Cloudflare Queues |
-
-Vercel and AWS deploy targets are coming. [Follow along on GitHub →](https://github.com/cavanpage/blissful-infra)
+[The golden path in full →](/guides/golden-path)

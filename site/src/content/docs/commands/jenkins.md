@@ -1,160 +1,89 @@
 ---
 title: blissful-infra jenkins
-description: Manage the shared Jenkins CI/CD server and register projects with pipelines.
+description: Manage the Jenkins CI/CD server and register services with pipelines.
 ---
 
-`blissful-infra jenkins` manages the shared Jenkins CI/CD server and your project pipelines. Jenkins is a shared service, one instance runs on your machine and all your blissful-infra projects register jobs with it.
-
-## Subcommands
-
-| Subcommand | Description |
-|------------|-------------|
-| `jenkins start` | Start the Jenkins server |
-| `jenkins stop` | Stop the Jenkins server |
-| `jenkins status` | Show Jenkins server status and running jobs |
-| `jenkins add-project <name>` | Register a project with Jenkins |
-| `jenkins build <name>` | Trigger a pipeline build for a project |
-| `jenkins list` | List all registered projects and their build status |
-
----
-
-## `jenkins start`
-
-```bash
-blissful-infra jenkins start [--build] [--reset]
-```
-
-Starts the Jenkins server if it is not already running.
-
-Jenkins is a custom Docker image (`blissful-jenkins:latest`) built with all required plugins pre-installed. On first run the image is built automatically, this takes about 2 minutes and only happens once. Subsequent starts take a few seconds.
-
-Jenkins data (jobs, build history, configuration) is persisted in `~/.blissful-infra/jenkins/` so it survives restarts.
-
-### Options
-
-| Flag | Description |
-|------|-------------|
-| `--build` | Force a rebuild of the Jenkins Docker image. Use this after plugin updates. |
-| `--reset` | Wipe the Jenkins Docker volumes and rebuild from scratch. Deletes all job history. |
-
-### What starts
-
-- **Jenkins** at `http://localhost:8081` (admin/admin)
-- **Docker registry** at `localhost:5050`, a local image registry for CI-built images
-
-Jenkins is configured via JCasC (Jenkins Configuration as Code) so there is no manual setup wizard. All plugins, security settings, and the `blissful-projects` folder are provisioned automatically.
-
-### Waiting for readiness
-
-The CLI waits up to 120 seconds for Jenkins to respond at `/login` before returning. If Jenkins does not become ready in time, the command fails with an error suggesting you check `docker logs blissful-jenkins`.
-
----
-
-## `jenkins stop`
-
-```bash
-blissful-infra jenkins stop
-```
-
-Stops the Jenkins containers with `docker compose down`. Data is preserved in the Docker volumes, the next `jenkins start` will restore the previous state.
-
----
-
-## `jenkins status`
+Jenkins runs the CI pipeline for your services: compile, lint, test, containerize, scan, push.
 
 ```bash
 blissful-infra jenkins status
 ```
 
-Prints whether Jenkins is running and, if so, the URL and credentials. Also checks whether the Docker registry container is up.
+## Two Jenkins paths
 
----
+Worth knowing before you start, because it explains a port clash you might hit.
 
-## `jenkins add-project`
+**The tenant's Jenkins** is the one you normally want. Each tenant runs its own Jenkins container (`<tenant>-jenkins`) as part of its compose stack, started by `blissful-infra tenant up` and stopped by `tenant down`. Its port comes from the tenant's block — the first tenant gets 8081, the second 8082, and so on. This is what the dashboard's Pipeline tab reads, and it is fully isolated per tenant.
+
+**The standalone `jenkins` command** predates the tenant model and manages a single separate `blissful-jenkins` container on a hardcoded `localhost:8081`. It has not been re-keyed to tenant coordinates yet.
+
+For your first tenant both want port 8081, so run one or the other, not both. If you are working inside the tenant model, prefer `tenant up` and use the dashboard or `pipeline` to drive builds.
+
+## Subcommands
+
+| Subcommand | What it does |
+|---|---|
+| `jenkins start` | Start the standalone Jenkins server |
+| `jenkins stop` | Stop it |
+| `jenkins status` | Show status |
+| `jenkins add-project <name>` | Register a project with Jenkins |
+| `jenkins build <name>` | Trigger a build |
+| `jenkins list` | List registered projects and their build status |
+
+## jenkins start
+
+```bash
+blissful-infra jenkins start
+```
+
+Jenkins is a custom image (`blissful-jenkins:latest`) with the required plugins pre-installed. The first run builds it, which takes a couple of minutes and happens once. It is configured with Jenkins Configuration as Code, so there is no setup wizard.
+
+Data persists in a Docker volume, so jobs and build history survive restarts.
+
+## jenkins add-project
 
 ```bash
 blissful-infra jenkins add-project <name>
 ```
 
-Registers an existing blissful-infra project with Jenkins by creating a pipeline job.
+Creates a pipeline job pointing at the project directory as its SCM source. Requires Jenkins to be running and the project to have a `Jenkinsfile`.
 
-### Prerequisites
+The job is idempotent — registering an already-registered project is a no-op.
 
-- Jenkins must be running (`blissful-infra jenkins start` or `blissful-infra dashboard`)
-- The project directory must exist in the current working directory with a `blissful-infra.yaml`
-- The project must have a `Jenkinsfile` at either `Jenkinsfile` (root) or `backend/Jenkinsfile`
-
-The Spring Boot template generates `backend/Jenkinsfile` automatically when you run `blissful-infra start`. If you used a different backend template, check whether it includes a Jenkinsfile.
-
-### What it does
-
-1. Reads the Jenkinsfile location (`Jenkinsfile` or `backend/Jenkinsfile`)
-2. Generates a Jenkins pipeline job XML that points to your project directory as the SCM source (using the local filesystem path as a Git remote. Jenkins polls the local repo)
-3. POSTs the job XML to `http://localhost:8081/job/blissful-projects/createItem?name=<name>` with CSRF crumb injection
-4. Falls back to the Jenkins root if the `blissful-projects` folder does not exist
-
-After registration, the job is visible at:
-`http://localhost:8081/job/blissful-projects/job/<name>`
-
-### Notes
-
-- `blissful-infra start` calls `add-project` automatically after booting the stack. You only need to call it manually if start skipped it (e.g. Jenkins was down at the time) or if you created the project with `blissful-infra create`.
-- The job is idempotent, running `add-project` for an already-registered project is a no-op.
-
----
-
-## `jenkins build`
+## jenkins build
 
 ```bash
 blissful-infra jenkins build <name>
 ```
 
-Triggers a new pipeline build for the named project. Equivalent to clicking "Build Now" in the Jenkins UI.
-
-The CLI posts to `http://localhost:8081/job/blissful-projects/job/<name>/build` with a CSRF crumb. It does not wait for the build to complete, use `blissful-infra pipeline <name>` or open the Jenkins UI to monitor progress.
-
----
-
-## `jenkins list`
-
-```bash
-blissful-infra jenkins list
-```
-
-Lists all jobs registered with Jenkins, their current status (success, failed, building, not built), and the timestamp of the last build.
-
-Example output:
-
-```
-Name                     Status         Last Build
-───────────────────────────────────────────────────────
-my-app                   success        #3 (3/25/2026, 10:14:22 AM)
-fraud-detector           failed         #1 (3/24/2026, 4:02:11 PM)
-content-recommender      not built      -
-```
-
----
+Triggers a build and returns immediately. It does not wait for completion; use [`pipeline`](/commands/pipeline) or the dashboard's Pipeline tab to watch progress.
 
 ## The Jenkinsfile
 
-Every Spring Boot project generated by blissful-infra includes a `backend/Jenkinsfile`. The pipeline stages are:
+The Spring Boot template generates a `Jenkinsfile` with these stages:
 
-1. **Checkout**: fetches the source from the local path configured in the job
-2. **Build**: runs `./gradlew build` inside the backend directory
-3. **Test**: runs `./gradlew test` and publishes JUnit results
-4. **Docker build**: builds the backend Docker image and tags it with the build number
-5. **Push**: pushes the image to the local registry at `localhost:5050`
+1. **Initialize** — resolve build metadata
+2. **Build** — Compile and Lint, in parallel
+3. **Test** — Unit and Integration tests, publishing JUnit results
+4. **Containerize** — build the service image
+5. **Security Scan** — scan the built image
+6. **Push** — push to the local registry
+7. **Deploy** — call the API server to restart the service, then poll its health endpoint
 
-The pipeline uses Docker-in-Docker so the Gradle build runs in an isolated container and the resulting image is pushed to your local registry.
+Note that the Deploy stage is the **compose-runtime** deploy. On the kubernetes runtime, deploys go through [`deploy`](/commands/deploy) and ArgoCD instead — CI is deliberately off the deploy critical path there, so the pipeline builds and pushes but does not sync the cluster.
 
----
-
-## Jenkins credentials reference
+## Credentials
 
 | Field | Value |
-|-------|-------|
-| URL | http://localhost:8081 |
+|---|---|
+| URL | `http://localhost:8081` (first tenant; add 1 per extra tenant) |
 | Username | `admin` |
 | Password | `admin` |
-| Registry | `localhost:5050` |
-| Data directory | `~/.blissful-infra/jenkins/` |
+
+Run `blissful-infra tenant status` to see the port your tenant's Jenkins actually got.
+
+## See also
+
+- [`pipeline`](/commands/pipeline) — run or inspect a pipeline from the CLI
+- [`dashboard`](/commands/dashboard) — the Pipeline tab
+- [`deploy`](/commands/deploy) — the Kubernetes deploy path

@@ -3,7 +3,11 @@ title: React + Vite Template
 description: React + Vite + TypeScript + TailwindCSS frontend with WebSocket integration.
 ---
 
-The `react-vite` template generates a React + Vite frontend application. It is the default frontend when you run `blissful-infra start` without specifying `--frontend`.
+The `react-vite` template generates a React + Vite frontend application. It is the default when you add a frontend service without specifying `--template`:
+
+```bash
+blissful-infra service add web --type frontend
+```
 
 ## Stack
 
@@ -118,16 +122,20 @@ npm run dev
 
 In this mode, Vite proxies API requests to the backend at `localhost:8080`. Both can run simultaneously.
 
-### Template dev mode (via blissful-infra)
+### Editing your service
 
-For the most seamless experience with full Vite HMR:
+Your frontend source lives under
+`~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>/`.
+Edit it there and restart the service to pick the changes up:
 
 ```bash
-# From repo root: syncs template edits live into the running project
-blissful-infra dev --templates my-app
+blissful-infra service down web && blissful-infra service up web
 ```
 
-This stops the Docker frontend container, starts Vite natively on port 3000, and patches nginx to route to the native dev server. Changes to template source files in `packages/cli/templates/react-vite/src/` are immediately synced to `my-app/frontend/src/` and picked up by Vite HMR.
+Editing the *template* source itself (`packages/cli/templates/react-vite/`) is
+supported via the repo's `dev.sh` script — see the
+[repository README](https://github.com/cavanpage/blissful-infra) for the
+current workflow.
 
 ### Building for production
 

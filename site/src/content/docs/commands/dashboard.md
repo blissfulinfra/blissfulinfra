@@ -1,106 +1,88 @@
 ---
 title: blissful-infra dashboard
-description: Launch the local web dashboard for monitoring, logs, CI/CD, and AI diagnostics.
+description: The host-level web dashboard — one control plane at localhost:3002 for every tenant, with logs, metrics, canary rollouts and an AI agent.
 ---
 
-`blissful-infra dashboard` starts the local web UI for managing all your blissful-infra projects in one place. It also starts the shared Jenkins CI server if it is not already running.
-
-## Usage
+The dashboard is a single control plane for **every** tenant on the machine. It runs in its own container on `localhost:3002`, separate from any tenant's network.
 
 ```bash
-blissful-infra dashboard [options]
+blissful-infra dashboard up
 ```
 
-## Options
+## Subcommands
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--port <port>` | `-p` | `3002` | Port for the dashboard API server |
-| `--no-open` | - | opens browser | Skip automatic browser open |
-| `--no-jenkins` | - | starts Jenkins | Do not start Jenkins CI server |
-| `--dir <directory>` | `-d` | `cwd` | Working directory to scan for projects |
+| Command | What it does |
+|---|---|
+| `dashboard up` | Start the dashboard and open it in your browser |
+| `dashboard down` | Stop the dashboard |
+| `dashboard status` | Show whether it is running |
+| `dashboard open` | Open the running dashboard in your browser |
+| `dashboard login` | Authenticate the Agent tab with Claude (one-time, no API key needed) |
 
-## What the dashboard provides
+`dashboard up` takes `--no-open` to skip launching the browser.
 
-The dashboard is a React application backed by a local API server that connects to your running Docker containers. It runs at `http://localhost:5173` (Vite dev server) and communicates with the API at `http://localhost:3002`.
+## One dashboard, every tenant
 
-### Tabs
+The dashboard is host-level, not per-tenant. A tenant switcher in the header re-scopes the whole UI, and every request it makes carries the selected tenant. You do not run one dashboard per tenant.
+
+## Tabs
 
 | Tab | What it does |
-|-----|--------------|
-| **Logs** | Real-time log streaming from all containers via WebSocket. Filter by service, log level, or search text. Loki-backed for historical search. |
-| **Metrics** | Live CPU, memory, HTTP request rates, latency percentiles (p50/p95/p99), and error rates. Sourced from Prometheus. |
-| **Agent** | Chat interface to the AI debugging agent. Ask about errors, request root cause analysis, or get recommendations. The agent has read access to logs, metrics, and container state. |
-| **Pipeline** | Jenkins CI/CD pipeline status, current stage, last build result, build history. Trigger new builds from the UI. |
-| **Environments** | Deploy and rollback across environments (local, staging, production via Argo CD). |
-| **Settings** | Configure alert thresholds, log retention, and notification preferences. |
+|---|---|
+| **Logs** | Live log streaming, Loki-backed when available, with service, level and text filters. Falls back to Docker logs when Loki is not running. |
+| **Metrics** | CPU, memory, request rate and latency percentiles (p50/p95/p99) from Prometheus, with a selectable time window. |
+| **Agent** | Chat with an AI agent that has read access to logs, metrics and container state. Needs `dashboard login` or an `ANTHROPIC_API_KEY`. |
+| **Pipeline** | Jenkins stage view and build history. Trigger a run, optionally skipping tests or the security scan. |
+| **Environments** | ArgoCD sync state per environment, plus a live canary card — weight bar, step counter, Promote / Promote Full / Abort. |
+| **Deployments** | Deploy history with git SHA, image tag, strategy, duration and p95 latency delta with regression flagging. |
+| **Plugins** | Status of the project's platform services. |
+| **Perf** | Gatling load-test runs and their results. |
+| **Watcher** | File-watching and rebuild activity. |
+| **Settings** | Alert thresholds, log retention and metrics storage. |
 
-## Services started by `dashboard`
+Beyond the tabs, the header opens a **Graph** view of the system topology — tenant infrastructure, project lanes, services, and the cluster components (ArgoCD, Gitea, Argo Rollouts) when a project runs on Kubernetes — and a **Terminal** into the dashboard container.
 
-Running `blissful-infra dashboard` starts two things:
+## The canary card
 
-1. **The API server** on `--port` (default `3002`), a Node.js HTTP + WebSocket server that proxies Docker, Prometheus, Loki, and Jenkins APIs
-2. **The Jenkins CI server**: starts the shared `blissful-jenkins` Docker container if it is not already running. Jenkins persists at `~/.blissful-infra/jenkins/` so it retains all jobs, build history, and configuration between restarts
+For `--runtime kubernetes` projects, the Environments tab renders the live Argo Rollout: current traffic split, which step it is on, and buttons to promote or abort. It is the same rollout [`canary`](/commands/canary) drives from the CLI, so you can start in one and finish in the other.
 
-The Vite dev server for the dashboard UI starts after both are ready and the browser opens automatically.
+Compose-runtime projects have no Rollout, so the card does not appear.
 
-## MCP server integration
-
-The dashboard API is also the backend for the [MCP server](https://modelcontextprotocol.io), which lets Claude orchestrate your infrastructure directly.
-
-Start the MCP server after the dashboard is running:
+## The Agent tab
 
 ```bash
-# In a separate terminal, after blissful-infra dashboard is running
-blissful-infra mcp --api http://localhost:3002
+blissful-infra dashboard login
 ```
 
-Or configure it permanently in Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+A one-time browser flow that authenticates the Agent tab against your Claude account, so you do not need to manage an API key. If you would rather use a key, set `ANTHROPIC_API_KEY` in your environment before starting the dashboard.
+
+## MCP server
+
+The same capabilities are available to Claude Desktop and Claude Code over the Model Context Protocol:
 
 ```json
 {
   "mcpServers": {
     "blissful-infra": {
-      "command": "npx",
-      "args": ["-y", "blissful-infra", "mcp"],
-      "env": {}
+      "command": "blissful-infra",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-Once connected, you can ask Claude things like:
+Once connected you can ask things like "what is the health of my running services?", "show me ERROR logs from orders", or "why did the last deploy regress p95?".
 
-- "What's the health of all my running projects?"
-- "Show me ERROR logs from the backend in my-app"
-- "Why is the backend restarting? Check the logs and diagnose."
-- "Deploy my-app to staging"
-- "Roll back my-app in production to the previous revision"
-
-## Running the dashboard in a specific directory
-
-By default the dashboard scans the current working directory for projects (directories with a `blissful-infra.yaml`). Use `--dir` to point it at a different location:
+## Stopping it
 
 ```bash
-blissful-infra dashboard --dir ~/projects
+blissful-infra dashboard down
 ```
 
-This is useful if you keep all your blissful-infra projects in a dedicated directory.
+The dashboard runs as a detached container, so closing your terminal does not stop it.
 
-## Jenkins credentials
+## See also
 
-Jenkins runs with default credentials:
-
-- **URL:** http://localhost:8081
-- **Username:** `admin`
-- **Password:** `admin`
-
-Jenkins is configured with the Jenkins Configuration as Code (JCasC) plugin, so the initial setup is fully automated. All jobs created by `blissful-infra jenkins add-project` land in a `blissful-projects` folder.
-
-## Stopping the dashboard
-
-Press `Ctrl+C`. The API server shuts down cleanly. Jenkins is intentionally left running so any in-progress builds can complete. Stop Jenkins explicitly with:
-
-```bash
-blissful-infra jenkins stop
-```
+- [`status`](/commands/status) — the same information from the CLI
+- [`canary`](/commands/canary) — drive rollouts from the terminal
+- [`jenkins`](/commands/jenkins) — the CI server behind the Pipeline tab

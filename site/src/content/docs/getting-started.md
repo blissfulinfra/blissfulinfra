@@ -1,150 +1,190 @@
 ---
 title: Getting Started
-description: Install blissful-infra and run a full-stack app locally with one command. Spring Boot, React, Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and an AI agent, all wired together.
+description: Install blissful-infra and bring up a tenant, project and service on your laptop. Spring Boot, React, Kafka, Postgres, Prometheus, Grafana, Jenkins and a web dashboard, wired together by one command.
 ---
 
-blissful-infra is a CLI that gives you a production-grade sandbox on your laptop. In under two minutes you have a running full-stack app, backend, frontend, database, message bus, tracing, metrics, CI/CD, and a web dashboard, wired together and managed as a unit. Experiment freely. Tear it down. Start fresh. It's all local, isolated, and completely under your control.
+blissful-infra gives you a production-grade sandbox on your laptop: backend, frontend, database, message bus, tracing, metrics, CI/CD and a web dashboard, wired together and managed as a unit. Experiment freely. Tear it down. Start fresh. It is all local and completely under your control.
 
 ## Prerequisites
 
-- **Node.js 18+**: the CLI is a Node.js package
-- **Docker Desktop**: all services run in Docker containers; Desktop must be running before you use any `blissful-infra` commands
-- **4 GB free RAM** recommended (the full stack with monitoring uses ~2–3 GB)
+- **Node.js 20 or newer** — the CLI is a Node.js package (`engines: >=20.0.0`)
+- **Docker Desktop**, running — every service is a container
+- **4 GB free RAM** recommended; the full stack with monitoring uses ~2–3 GB
 
-You do not need a cloud account, Kubernetes, or any other tooling pre-installed.
+That is everything you need for the default compose runtime. The [Kubernetes runtime](#going-further-the-kubernetes-runtime) needs three more tools, covered below.
 
 ## Install
 
 ```bash
 npm install -g @blissful-infra/cli
-```
-
-Verify the installation:
-
-```bash
 blissful-infra --version
 ```
 
 ## Quick start
 
-```bash
-blissful-infra start my-app
-```
-
-This single command:
-
-1. Checks Docker is running and pre-flight checks ports
-2. Ensures the shared Jenkins CI server is up (starts it if not)
-3. Scaffolds a `my-app/` directory with backend, frontend, and config files
-4. Generates a `docker-compose.yaml` wiring all services together
-5. Runs `docker compose up --build` and streams the build output
-6. Registers the project with Jenkins
-7. Opens the frontend (`http://localhost:3000`) and dashboard (`http://localhost:3002`) in your browser
-
-Images are pulled on first run and cached, subsequent starts are significantly faster.
-
-## What gets created
-
-```
-my-app/
-├── backend/              # Spring Boot (Kotlin): REST API + Kafka producer/consumer
-│   ├── src/              # Application source code
-│   ├── build.gradle.kts  # Gradle build file
-│   ├── Dockerfile        # Multi-stage build with OpenTelemetry agent
-│   └── Jenkinsfile       # CI/CD pipeline definition
-├── frontend/             # React + Vite + TypeScript + TailwindCSS
-│   ├── src/              # React application source
-│   ├── package.json
-│   └── Dockerfile        # nginx-based production image
-├── loki/                 # Loki + Promtail log aggregation config
-├── prometheus/           # Prometheus scrape configuration
-├── grafana/              # Pre-provisioned dashboards and datasources
-├── nginx.conf            # Reverse proxy: routes /api/ and /ws/ to backend
-├── docker-compose.yaml   # All services wired together
-└── blissful-infra.yaml   # Project config (backend, frontend, database options)
-```
-
-## Choosing a stack at creation time
-
-The defaults are Spring Boot backend + React+Vite frontend + Postgres database. Override any of them:
+The fastest path is the guided wizard:
 
 ```bash
-# Lambda (Python) serverless backend + Postgres
-blissful-infra start my-app --backend lambda-python --database postgres
-
-# Spring Boot + Postgres AND Redis (cache layer)
-blissful-infra start my-app --database postgres-redis
-
-# No database (API-only or external DB)
-blissful-infra start my-app --database none
-
-# With AI/ML data pipeline
-blissful-infra start my-app --plugins ai-pipeline
-
-# Skip Prometheus + Grafana (lighter stack)
-blissful-infra start my-app --no-monitoring
+blissful-infra init
 ```
 
-### Available backends
-
-| Flag value      | Stack                                                    |
-|-----------------|----------------------------------------------------------|
-| `spring-boot`   | Kotlin + Spring Boot 3 + Kafka + WebSockets              |
-| `lambda-python` | Python serverless function deployed to LocalStack Lambda |
-
-### Available frontends
-
-| Flag value   | Stack                                    |
-|--------------|------------------------------------------|
-| `react-vite` | React + Vite + TypeScript + TailwindCSS  |
-
-### Database options
-
-| Flag value       | What you get                                                          |
-|------------------|-----------------------------------------------------------------------|
-| `none`           | No database service                                                   |
-| `postgres`       | Postgres 16 + Flyway migrations + JPA entities + repository layer     |
-| `redis`          | Redis 7 + Spring Cache (`@Cacheable` / `@CacheEvict`)                 |
-| `postgres-redis` | Both. Postgres for persistence, Redis as a read-through cache layer  |
-
-## Managing your project
-
-Once your project is running, the key commands are:
+It walks you through creating a tenant, a project and your first service, then brings the whole thing up. To skip the questions entirely:
 
 ```bash
-# View logs for all services
-blissful-infra logs
-
-# Stop all containers
-blissful-infra down
-
-# Start a stopped project
-blissful-infra up
-
-# Development mode: hot reload with file watching
-blissful-infra dev
-
-# Open the dashboard
-blissful-infra dashboard
+blissful-infra init -y
 ```
 
-`down` and `up` are cheap, the stack is fully containerized, so stopping and restarting costs nothing. You can tear down a project mid-experiment and bring it back exactly where it was.
+That creates tenant `dev`, project `main` and a `spring-boot` backend service called `api`, and starts everything. Add `--no-start` if you only want the scaffolding.
 
-## Reproducing environments
+## The model
 
-Every project has a `blissful-infra.yaml` that captures the full configuration. To reproduce the exact same sandbox on another machine:
+blissful-infra organises everything into three levels. It is worth understanding before you go further, because every command takes coordinates in this hierarchy.
+
+| Level | Maps to | Owns |
+|---|---|---|
+| **Tenant** | Organization | Dashboard, Jenkins, observability stack (Prometheus, Grafana, Tempo, Loki), optionally a Kubernetes cluster |
+| **Project** | Domain | Kafka event bus, Postgres, API gateway, isolated Docker network, and a runtime |
+| **Service** | Bounded context | One process, with its own database schema |
+
+[The full model →](/guides/tenant-model)
+
+## Doing it by hand
+
+If you would rather see each step, `init` is just these commands in sequence:
 
 ```bash
-git clone git@github.com:your-org/my-app.git
-cd my-app && blissful-infra up
+# 1. A tenant owns CI and observability
+blissful-infra tenant create acme
+blissful-infra tenant up
+
+# 2. A project owns Kafka, Postgres and the gateway
+blissful-infra project create shop
+
+# 3. Services are processes inside the project
+blissful-infra service add orders --type backend
+blissful-infra service add web --type frontend
 ```
 
-This reads `blissful-infra.yaml`, regenerates `docker-compose.yaml`, and starts the stack, byte-for-byte identical to what was originally created. Share it with a teammate and they get the same environment, no setup guide required.
+### Setting your context
+
+Rather than passing `--tenant acme --project shop` to every command, set a context once:
+
+```bash
+blissful-infra use acme/shop
+blissful-infra use              # show current context
+blissful-infra use --clear      # clear it
+```
+
+Every subsequent command resolves the tenant and project from that context.
+
+## Choosing a stack
+
+Defaults are a Spring Boot backend and a React + Vite frontend, with a Postgres schema allocated per backend service. Override at `service add` time:
+
+```bash
+# Explicit template
+blissful-infra service add orders --type backend --template spring-boot
+blissful-infra service add web --type frontend --template react-vite
+
+# A worker process instead
+blissful-infra service add mailer --type worker --runtime python
+
+# Skip the auto-allocated Postgres schema
+blissful-infra service add orders --type backend --no-database
+```
+
+### Service types
+
+| `--type` | What you get |
+|---|---|
+| `backend` | A service with an HTTP port, metrics port and its own Postgres schema |
+| `frontend` | A service with an HTTP port, no database |
+| `worker` | A headless process; pick a language with `--runtime python\|node\|go` |
+
+### Templates
+
+| Template | `--type` | Stack |
+|---|---|---|
+| `spring-boot` | `backend` | Kotlin + Spring Boot 3 + Kafka + Actuator + OpenTelemetry |
+| `react-vite` | `frontend` | React + Vite + TypeScript + TailwindCSS |
+| `lambda-python` | `backend` | Python serverless handler *(template on disk; the tenant-model port is still open)* |
+
+### Turning infrastructure off
+
+Both `tenant create` and `project create` accept flags to slim the stack down:
+
+```bash
+blissful-infra tenant create acme --no-jenkins --no-tempo
+blissful-infra project create shop --no-kafka --no-redis
+```
+
+## Managing what you built
+
+```bash
+blissful-infra status                 # tenants, projects, services with health
+blissful-infra service up orders      # start one service
+blissful-infra service logs orders    # tail its logs
+blissful-infra service down orders    # stop it
+blissful-infra project down           # stop the project's infrastructure
+blissful-infra tenant down            # stop the tenant's CI and observability
+```
+
+Stopping and restarting is cheap — the stack is fully containerised, so you can tear a project down mid-experiment and bring it back where it was.
+
+## The dashboard
+
+```bash
+blissful-infra dashboard up
+```
+
+One dashboard at `http://localhost:3002` manages every tenant: live service health, Loki-backed logs, Prometheus metrics, deployment history, a system topology graph and an AI chat tab. [More on the dashboard →](/commands/dashboard)
+
+## Where things live
+
+Config and data live under `~/.blissful-infra/`, not in your working directory:
+
+```
+~/.blissful-infra/
+├── registry.json              # port allocations
+├── context.json               # current tenant/project (set by `use`)
+└── tenants/
+    └── acme/
+        ├── docker-compose.tenant.yaml    # Jenkins + observability
+        ├── cluster/                      # Terraform workspace (kubernetes runtime)
+        ├── gitops/                       # gitops repo checkout (kubernetes runtime)
+        └── projects/
+            └── shop/
+                ├── docker-compose.project.yaml   # Kafka, Postgres, gateway
+                └── services/
+                    └── orders/           # your service source + its compose file
+```
+
+Ports are derived from the tenant and project index, so a second tenant lands one port up from the first and can never collide. `blissful-infra status` shows what each tenant actually got.
+
+## Going further: the Kubernetes runtime
+
+A project can run on a real local Kubernetes cluster instead of plain compose, with ArgoCD syncing your services from a git repo and Argo Rollouts running canary deploys.
+
+```bash
+brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-rollouts
+```
+
+Then:
+
+```bash
+blissful-infra cluster up                              # ~3–5 min first run
+blissful-infra project create shop --runtime kubernetes
+blissful-infra service add orders --type backend
+blissful-infra deploy orders
+```
+
+[Walk the golden path →](/guides/golden-path)
 
 ## Next steps
 
-- [Commands: start](/commands/start), all flags and options for `blissful-infra start`
-- [Commands: deploy](/commands/deploy), ship your local app to Cloudflare, Vercel, or AWS
-- [Commands: dev](/commands/dev), hot reload and template development mode
-- [Commands: dashboard](/commands/dashboard), the local monitoring dashboard
-- [Templates overview](/templates/overview), what lives inside each template
+- [The tenant model](/guides/tenant-model) — how tenants, projects and services fit together
+- [The golden path](/guides/golden-path) — Kubernetes, ArgoCD and canary deploys end to end
+- [Commands: init](/commands/init) — every flag on the wizard
+- [Commands: service](/commands/service) — adding and running services
+- [Commands: dashboard](/commands/dashboard) — the local control plane
+- [Templates overview](/templates/overview) — what lives inside each template

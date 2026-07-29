@@ -3,7 +3,11 @@ title: Spring Boot Template
 description: Kotlin + Spring Boot 3 backend with Kafka, JPA, WebSockets, and full observability.
 ---
 
-The `spring-boot` template generates a production-ready Kotlin + Spring Boot 3 backend. It is the default backend when you run `blissful-infra start` without specifying `--backend`.
+The `spring-boot` template generates a production-ready Kotlin + Spring Boot 3 backend. It is the default when you add a backend service without specifying `--template`:
+
+```bash
+blissful-infra service add orders --type backend
+```
 
 ## Stack
 
@@ -148,15 +152,20 @@ blissful-infra jenkins build my-app
 
 ## Development workflow
 
-For the fastest inner loop when editing backend code, use Spring Boot DevTools mode:
+Your service source lives under
+`~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>/`.
+Edit it there, then restart the service:
 
 ```bash
-cd my-app
-blissful-infra dev
-# Starts Spring Boot DevTools: saves trigger JVM restart in ~2-3 seconds
+blissful-infra service down orders && blissful-infra service up orders
+blissful-infra service logs orders
 ```
 
-Template development (editing the template source itself) is currently
-supported via the repo's `dev.sh` script, see the [Contributing
-section](https://github.com/cavanpage/blissful-infra#contributing) of the
-README for the current workflow.
+On a kubernetes-runtime project, ship the change with
+[`deploy`](/commands/deploy) instead, which rebuilds the image and runs it
+through a canary rollout.
+
+Template development (editing the template source itself) is supported via the
+repo's `dev.sh` script — see the
+[repository README](https://github.com/cavanpage/blissful-infra) for the
+current workflow.

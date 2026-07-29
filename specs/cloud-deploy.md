@@ -1,5 +1,7 @@
 # Cloud Deploy. Design Spec
 
+> **Unimplemented design (as of 2026-07-29).** No cloud deploy path exists — `deploy.ts` contains no Cloudflare, Vercel or AWS code. `blissful-infra deploy` deploys to the local kind cluster via GitOps ([ADR-0020](../docs/adr/0020-local-kubernetes-runtime.md)). Companion to [cloud-hosting.md](cloud-hosting.md); both need a command-name decision before implementation.
+
 Local prototype → cloud deploy in one command. No Terraform, no DevOps team required.
 
 ---

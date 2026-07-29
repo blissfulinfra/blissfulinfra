@@ -30,9 +30,9 @@ The course is being written. Modules below link to existing reference material w
 
 ### Module 1: Your first stack
 
-What `blissful-infra start` actually creates. A walkthrough of every container in the generated `docker-compose.yaml`, why it's there, and how the pieces talk.
+What `blissful-infra init` actually creates. The tenant / project / service hierarchy, a walkthrough of every container in the generated compose files, why each is there and how the pieces talk.
 
-[Getting started](/getting-started) · [`start` command](/commands/start) · [Templates overview](/templates/overview)
+[Getting started](/getting-started) · [The tenant model](/guides/tenant-model) · [Templates overview](/templates/overview)
 
 ### Module 2: Anatomy of a service
 
@@ -56,29 +56,31 @@ The generated `Jenkinsfile`, what each stage does, how the pipeline tests and de
 
 *Course module: coming soon.*
 
-### Module 5: Identity with Keycloak
+### Module 5: Isolation and the hierarchy
 
-Realms, clients, users, roles. How a JWT gets issued, how your backend verifies it, and what changes if you swap Keycloak for Auth0 in production.
+Why there are three levels rather than two, and how the model enforces domain boundaries structurally — a Postgres schema per service, a Docker network per project, a port block per tenant. What a distributed monolith looks like and how the constraints make it harder to build one by accident.
+
+[The tenant model](/guides/tenant-model)
+
+### Module 6: Kubernetes and GitOps
+
+Take the same service and run it on a real local Kubernetes cluster. kind, provisioned by Terraform. ArgoCD reconciling the cluster against a git repo. Why GitOps means a rollback is a revert, and what ArgoCD's selfHeal does to an imperative `kubectl` change.
+
+[The golden path](/guides/golden-path) · [`cluster`](/commands/cluster) · [`deploy`](/commands/deploy)
+
+### Module 7: Progressive delivery
+
+Argo Rollouts. Why a rolling update is not a canary, what a traffic weight actually does at the Service level, and how a pause turns a deploy into a decision point. Canary analysis, and what you need in place before it can be automated.
+
+[`canary` command](/commands/canary) · [`rollback` command](/commands/rollback)
 
 *Course module: coming soon.*
 
-### Module 6: AWS-shaped services
+### Module 8: Identity and AWS-shaped services (not currently available)
 
-LocalStack for S3, Lambda, and SQS. What the AWS API contract looks like, and why the same code runs against LocalStack and real AWS.
+Keycloak for realms, clients and JWTs; LocalStack for S3, Lambda and SQS. These plugins were removed in 2.0 along with the client model, so there is no working local setup to teach against right now.
 
-[Learn AWS for free with LocalStack](/blog/localstack-aws-locally) · [Lambda template](/templates/lambda-python) · [`lambda` command](/commands/lambda)
-
-*Course module: coming soon.*
-
-### Module 7: Multi-tenancy
-
-Once you've built one service, the [client model](/guides/client-model) shows how to host many isolated environments side by side. Useful for multi-tenant apps, per-customer staging, or just keeping personal projects separate.
-
-[Client model guide](/guides/client-model)
-
-### Module 8: Kubernetes deploy (planned)
-
-Take the same service and run it on a real Kubernetes cluster locally with [kind](https://kind.sigs.k8s.io/). Manifests, Services, Deployments, Ingress. The vocabulary and the mental model. This module is on the roadmap and will be linked here when it ships.
+The background reading still stands on its own: [A Developer's Guide to IAM](/blog/iam-guide) and [Learn AWS for free with LocalStack](/blog/localstack-aws-locally). Both were written against the pre-2.0 CLI, so treat their commands as historical.
 
 ## Why hands-on, not managed
 

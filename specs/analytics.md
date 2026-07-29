@@ -1,5 +1,7 @@
 # Blissful Infra. User Session Analytics (ClickHouse)
 
+> **Unimplemented design, written in client-model vocabulary (as of 2026-07-29).** Nothing here ships — no ClickHouse pipeline, no frontend SDK, no dashboard Sessions tab. The spec predates the tenant hierarchy ([ADR-0017](../docs/adr/0017-tenant-project-service-hierarchy.md)) and needs re-scoping to tenant/project levels before building.
+
 ## Vision
 
 Enterprise-grade product analytics built into the platform: every blissful-infra

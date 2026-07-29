@@ -48,19 +48,19 @@ Use `_template.md` as a starting point.
 | # | Title | Status | Date |
 |---|---|---|---|
 | [0001](./0001-caddy-edge-proxy.md) | Caddy edge proxy for browser-friendly local URLs | Deferred | 2026-04-30 |
-| [0002](./0002-per-client-isolation-model.md) | Each client environment is fully isolated | Accepted | 2026-04-18 |
-| [0003](./0003-unified-compose-project-per-client.md) | One Compose project per client, services attached via `include:` | Accepted | 2026-04-28 |
+| [0002](./0002-per-client-isolation-model.md) | Each client environment is fully isolated | Superseded by [0017](./0017-tenant-project-service-hierarchy.md) | 2026-04-18 |
+| [0003](./0003-unified-compose-project-per-client.md) | One Compose project per client, services attached via `include:` | Superseded by [0017](./0017-tenant-project-service-hierarchy.md) | 2026-04-28 |
 | [0004](./0004-api-versioning-v1-strict-404.md) | The HTTP API is versioned at `/api/v1/` and unversioned paths return 404 | Accepted | 2026-04-29 |
 | [0005](./0005-three-layer-testing-strategy.md) | Test in three layers: schema/logic, compose validation, real Docker | Accepted | 2026-04-30 |
 | [0006](./0006-keep-zod-for-runtime-validation.md) | Keep Zod as the runtime-validation layer at trust boundaries | Accepted | 2026-04-30 |
 | [0007](./0007-aws-lambda-local-via-localstack.md) | AWS Lambda backend template runs locally on LocalStack; cloud deploy deferred | Proposed | 2026-05-02 |
-| [0008](./0008-clickhouse-as-client-level-warehouse.md) | ClickHouse and LocalStack are client-level shared resources | Proposed | 2026-05-02 |
-| [0009](./0009-keycloak-as-client-level-iam.md) | Keycloak is the client-level identity provider | Proposed | 2026-05-02 |
-| [0010](./0010-decompose-ai-pipeline-plugin.md) | Decompose the ai-pipeline plugin into client-level platform services | Proposed | 2026-05-02 |
+| [0008](./0008-clickhouse-as-client-level-warehouse.md) | ClickHouse and LocalStack are client-level shared resources | Superseded by [0017](./0017-tenant-project-service-hierarchy.md) | 2026-05-02 |
+| [0009](./0009-keycloak-as-client-level-iam.md) | Keycloak is the client-level identity provider | Superseded by [0017](./0017-tenant-project-service-hierarchy.md) | 2026-05-02 |
+| [0010](./0010-decompose-ai-pipeline-plugin.md) | Decompose the ai-pipeline plugin into client-level platform services | Superseded by [0017](./0017-tenant-project-service-hierarchy.md) | 2026-05-02 |
 | [0011](./0011-compliance-grade-audit-logging.md) | Compliance-grade audit logging via immudb + Kafka + ClickHouse | Proposed | 2026-05-04 |
 | [0012](./0012-data-governance-and-dsar-enforcement.md) | Data governance and DSAR enforcement via a per-service classification manifest | Proposed | 2026-05-04 |
 | [0013](./0013-local-image-generation-plugin.md) | Local image generation as `infra.gen.image` plugin | Proposed | 2026-05-04 |
-| [0014](./0014-multiple-postgres-instances-per-client.md) | Multiple Postgres instances per client (canonical array form) | Proposed | 2026-05-05 |
+| [0014](./0014-multiple-postgres-instances-per-client.md) | Multiple Postgres instances per client (canonical array form) | Superseded by [0017](./0017-tenant-project-service-hierarchy.md) | 2026-05-05 |
 | [0015](./0015-host-mode-sidecars.md) | Host-mode sidecars for hardware-accelerated plugins | Proposed | 2026-05-05 |
 | [0016](./0016-tempo-replaces-jaeger.md) | Tempo replaces Jaeger as the default tracing backend | Accepted | 2026-05-05 |
 | [0017](./0017-tenant-project-service-hierarchy.md) | Tenant / Project / Service hierarchy with DDD enforcement | Accepted | 2026-05-14 |

@@ -3,9 +3,15 @@ title: Lambda (Python) template
 description: A serverless backend template, one Lambda function, runs on LocalStack locally, ships unchanged to AWS Lambda when the deploy adapter lands.
 ---
 
+:::caution[Not fully wired up in 2.0]
+This template still scaffolds — `blissful-infra service add <name> --type backend --template lambda-python` copies the files. But its **runtime wiring has not been ported to the tenant model**. The standalone `lambda` command was removed in 2.0 along with the client model, and the tenant-era serverless compose shape does not exist yet, so a scaffolded function will not run end to end.
+
+Use `spring-boot` for a backend you intend to run today. This page describes the template's design and stays here for when the port lands.
+:::
+
 The `lambda-python` backend template scaffolds a single AWS Lambda function
-written in Python. It runs in a real AWS Lambda Python runtime container
-locally via [LocalStack](/blog/localstack-aws-locally), same image as
+written in Python. It is designed to run in a real AWS Lambda Python runtime container
+locally via [LocalStack](/blog/localstack-aws-locally), the same image as
 production AWS Lambda, so the code that runs locally is the code that runs
 in AWS.
 
@@ -21,8 +27,9 @@ For a long-running HTTP backend, pick `spring-boot` instead.
 ## Scaffold
 
 ```bash
-blissful-infra service add <client> <service> --backend lambda-python
-# LocalStack is auto-included as the runtime: no need to add it as a plugin.
+blissful-infra service add <service> --type backend --template lambda-python
+# Scaffolds the handler and its config. The serverless runtime is not
+# wired up in the tenant model yet — see the note above.
 ```
 
 Resulting layout at `~/.blissful-infra/clients/<client>/<service>/`:
@@ -48,10 +55,12 @@ flowchart LR
     dep["Deployer (one-shot)<br/>zip + register on up"]
     dep -->|awslocal lambda<br/>create-function| ls
   end
-  user["You"] -->|blissful-infra lambda invoke| ls
+  user["You"] -->|invoke| ls
   user -->|edit handler.py| fs[(local files)]
-  user -->|blissful-infra lambda deploy| dep
+  user -->|deploy| dep
 ```
+
+The invoke and deploy arrows were the `lambda` command, which no longer exists. A tenant-era replacement has not been designed yet.
 
 On `service up`:
 
@@ -73,28 +82,17 @@ environment:
   GREETING: "Hello"               # all values must be strings (real Lambda constraint)
 ```
 
-Edit any of these and run `blissful-infra lambda deploy <client> <service>`
-to apply. Configuration changes redeploy without restarting LocalStack.
+The manifest shape is unchanged by the 2.0 cleanup — it describes the function itself, not how blissful-infra wires it up.
 
 ## Day-to-day
 
+Scaffolding works:
+
 ```bash
-# First time
-blissful-infra service add <client> <service> --backend lambda-python
-blissful-infra service up <client> <service>     # auto-deploys on first up
-
-# Edit handler.py
-$EDITOR ~/.blissful-infra/clients/<client>/<service>/lambda/handler.py
-
-# Redeploy
-blissful-infra lambda deploy <client> <service>
-
-# Invoke
-blissful-infra lambda invoke <client> <service> -p '{"key":"value"}'
-
-# See what got logged
-blissful-infra lambda logs <client> <service> --last
+blissful-infra service add <service> --type backend --template lambda-python
 ```
+
+The deploy, invoke and logs steps were the `lambda` command, which was removed in 2.0. There is no current replacement, so a scaffolded function cannot be driven end to end from the CLI. Restoring this needs two things: a tenant-era serverless compose shape, and a command surface to replace `lambda deploy` / `invoke` / `logs`.
 
 ## Adding dependencies
 
@@ -150,6 +148,6 @@ for the planned cloud-deploy story.
 
 ## See also
 
-- [`blissful-infra lambda` command reference](/commands/lambda)
 - [Why LocalStack for AWS local dev](/blog/localstack-aws-locally)
 - [`blissful-infra service` reference](/commands/service)
+- [Templates overview](/templates/overview)

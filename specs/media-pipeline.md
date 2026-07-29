@@ -1,5 +1,7 @@
 # Media Pipeline - Blissful Infra Integration Spec
 
+> **Unimplemented design (as of 2026-07-29).** No media-pipeline code exists in `packages/cli/src/`. Aspirational.
+
 ## Overview
 
 Add a Temporal-orchestrated media pipeline to Blissful Infra. The pipeline takes a topic as input and produces blog content, social posts and a generated image - with each step visible in both the Temporal UI and the Blissful Infra developer dashboard.
