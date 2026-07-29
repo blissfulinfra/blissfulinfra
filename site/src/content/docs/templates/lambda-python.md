@@ -4,7 +4,7 @@ description: A serverless backend template, one Lambda function, runs on LocalSt
 ---
 
 :::caution[Not fully wired up in 2.0]
-This template still scaffolds — `blissful-infra service add <name> --type backend --template lambda-python` copies the files. But its **runtime wiring has not been ported to the tenant model**. The standalone `lambda` command was removed in 2.0 along with the client model, and the tenant-era serverless compose shape does not exist yet, so a scaffolded function will not run end to end.
+This template still scaffolds: `blissful-infra service add <name> --type backend --template lambda-python` copies the files. But its **runtime wiring has not been ported to the tenant model**. The standalone `lambda` command was removed in 2.0 along with the client model, and the tenant-era serverless compose shape does not exist yet, so a scaffolded function will not run end to end.
 
 Use `spring-boot` for a backend you intend to run today. This page describes the template's design and stays here for when the port lands.
 :::
@@ -29,7 +29,7 @@ For a long-running HTTP backend, pick `spring-boot` instead.
 ```bash
 blissful-infra service add <service> --type backend --template lambda-python
 # Scaffolds the handler and its config. The serverless runtime is not
-# wired up in the tenant model yet — see the note above.
+# wired up in the tenant model yet. See the note above.
 ```
 
 Resulting layout at `~/.blissful-infra/clients/<client>/<service>/`:
@@ -77,12 +77,12 @@ name: hello                       # function name (lowercase alphanumeric + hyph
 runtime: python3.11               # python3.11 | python3.12 | nodejs20.x | nodejs22.x | java21 | go1.x
 handler: handler.lambda_handler   # <module>.<function>
 timeout_seconds: 30               # max 900 (15 min, real Lambda limit)
-memory_mb: 256                    # 128–10240
+memory_mb: 256                    # 128-10240
 environment:
   GREETING: "Hello"               # all values must be strings (real Lambda constraint)
 ```
 
-The manifest shape is unchanged by the 2.0 cleanup — it describes the function itself, not how blissful-infra wires it up.
+The manifest shape is unchanged by the 2.0 cleanup. It describes the function itself, not how blissful-infra wires it up.
 
 ## Day-to-day
 

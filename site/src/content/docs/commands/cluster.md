@@ -1,6 +1,6 @@
 ---
 title: blissful-infra cluster
-description: Manage the tenant's local Kubernetes cluster — kind provisioned by Terraform, with ArgoCD, Argo Rollouts and Gitea installed by Helm.
+description: Manage the tenant's local Kubernetes cluster. kind provisioned by Terraform, with ArgoCD, Argo Rollouts and Gitea installed by Helm.
 ---
 
 A tenant can own a local Kubernetes cluster. `cluster` provisions it with Terraform: a [kind](https://kind.sigs.k8s.io/) cluster running ArgoCD, Argo Rollouts and Gitea.
@@ -15,7 +15,7 @@ blissful-infra cluster up
 brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-rollouts
 ```
 
-Plus Docker Desktop, running. These are only needed for the kubernetes runtime — the default compose runtime needs none of them.
+Plus Docker Desktop, running. These are only needed for the kubernetes runtime. The default compose runtime needs none of them.
 
 ## Subcommands
 
@@ -33,7 +33,7 @@ The tenant resolves from your [`use`](/commands/use) context when omitted.
 blissful-infra cluster up
 ```
 
-Expect **3–5 minutes** on the first run — Terraform downloads providers and Helm pulls the ArgoCD, Argo Rollouts and Gitea charts. Subsequent runs are much faster.
+Expect **3-5 minutes** on the first run: Terraform downloads providers and Helm pulls the ArgoCD, Argo Rollouts and Gitea charts. Subsequent runs are much faster.
 
 When it finishes it prints the ArgoCD and Gitea URLs and their credentials. The cluster is named `blissful-<tenant>`, and the Terraform workspace lives at `~/.blissful-infra/tenants/<tenant>/cluster/`.
 
@@ -43,7 +43,7 @@ When it finishes it prints the ArgoCD and Gitea URLs and their credentials. The 
 |---|---|
 | **kind** | The cluster itself, one Docker container per node |
 | **ArgoCD** | Watches the Gitea repo and syncs manifests into the cluster |
-| **Argo Rollouts** | Runs the canary rollout — traffic weights, pauses, promotion |
+| **Argo Rollouts** | Runs the canary rollout: traffic weights, pauses, promotion |
 | **Gitea** | The in-cluster git server holding the gitops repo |
 
 Gitea is what makes the GitOps loop real rather than simulated: `deploy` pushes rendered manifests as a commit, and ArgoCD syncs from that commit. Every deploy is an auditable commit you can inspect or revert.
@@ -78,6 +78,6 @@ These bases were chosen clear of every other range in use, and of Docker Desktop
 
 ## See also
 
-- [The golden path](/guides/golden-path) — the full flow end to end
-- [`deploy`](/commands/deploy) — ship a service to the cluster
-- [`canary`](/commands/canary) — drive the rollout
+- [The golden path](/guides/golden-path): the full flow end to end
+- [`deploy`](/commands/deploy): ship a service to the cluster
+- [`canary`](/commands/canary): drive the rollout

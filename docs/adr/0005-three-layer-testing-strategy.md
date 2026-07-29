@@ -90,7 +90,7 @@ server over HTTP. A Playwright suite (`packages/dashboard/e2e/`) now fills that
 gap: it drives the production bundle in headless chromium with every
 `/api/v1/**` response stubbed at the network boundary.
 
-It sits at **L2.5** — slower than L2 (seconds, not milliseconds) but with the
+It sits at **L2.5**: slower than L2 (seconds, not milliseconds) but with the
 same "no Docker, no daemon, runs anywhere" property that makes L1/L2 safe to
 gate every PR on. It does not replace L3; a stubbed API proves the UI renders
 and calls the right endpoints, not that the server returns those shapes.

@@ -18,7 +18,7 @@ blissful-infra status [name]
 | Argument | Effect |
 |---|---|
 | *(omitted)* | Scoped to your current context |
-| `<name>` | Show that tenant, one-shot — your context is not changed |
+| `<name>` | Show that tenant, one-shot. Your context is not changed |
 
 ## What it shows
 
@@ -39,11 +39,11 @@ Because `[name]` does not change your context, you can check on another tenant m
 
 ## Finding your ports
 
-Ports are allocated deterministically per tenant and project index, so they are predictable but not memorable. `status` is the fastest way to see what a given tenant actually got — Grafana, Jenkins, Kafka, Postgres, the gateway, and each service's HTTP port.
+Ports are allocated deterministically per tenant and project index, so they are predictable but not memorable. `status` is the fastest way to see what a given tenant actually got: Grafana, Jenkins, Kafka, Postgres, the gateway and each service's HTTP port.
 
 ## See also
 
-- [`use`](/commands/use) — set the context this command reads
-- [`tenant`](/commands/tenant) — `tenant status` for tenant detail
-- [`project`](/commands/project) — `project status` for project detail
-- [`dashboard`](/commands/dashboard) — the same information, live, in a browser
+- [`use`](/commands/use): set the context this command reads
+- [`tenant`](/commands/tenant): `tenant status` for tenant detail
+- [`project`](/commands/project): `project status` for project detail
+- [`dashboard`](/commands/dashboard): the same information, live, in a browser

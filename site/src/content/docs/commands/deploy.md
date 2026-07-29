@@ -1,6 +1,6 @@
 ---
 title: blissful-infra deploy
-description: Deploy a service to the project's Kubernetes runtime — build, kind load, GitOps push, ArgoCD sync, canary rollout.
+description: Deploy a service to the project's Kubernetes runtime. build, kind load, GitOps push, ArgoCD sync, canary rollout.
 ---
 
 `deploy` ships a service to the project's Kubernetes runtime. It is a real GitOps loop: the CLI renders manifests, commits them to the tenant's in-cluster Gitea repo, and ArgoCD syncs them into the cluster where Argo Rollouts runs a canary.
@@ -31,9 +31,9 @@ blissful-infra deploy [service] [options]
 ## What actually happens
 
 1. **Build** the service image from its Dockerfile
-2. **kind load** the image onto the cluster node — kind-loaded images never pull, so `imagePullPolicy` is `IfNotPresent`
+2. **kind load** the image onto the cluster node: kind-loaded images never pull, so `imagePullPolicy` is `IfNotPresent`
 3. **Render** the Rollout, canary/stable Services and ConfigMap from the gitops templates
-4. **Commit and push** them to the tenant's Gitea repo — this is the audit trail
+4. **Commit and push** them to the tenant's Gitea repo. This is the audit trail
 5. **ArgoCD syncs** the commit into the project's namespace
 6. **Argo Rollouts** starts the canary
 
@@ -59,7 +59,7 @@ blissful-infra canary promote orders --full   # straight to 100%
 blissful-infra canary abort orders            # back to stable
 ```
 
-[More on `canary` →](/commands/canary)
+[More on `canary`](/commands/canary)
 
 ## Image tags
 
@@ -75,7 +75,7 @@ blissful-infra deploy orders --tag experiment-1
 blissful-infra rollback orders
 ```
 
-This reverts the deploy commit in the gitops repo and lets ArgoCD converge back — which survives ArgoCD's selfHeal, unlike an imperative rollback. [More on `rollback` →](/commands/rollback)
+This reverts the deploy commit in the gitops repo and lets ArgoCD converge back, which survives ArgoCD's selfHeal, unlike an imperative rollback. [More on `rollback`](/commands/rollback)
 
 ## Watching it
 
@@ -85,11 +85,11 @@ The dashboard's Environments tab shows ArgoCD sync state and a live canary card 
 blissful-infra dashboard up
 ```
 
-You can also open ArgoCD and Gitea directly — `cluster up` prints both URLs and their credentials.
+You can also open ArgoCD and Gitea directly. `cluster up` prints both URLs and their credentials.
 
 ## See also
 
-- [The golden path](/guides/golden-path) — the full flow end to end
-- [`cluster`](/commands/cluster) — provision the cluster first
-- [`canary`](/commands/canary) — drive the rollout
-- [`rollback`](/commands/rollback) — undo a deploy
+- [The golden path](/guides/golden-path): the full flow end to end
+- [`cluster`](/commands/cluster): provision the cluster first
+- [`canary`](/commands/canary): drive the rollout
+- [`rollback`](/commands/rollback): undo a deploy

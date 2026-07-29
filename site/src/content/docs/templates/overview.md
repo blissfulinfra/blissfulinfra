@@ -1,6 +1,6 @@
 ---
 title: Templates Overview
-description: How blissful-infra templates work, what they generate, and how to extend them.
+description: How blissful-infra templates work, what they generate and how to extend them.
 ---
 
 Templates are the source blueprints that `blissful-infra service add` copies and customises. Each is a complete starting point for one technology stack.
@@ -13,13 +13,13 @@ Templates live in `packages/cli/templates/` in the blissful-infra repository:
 packages/cli/templates/
 ├── spring-boot/          # Kotlin + Spring Boot backend
 ├── react-vite/           # React + Vite frontend
-├── lambda-python/        # Python serverless function (not wired up — see below)
+├── lambda-python/        # Python serverless function (not wired up, see below)
 ├── gitops/               # Rollout, Services, ConfigMap, ArgoCD Application
 ├── cluster/              # Terraform workspace for the kind cluster
 └── jenkins/              # Jenkins server configuration
 ```
 
-Observability configuration (Prometheus, Grafana, Loki, Tempo) is **not** templated — it is generated inline when a tenant's compose file is written, so it always matches the tenant's actual port block.
+Observability configuration (Prometheus, Grafana, Loki, Tempo) is **not** templated. It is generated inline when a tenant's compose file is written, so it always matches the tenant's actual port block.
 
 ## Variable substitution
 
@@ -39,7 +39,7 @@ spring.datasource.url=jdbc:postgresql://postgres:5432/{{PROJECT_NAME}}
 {{/IF_KUBERNETES}}
 ```
 
-The `IF_KUBERNETES` guard is how one template serves both runtimes — a service scaffolded into a kubernetes-runtime project gets different wiring from the same source files.
+The `IF_KUBERNETES` guard is how one template serves both runtimes: a service scaffolded into a kubernetes-runtime project gets different wiring from the same source files.
 
 Binary files (images, compiled assets, JARs) are copied without substitution.
 
@@ -66,12 +66,12 @@ Workers (`--type worker --runtime python|node|go`) currently scaffold a minimal 
 
 ### Infrastructure
 
-Not selectable — used automatically by the commands that need them:
+Not selectable, used automatically by the commands that need them:
 
 | Template | Used by |
 |---|---|
-| `gitops/service/` | [`deploy`](/commands/deploy) — Rollout, canary/stable Services, ConfigMap, ArgoCD Application |
-| `cluster/` | [`cluster up`](/commands/cluster) — the Terraform workspace |
+| `gitops/service/` | [`deploy`](/commands/deploy): Rollout, canary/stable Services, ConfigMap, ArgoCD Application |
+| `cluster/` | [`cluster up`](/commands/cluster): the Terraform workspace |
 | `jenkins/` | The tenant's Jenkins container |
 
 ## The default example app
@@ -94,7 +94,7 @@ The `gatling` load-testing template is the only one still present, and it is not
 
 ## Extending templates
 
-For project-specific changes, edit the generated files in your service directory under `~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>/`. They are real files you own — blissful-infra does not regenerate or overwrite them after scaffolding.
+For project-specific changes, edit the generated files in your service directory under `~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>/`. They are real files you own, and blissful-infra does not regenerate or overwrite them after scaffolding.
 
 To change the templates themselves, work in `packages/cli/templates/` in a checkout of the repository.
 
@@ -102,4 +102,4 @@ To change the templates themselves, work in `packages/cli/templates/` in a check
 
 - [Spring Boot template](/templates/spring-boot)
 - [React + Vite template](/templates/react-vite)
-- [`service`](/commands/service) — how templates get used
+- [`service`](/commands/service): how templates get used

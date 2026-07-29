@@ -1,9 +1,9 @@
 ---
 title: blissful-infra service
-description: Manage services — atomic processes inside a project. Add backends, frontends and workers, then start, stop and tail them.
+description: Manage services. atomic processes inside a project. Add backends, frontends and workers, then start, stop and tail them.
 ---
 
-A **service** is one process inside a project — one container family, one bounded context, its own database schema.
+A **service** is one process inside a project: one container family, one bounded context, its own database schema.
 
 ```bash
 blissful-infra service add orders --type backend
@@ -64,7 +64,7 @@ Every backend and worker gets its **own schema** on the project's shared Postgre
 
 Pass `--no-database` when a service genuinely has no persistence.
 
-On the kubernetes runtime, the database binding is currently stripped at scaffold time — there is no in-cluster Postgres yet.
+On the kubernetes runtime, the database binding is currently stripped at scaffold time. There is no in-cluster Postgres yet.
 
 ## Lifecycle
 
@@ -82,6 +82,6 @@ Services are allocated from a high range so they never collide with infrastructu
 
 ## See also
 
-- [`project`](/commands/project) — the level above
-- [`deploy`](/commands/deploy) — ship a service to the kubernetes runtime
-- [Templates overview](/templates/overview) — what is inside each template
+- [`project`](/commands/project): the level above
+- [`deploy`](/commands/deploy): ship a service to the kubernetes runtime
+- [Templates overview](/templates/overview): what is inside each template

@@ -63,7 +63,7 @@ golden path (ADR-0020).
   command verified against `--help`, three new guides (tenant model, golden
   path, compose runtime), and dated pre-2.0 banners on the blog posts. Removed
   the Cloudflare "deploy in two commands" section and the `$5/month hosted
-  tier` schema.org offer — neither exists, and `deploy` now means deploying to
+  tier` schema.org offer. Neither exists, and `deploy` now means deploying to
   the local kind cluster. Also corrected the stated Node requirement (18 → 20),
   synced the ADR index with the ADR files' own statuses, and marked the
   unimplemented specs (`cloud-hosting`, `cloud-deploy`, `clickhouse`,

@@ -9,7 +9,7 @@ Every technology choice involves a tradeoff. The goal of this page is not to tel
 
 ## Backend languages
 
-The backend language shapes your job market, your runtime characteristics, and how much the language itself gets in the way while you're learning the infrastructure layer beneath it.
+The backend language shapes your job market, your runtime characteristics and how much the language itself gets in the way while you're learning the infrastructure layer beneath it.
 
 ### Java / Kotlin
 
@@ -101,7 +101,7 @@ The dominant frontend library. Built by Meta, React introduced the component mod
 
 ### Vue
 
-A progressive framework: you can add it to an existing page incrementally or build a full SPA. Comes with more opinions than React — single-file components bundle HTML, CSS and JavaScript together.
+A progressive framework: you can add it to an existing page incrementally or build a full SPA. Comes with more opinions than React: single-file components bundle HTML, CSS and JavaScript together.
 
 **Strengths:** Gentler learning curve than React. More opinionated (less ecosystem fatigue). Strong in the Asian tech market.
 

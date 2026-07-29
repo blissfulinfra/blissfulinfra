@@ -9,7 +9,7 @@ blissful-infra is opinionated about a few things. Those opinions shape what gets
 
 Whenever a real open-source equivalent exists, blissful-infra runs the real thing. Keycloak, not a Cognito mock. Postgres, not a managed-RDS feel-alike. Kafka, not an SQS shim. The exception is [LocalStack](https://localstack.cloud/) for AWS-API-shaped services where the wire protocol is itself the contract. There's no portable equivalent for Lambda event shapes or S3's signed-URL semantics, so emulating the API is the right call.
 
-This matters because emulators teach you the API surface, but real services teach you operational reality. Running Postgres locally exposes you to connection pooling, vacuum behavior, and index bloat. The things you actually need to know. Running an emulator that pretends to be Postgres only teaches you what queries to write.
+This matters because emulators teach you the API surface, but real services teach you operational reality. Running Postgres locally exposes you to connection pooling, vacuum behavior and index bloat. The things you actually need to know. Running an emulator that pretends to be Postgres only teaches you what queries to write.
 
 ## No paid tiers, no upsells
 
@@ -33,7 +33,7 @@ Managed equivalents exist for almost everything blissful-infra runs locally:
 | LocalStack | Real AWS |
 | MLflow | [Weights & Biases](https://wandb.ai/), [Vertex AI](https://cloud.google.com/vertex-ai), [SageMaker](https://aws.amazon.com/sagemaker/) |
 
-Those services are excellent. They're faster to start with, ship with built-in compliance, and remove most of the operational burden. When you're a small team shipping a real product, reaching for one is often the right call. blissful-infra does not exist to argue against that.
+Those services are excellent. They're faster to start with, ship with built-in compliance and remove most of the operational burden. When you're a small team shipping a real product, reaching for one is often the right call. blissful-infra does not exist to argue against that.
 
 What blissful-infra exists for is what comes *before* that decision. Most enterprise development happens on top of managed services that already exist when you arrive. You write business logic against a Cognito instance someone else provisioned, push to an EKS cluster someone else maintains. That setup is productive, but it hides the layers, and starting from a blank slate becomes intimidating. Where does authentication actually live? What is a service mesh actually doing? Why is Kafka different from a queue?
 

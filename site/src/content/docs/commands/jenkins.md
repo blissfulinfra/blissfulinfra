@@ -13,7 +13,7 @@ blissful-infra jenkins status
 
 Worth knowing before you start, because it explains a port clash you might hit.
 
-**The tenant's Jenkins** is the one you normally want. Each tenant runs its own Jenkins container (`<tenant>-jenkins`) as part of its compose stack, started by `blissful-infra tenant up` and stopped by `tenant down`. Its port comes from the tenant's block — the first tenant gets 8081, the second 8082, and so on. This is what the dashboard's Pipeline tab reads, and it is fully isolated per tenant.
+**The tenant's Jenkins** is the one you normally want. Each tenant runs its own Jenkins container (`<tenant>-jenkins`) as part of its compose stack, started by `blissful-infra tenant up` and stopped by `tenant down`. Its port comes from the tenant's block: the first tenant gets 8081, the second 8082, and so on. This is what the dashboard's Pipeline tab reads, and it is fully isolated per tenant.
 
 **The standalone `jenkins` command** predates the tenant model and manages a single separate `blissful-jenkins` container on a hardcoded `localhost:8081`. It has not been re-keyed to tenant coordinates yet.
 
@@ -48,7 +48,7 @@ blissful-infra jenkins add-project <name>
 
 Creates a pipeline job pointing at the project directory as its SCM source. Requires Jenkins to be running and the project to have a `Jenkinsfile`.
 
-The job is idempotent — registering an already-registered project is a no-op.
+The job is idempotent: registering an already-registered project is a no-op.
 
 ## jenkins build
 
@@ -62,15 +62,15 @@ Triggers a build and returns immediately. It does not wait for completion; use [
 
 The Spring Boot template generates a `Jenkinsfile` with these stages:
 
-1. **Initialize** — resolve build metadata
-2. **Build** — Compile and Lint, in parallel
-3. **Test** — Unit and Integration tests, publishing JUnit results
-4. **Containerize** — build the service image
-5. **Security Scan** — scan the built image
-6. **Push** — push to the local registry
-7. **Deploy** — call the API server to restart the service, then poll its health endpoint
+1. **Initialize**: resolve build metadata
+2. **Build**: Compile and Lint, in parallel
+3. **Test**: Unit and Integration tests, publishing JUnit results
+4. **Containerize**: build the service image
+5. **Security Scan**: scan the built image
+6. **Push**: push to the local registry
+7. **Deploy**: call the API server to restart the service, then poll its health endpoint
 
-Note that the Deploy stage is the **compose-runtime** deploy. On the kubernetes runtime, deploys go through [`deploy`](/commands/deploy) and ArgoCD instead — CI is deliberately off the deploy critical path there, so the pipeline builds and pushes but does not sync the cluster.
+Note that the Deploy stage is the **compose-runtime** deploy. On the kubernetes runtime, deploys go through [`deploy`](/commands/deploy) and ArgoCD instead. CI is deliberately off the deploy critical path there, so the pipeline builds and pushes but does not sync the cluster.
 
 ## Credentials
 
@@ -84,6 +84,6 @@ Run `blissful-infra tenant status` to see the port your tenant's Jenkins actuall
 
 ## See also
 
-- [`pipeline`](/commands/pipeline) — run or inspect a pipeline from the CLI
-- [`dashboard`](/commands/dashboard) — the Pipeline tab
-- [`deploy`](/commands/deploy) — the Kubernetes deploy path
+- [`pipeline`](/commands/pipeline): run or inspect a pipeline from the CLI
+- [`dashboard`](/commands/dashboard): the Pipeline tab
+- [`deploy`](/commands/deploy): the Kubernetes deploy path

@@ -58,10 +58,10 @@ Reports the last Jenkins run for the service: overall result, per-stage status a
 
 On the **compose** runtime, the pipeline's Deploy stage restarts the service through the API server.
 
-On the **kubernetes** runtime, the pipeline stops at build and push. Deploys go through [`deploy`](/commands/deploy) → Gitea → ArgoCD, keeping CI off the deploy critical path so a broken pipeline cannot take down a running rollout.
+On the **kubernetes** runtime, the pipeline stops at build and push. Deploys are driven by [`deploy`](/commands/deploy), which pushes manifests to Gitea for ArgoCD to sync. That keeps CI off the deploy critical path, so a broken pipeline cannot take down a running rollout.
 
 ## See also
 
-- [`jenkins`](/commands/jenkins) — the CI server itself
-- [`deploy`](/commands/deploy) — the Kubernetes deploy path
-- [`dashboard`](/commands/dashboard) — the Pipeline tab
+- [`jenkins`](/commands/jenkins): the CI server itself
+- [`deploy`](/commands/deploy): the Kubernetes deploy path
+- [`dashboard`](/commands/dashboard): the Pipeline tab

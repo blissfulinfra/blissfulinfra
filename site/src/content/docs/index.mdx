@@ -3,7 +3,7 @@ title: Blissful Infra
 description: An enterprise sandbox on your laptop. Real Kafka, real Postgres, real Kubernetes with ArgoCD and canary deploys. One command chain, no cloud account.
 template: splash
 hero:
-  tagline: Real Kafka, real Postgres, real Kubernetes with ArgoCD and canary deploys — all on your laptop. Try an architecture pattern, throw it away, try the next one.
+  tagline: Real Kafka, real Postgres, real Kubernetes with ArgoCD and canary deploys, all on your laptop. Try an architecture pattern, throw it away, try the next one.
   title: An enterprise sandbox on your laptop.
   actions:
     - text: Get Started
@@ -22,7 +22,7 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-blissful-infra spins up a real enterprise-shaped stack on your laptop. A Spring Boot backend, a local Kubernetes cluster provisioned by Terraform, ArgoCD syncing your services from a real git repo, Argo Rollouts running canary deploys, and a dashboard where you watch traffic shift and press Promote.
+blissful-infra spins up a real enterprise-shaped stack on your laptop. A Spring Boot backend, a local Kubernetes cluster provisioned by Terraform, ArgoCD syncing your services from a real git repo, Argo Rollouts running canary deploys and a dashboard where you watch traffic shift and press Promote.
 
 The point is that you should be able to try an architecture pattern, throw it away and try the next one in the time it usually takes to read the docs for one of them.
 
@@ -31,7 +31,7 @@ npm install -g @blissful-infra/cli
 blissful-infra init
 ```
 
-`init` walks you through your first tenant, project and service, then brings it all up. [Get started →](/getting-started)
+`init` walks you through your first tenant, project and service, then brings it all up. [Get started](/getting-started)
 
 ## Built for iteration. Real infrastructure underneath.
 
@@ -58,13 +58,13 @@ Everything hangs off a three-level hierarchy that mirrors how cloud providers st
 
 | Level | Maps to | Owns |
 |---|---|---|
-| **Tenant** | Organization | Dashboard, Jenkins, observability stack, and optionally a local Kubernetes cluster |
-| **Project** | Domain | Kafka event bus, Postgres, API gateway, isolated Docker network — and a runtime: `compose` or `kubernetes` |
+| **Tenant** | Organization | Dashboard, Jenkins, observability stack and optionally a local Kubernetes cluster |
+| **Project** | Domain | Kafka event bus, Postgres, API gateway, isolated Docker network, plus a runtime: `compose` or `kubernetes` |
 | **Service** | Bounded context | One process. Own DB schema. Talks to the world through the project's event bus or gateway |
 
 `blissful-infra use <tenant>/<project>` sets a persistent context so you rarely retype the path. Ports are allocated deterministically per level, so collisions are impossible by construction.
 
-[The full model →](/guides/tenant-model)
+[The full model](/guides/tenant-model)
 
 ## Two runtimes
 
@@ -74,12 +74,12 @@ Everything hangs off a three-level hierarchy that mirrors how cloud providers st
 
     Fast to start, nothing to install beyond Docker.
 
-    [Compose runtime →](/guides/compose-runtime)
+    [Compose runtime](/guides/compose-runtime)
   </Card>
   <Card title="Kubernetes" icon="puzzle">
-    The tenant owns a kind cluster provisioned by Terraform, running ArgoCD, Argo Rollouts and Gitea. Projects are namespaces. Deploys are GitOps for real — manifests are pushed to the in-cluster Gitea repo and ArgoCD syncs them.
+    The tenant owns a kind cluster provisioned by Terraform, running ArgoCD, Argo Rollouts and Gitea. Projects are namespaces. Deploys are GitOps for real: manifests are pushed to the in-cluster Gitea repo and ArgoCD syncs them.
 
-    [The golden path →](/guides/golden-path)
+    [The golden path](/guides/golden-path)
   </Card>
 </CardGrid>
 
@@ -91,21 +91,21 @@ One toolchain. Pick the entry point that matches what you are trying to do.
   <Card title="Build" icon="rocket">
     **Prototype-first.** You have an architecture experiment or a product idea to validate. One command to a real stack you can pull apart.
 
-    [Start the Build path →](/paths/build)
+    [Start the Build path](/paths/build)
   </Card>
   <Card title="Learn" icon="open-book">
-    **Go deeper.** Students and engineers who want to understand how production systems work without a cloud bill. Kafka, Postgres, CI/CD, observability, GitOps and progressive delivery — the same stack real teams run.
+    **Go deeper.** Students and engineers who want to understand how production systems work without a cloud bill. Kafka, Postgres, CI/CD, observability, GitOps and progressive delivery. The same stack real teams run.
 
-    [Start the Learn path →](/paths/learn)
+    [Start the Learn path](/paths/learn)
   </Card>
   <Card title="Deliver" icon="puzzle">
     **Many projects, one laptop.** Indie studios and small teams. Each tenant gets its own isolated stack with its own Kafka, Postgres, observability and CI. No SaaS bill stacking up per project.
 
-    [Start the Deliver path →](/paths/deliver)
+    [Start the Deliver path](/paths/deliver)
   </Card>
 </CardGrid>
 
-Curious why blissful-infra runs real open-source services instead of bundling managed-service emulators? [Read the philosophy →](/philosophy)
+Curious why blissful-infra runs real open-source services instead of bundling managed-service emulators? [Read the philosophy](/philosophy)
 
 ## What you get
 
@@ -136,15 +136,15 @@ Spin up a tenant, experiment, blow it away, start fresh. The whole stack is isol
 
 ## Progressive delivery, locally
 
-The Kubernetes runtime runs real canary deploys. A rollout walks 10% → 25% → 50% → 100%, pausing at each step so you can promote early or abort:
+The Kubernetes runtime runs real canary deploys. A rollout walks 10%, 25%, 50%, then 100%, pausing at each step so you can promote early or abort:
 
 ```bash
-blissful-infra deploy orders        # build → kind load → gitops push → ArgoCD sync
+blissful-infra deploy orders        # build, kind load, gitops push, ArgoCD sync
 blissful-infra canary status orders # 10% canary / 90% stable, step 1/7
 blissful-infra canary promote orders --full
 blissful-infra rollback orders      # git revert in the gitops repo; ArgoCD converges back
 ```
 
-Every deploy is a commit in the tenant's Gitea repo — open it to see the audit trail ArgoCD syncs from. The dashboard's Environments tab shows the same rollout with a live weight bar and Promote / Abort buttons.
+Every deploy is a commit in the tenant's Gitea repo. Open it to see the audit trail ArgoCD syncs from. The dashboard's Environments tab shows the same rollout with a live weight bar and Promote / Abort buttons.
 
-[The golden path in full →](/guides/golden-path)
+[The golden path in full](/guides/golden-path)

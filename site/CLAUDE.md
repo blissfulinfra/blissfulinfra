@@ -53,7 +53,7 @@ src/content/docs/
 
 **Accuracy rule:** the `commands/` pages must match the real CLI surface.
 Before editing one, check the truth with `node packages/cli/dist/index.js
-<command> --help` — do not document a flag you have not seen in that output.
+<command> --help`. Do not document a flag you have not seen in that output.
 The site drifted a full major version behind the CLI once already.
 
 All content files are Markdown (`.md`) or MDX (`.mdx`). MDX is only needed when importing Starlight components (like `<CardGrid>`, `<Card>`). Plain docs pages use `.md`.

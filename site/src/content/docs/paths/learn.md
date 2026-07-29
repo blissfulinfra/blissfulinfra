@@ -1,15 +1,15 @@
 ---
 title: Learn path
-description: A guided course that takes you from zero to a production-grade service with Kafka, Postgres, Keycloak, and observability. Understand each layer before reaching for a managed equivalent.
+description: A guided course that takes you from zero to a production-grade service with Kafka, Postgres, GitOps and observability. Understand each layer before reaching for a managed equivalent.
 ---
 
-Not sure if this is the right path for you? Read [Start here](/paths/start-here) first — it routes you based on your background and what you want to do.
+Not sure if this is the right path for you? Read [Start here](/paths/start-here) first. It routes you based on your background and what you want to do.
 
-This path is for students, new grads, and anyone who wants to understand how production systems actually work — without paying for cloud while they learn.
+This path is for students, new grads and anyone who wants to understand how production systems actually work, without paying for cloud while they learn.
 
 The job market expects "experience with distributed systems" but very few entry-level roles will pay you to get it. blissful-infra exists so you can build that experience on a laptop, in your own time, without a credit card.
 
-By the time you finish this path you'll have run the same stack a 50-person engineering team would run. You'll understand why each piece exists, what it costs to operate at scale, and what the managed equivalent does for you. That mental model is the part that transfers to any job.
+By the time you finish this path you'll have run the same stack a 50-person engineering team would run. You'll understand why each piece exists, what it costs to operate at scale and what the managed equivalent does for you. That mental model is the part that transfers to any job.
 
 ## What you'll build
 
@@ -20,9 +20,9 @@ By the end of this path you will have:
 - A real CI/CD pipeline: Jenkins, multi-stage build, deploy on green
 - An identity layer: Keycloak with realms, JWTs, role-based access
 - AWS-shaped services running locally: LocalStack for S3, Lambda, SQS
-- Kubernetes deploy (planned): your service on a real local cluster with kind — coming in a later module
+- Kubernetes deploy (planned): your service on a real local cluster with kind (coming in a later module)
 
-You will understand what each piece does, why it exists, and what tradeoffs the managed equivalent makes for you.
+You will understand what each piece does, why it exists and what tradeoffs the managed equivalent makes for you.
 
 ## Course modules
 
@@ -58,7 +58,7 @@ The generated `Jenkinsfile`, what each stage does, how the pipeline tests and de
 
 ### Module 5: Isolation and the hierarchy
 
-Why there are three levels rather than two, and how the model enforces domain boundaries structurally — a Postgres schema per service, a Docker network per project, a port block per tenant. What a distributed monolith looks like and how the constraints make it harder to build one by accident.
+Why there are three levels rather than two, and how the model enforces domain boundaries structurally: a Postgres schema per service, a Docker network per project, a port block per tenant. What a distributed monolith looks like and how the constraints make it harder to build one by accident.
 
 [The tenant model](/guides/tenant-model)
 
@@ -86,6 +86,6 @@ The background reading still stands on its own: [A Developer's Guide to IAM](/bl
 
 Many of the technologies in this course have excellent managed equivalents. The course teaches the open-source originals on purpose. Once you understand Keycloak you understand what Auth0 abstracts; once you understand Kafka you understand what SQS trades away for simplicity; once you understand Postgres you understand what RDS does for you.
 
-That mental model is the part that transfers. You can replace any component with a managed version in a day. Understanding why it exists and what it's doing — that takes hands-on time.
+That mental model is the part that transfers. You can replace any component with a managed version in a day. Understanding why it exists and what it's doing. That takes hands-on time.
 
 [More on the philosophy](/philosophy)
