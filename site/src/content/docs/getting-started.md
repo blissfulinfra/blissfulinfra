@@ -106,6 +106,7 @@ blissful-infra service add orders --type backend --no-database
 | Template | `--type` | Stack |
 |---|---|---|
 | `spring-boot` | `backend` | Kotlin + Spring Boot 3 + Kafka + Actuator + OpenTelemetry |
+| `hono` | `backend` | TypeScript + Hono. Runs in a container locally and promotes to Cloudflare Workers |
 | `react-vite` | `frontend` | React + Vite + TypeScript + TailwindCSS |
 | `lambda-python` | `backend` | Python serverless handler *(template on disk; the tenant-model port is still open)* |
 

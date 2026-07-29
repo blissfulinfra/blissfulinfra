@@ -113,6 +113,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', link: '/templates/overview' },
             { label: 'Spring Boot', link: '/templates/spring-boot' },
+            { label: 'Hono', link: '/templates/hono' },
             { label: 'React + Vite', link: '/templates/react-vite' },
             { label: 'Lambda (Python)', link: '/templates/lambda-python' },
           ],

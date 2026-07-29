@@ -50,6 +50,7 @@ Binary files (images, compiled assets, JARs) are copied without substitution.
 | Template | Language | Framework | Features |
 |---|---|---|---|
 | `spring-boot` | Kotlin | Spring Boot 3 | Kafka producer/consumer, WebSockets, JPA, Flyway, Actuator, OpenTelemetry |
+| `hono` | TypeScript | Hono | Runs in a container locally and promotes to Cloudflare Workers unchanged. See [`deploy --target cloudflare`](/commands/deploy#promoting-to-cloudflare) |
 | `lambda-python` | Python | AWS Lambda | Scaffolds, but the runtime wiring is [not ported to the tenant model yet](/templates/lambda-python) |
 
 Other stacks (FastAPI, Express, Go) are deliberately out of scope until there is a real working template behind them rather than a placeholder. See [Philosophy](/philosophy).

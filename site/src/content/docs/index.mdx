@@ -130,9 +130,23 @@ Run `blissful-infra status` at any time to see the ports your tenants actually g
 
 ## Your sandbox, your rules
 
-blissful-infra runs entirely on your laptop. Docker Desktop is the only hard dependency; the Kubernetes runtime additionally needs `kind`, `kubectl` and `terraform`, all installable with one `brew install`. There are no cloud accounts to set up and no per-hour costs ticking up while you work.
+blissful-infra runs entirely on your laptop. Docker Desktop is the only hard dependency; the Kubernetes runtime additionally needs `kind`, `kubectl` and `terraform`, all installable with one `brew install`. Nothing requires a cloud account and no per-hour costs tick up while you work.
 
 Spin up a tenant, experiment, blow it away, start fresh. The whole stack is isolated, reproducible and disposable on demand.
+
+## When you want it in production
+
+Local kind is the rehearsal. When a service is ready to ship for real, promote it to Cloudflare:
+
+```bash
+blissful-infra service add orders --type backend --template hono
+blissful-infra service up orders                    # runs in a container locally
+blissful-infra deploy orders --target cloudflare    # Workers
+```
+
+The [`hono` template](/templates/hono) keeps its application code free of `node:*` imports, so the same source runs under Node in the container and on Cloudflare Workers with no rewrite. Frontends go to Pages the same way.
+
+That is opt-in and needs your own Cloudflare account. Note that a promoted service leaves the project's Kafka and Postgres behind, which [`deploy`](/commands/deploy#what-a-promoted-service-loses) explains in full.
 
 ## Progressive delivery, locally
 

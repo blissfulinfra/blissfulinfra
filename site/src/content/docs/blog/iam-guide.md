@@ -390,4 +390,4 @@ blissful-infra start my-app --plugins keycloak
 
 Admin console is at `http://localhost:8001/admin`. The Spring Boot backend validates tokens automatically. Test users for each role are pre-created.
 
-[Get started](/getting-started) or [view all plugins](/getting-started#choosing-your-stack)
+[Get started](/getting-started) or [see the available templates](/getting-started#choosing-a-stack)

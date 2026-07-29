@@ -62,12 +62,18 @@ golden path (ADR-0020).
   tenant/project/service and the Kubernetes golden path, with a page per real
   command verified against `--help`, three new guides (tenant model, golden
   path, compose runtime), and dated pre-2.0 banners on the blog posts. Removed
-  the Cloudflare "deploy in two commands" section and the `$5/month hosted
-  tier` schema.org offer. Neither exists, and `deploy` now means deploying to
-  the local kind cluster. Also corrected the stated Node requirement (18 → 20),
-  synced the ADR index with the ADR files' own statuses, and marked the
-  unimplemented specs (`cloud-hosting`, `cloud-deploy`, `clickhouse`,
-  `analytics`, `media-pipeline`) as designs rather than shipped behaviour.
+  the old Cloudflare "deploy in two commands" section, which described shipping
+  a whole project to Pages/Workers/D1/KV/Queues from `blissful-infra.yaml`, and
+  the `$5/month hosted tier` schema.org offer. Neither existed. Cloudflare is
+  now documented as it actually shipped in ADR-0022: a per-service promotion
+  target via `deploy --target cloudflare`, restricted to the `hono` and
+  `react-vite` templates, with a `/templates/hono` page and the lost Kafka and
+  Postgres bindings stated plainly. Also corrected the stated Node requirement
+  (18 to 20), synced the ADR index with the ADR files' own statuses, and marked
+  the still-unimplemented specs (`cloud-hosting`, `clickhouse`, `analytics`,
+  `media-pipeline`) as designs rather than shipped behaviour.
+- Stripped em dashes, decorative arrow glyphs and oxford commas from every
+  page of the docs site, per the project's writing conventions.
 - `deploy`, `rollback`, `canary` and `pipeline` take tenant coordinates
   (positional service + `--tenant`/`--project`, `use` context fills the
   rest). Namespace convention: the project name; rollout name: the

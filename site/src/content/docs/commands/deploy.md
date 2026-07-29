@@ -1,15 +1,14 @@
 ---
 title: blissful-infra deploy
-description: Deploy a service to the project's Kubernetes runtime. build, kind load, GitOps push, ArgoCD sync, canary rollout.
+description: Deploy a service locally to kind and ArgoCD with a canary rollout, or promote it to Cloudflare Workers and Pages with --target cloudflare.
 ---
 
-`deploy` ships a service to the project's Kubernetes runtime. It is a real GitOps loop: the CLI renders manifests, commits them to the tenant's in-cluster Gitea repo, and ArgoCD syncs them into the cluster where Argo Rollouts runs a canary.
+`deploy` has two targets. By default it ships a service to the project's local Kubernetes runtime through a real GitOps loop. With `--target cloudflare` it promotes the same service to Cloudflare.
 
 ```bash
-blissful-infra deploy orders
+blissful-infra deploy orders                       # local kind + ArgoCD + canary
+blissful-infra deploy orders --target cloudflare   # promote to Cloudflare
 ```
-
-This command requires a project created with `--runtime kubernetes` and a tenant with a cluster ([`cluster up`](/commands/cluster)). It does not deploy to any cloud provider.
 
 ## Usage
 
@@ -25,8 +24,15 @@ blissful-infra deploy [service] [options]
 |---|---|
 | `--tenant <tenant>` | Tenant (defaults to context) |
 | `--project <project>` | Project (defaults to context, falls back to a registry scan) |
+| `--target <target>` | `kubernetes` (default, follows the project runtime) or `cloudflare` |
 | `--tag <tag>` | Image tag (defaults to the service's git short SHA) |
 | `--dry-run` | Show what would be deployed without making any changes |
+
+## The two targets
+
+**`kubernetes`** is the default and requires a project created with `--runtime kubernetes` plus a tenant with a cluster ([`cluster up`](/commands/cluster)). This is the local rehearsal: real GitOps, real canary, on your laptop.
+
+**`cloudflare`** is a promotion target rather than a runtime. It works regardless of the project's local runtime, so `runtime: compose | kubernetes` keeps meaning "where this runs locally" and stays orthogonal to where it ships. See [Promoting to Cloudflare](#promoting-to-cloudflare) below.
 
 ## What actually happens
 
@@ -87,9 +93,80 @@ blissful-infra dashboard up
 
 You can also open ArgoCD and Gitea directly. `cluster up` prints both URLs and their credentials.
 
+## Promoting to Cloudflare
+
+```bash
+blissful-infra deploy orders --target cloudflare
+```
+
+Local kind is the rehearsal. Cloudflare is production. The same service source ships to both.
+
+### Only the `hono` template can reach Workers
+
+Cloudflare Workers run Web-standard fetch handlers on a V8 isolate. There is no JVM and no CPython, so `spring-boot` and `lambda-python` backends **cannot** be promoted. This is a structural limit, not a missing feature.
+
+| Service type | Template | Cloudflare product |
+|---|---|---|
+| `backend` / `worker` | `hono` | Workers |
+| `frontend` | `react-vite` | Pages |
+| `backend` | `spring-boot`, `lambda-python` | not eligible |
+
+Trying to promote an ineligible service fails immediately with a pointer to `--template hono`, rather than an opaque wrangler error at upload time.
+
+```bash
+blissful-infra service add orders --type backend --template hono
+```
+
+### How one source runs in both places
+
+The `hono` template splits its entry points so a single service has two homes:
+
+| File | Role |
+|---|---|
+| `src/app.ts` | The application. Imports nothing from `node:*`, which is what makes it portable |
+| `src/server.ts` | Node entry via `@hono/node-server` on port 8080. This is what the container image runs |
+| `src/worker.ts` | Default-exports the app, which is already a Workers fetch handler |
+
+So the service runs under the compose and kubernetes runtimes exactly like any other, and the same code promotes to Workers with no rewrite.
+
+### Prerequisites
+
+```bash
+npm install -g wrangler@latest
+wrangler login
+```
+
+Both are checked up front rather than mid-deploy.
+
+### Configuration
+
+Everything defaults from the service coordinates, so an absent config still deploys. Worker and Pages names both default to `<project>-<service>`. To override, add a `deploy.cloudflare` block to the service's `service.yaml`:
+
+```yaml
+deploy:
+  cloudflare:
+    workerName: shop-orders
+    pagesProject: shop-web
+    accountId: abc123
+    d1Database: shop-orders-db
+    kvNamespace: shop-orders-cache
+```
+
+D1 and KV are provisioned only when declared. "Already exists" counts as success, so redeploys are idempotent. If the service has a `d1:migrate` script, migrations run with `--remote` after provisioning.
+
+`accountId` is passed as `CLOUDFLARE_ACCOUNT_ID` because wrangler has no per-command flag for it.
+
+### What a promoted service loses
+
+This is the sharpest edge in the design and worth understanding before you rely on it.
+
+A service on Cloudflare has **no Kafka** and **cannot reach the project's shared Postgres**. D1 is the substitute for persistence, which means the data layer genuinely differs between your local rehearsal and production. Nothing migrates schemas between the two.
+
+Pages and Workers deploys are also **not progressive**. There is no canary equivalent to the local rollout; rollback is `wrangler rollback`.
+
 ## See also
 
-- [The golden path](/guides/golden-path): the full flow end to end
-- [`cluster`](/commands/cluster): provision the cluster first
-- [`canary`](/commands/canary): drive the rollout
-- [`rollback`](/commands/rollback): undo a deploy
+- [The golden path](/guides/golden-path): the full local flow end to end
+- [`cluster`](/commands/cluster): provision the local cluster first
+- [`canary`](/commands/canary): drive the local rollout
+- [`rollback`](/commands/rollback): undo a local deploy

@@ -32,7 +32,7 @@ blissful-infra service up acme shop orders     # both explicit
 | Flag | What it does |
 |---|---|
 | `-t`, `--type <type>` | `backend`, `frontend` or `worker` |
-| `--template <name>` | Backend: `spring-boot` or `lambda-python`. Frontend: `react-vite` |
+| `--template <name>` | Backend: `spring-boot`, `hono` or `lambda-python`. Frontend: `react-vite` |
 | `--runtime <runtime>` | Worker language: `python`, `node` or `go` |
 | `--no-database` | Skip the auto-allocated Postgres schema (backends and workers only) |
 | `-y`, `--skip-prompts` | Skip prompts, accept defaults |

@@ -45,6 +45,7 @@ blissful-infra service add web --type frontend
 | Backend | Best for |
 |---|---|
 | [`spring-boot`](/templates/spring-boot) | Long-running HTTP API, JPA + Postgres, Kafka producer and consumer, mature JVM observability |
+| `hono` | TypeScript, and the only backend that can be promoted to Cloudflare Workers |
 
 Frontend is [React + Vite](/templates/react-vite). Workers come in Python, Node and Go. Other frameworks are deliberately out of scope until they're real. See [Philosophy](/philosophy).
 
