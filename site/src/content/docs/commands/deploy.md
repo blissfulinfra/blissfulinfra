@@ -1,155 +1,95 @@
 ---
 title: blissful-infra deploy
-description: Deploy your local project to Cloudflare, Vercel, or AWS with one command.
+description: Deploy a service to the project's Kubernetes runtime — build, kind load, GitOps push, ArgoCD sync, canary rollout.
 ---
 
-`blissful-infra deploy` takes the app you built locally and ships it to a real cloud environment. Set `deploy.target` in your `blissful-infra.yaml` to choose the platform, then run the same command every time.
+`deploy` ships a service to the project's Kubernetes runtime. It is a real GitOps loop: the CLI renders manifests, commits them to the tenant's in-cluster Gitea repo, and ArgoCD syncs them into the cluster where Argo Rollouts runs a canary.
+
+```bash
+blissful-infra deploy orders
+```
+
+This command requires a project created with `--runtime kubernetes` and a tenant with a cluster ([`cluster up`](/commands/cluster)). It does not deploy to any cloud provider.
 
 ## Usage
 
 ```bash
-blissful-infra deploy [name] [options]
+blissful-infra deploy [service] [options]
 ```
 
-`[name]` is optional. If omitted, the CLI reads `blissful-infra.yaml` from the current directory.
+`[service]` resolves through your [`use`](/commands/use) context when omitted.
 
 ## Options
 
-| Flag | Description |
-|------|-------------|
-| `--dry-run` | Print what would be deployed without making any changes |
+| Flag | What it does |
+|---|---|
+| `--tenant <tenant>` | Tenant (defaults to context) |
+| `--project <project>` | Project (defaults to context, falls back to a registry scan) |
+| `--tag <tag>` | Image tag (defaults to the service's git short SHA) |
+| `--dry-run` | Show what would be deployed without making any changes |
 
-## Configuration
+## What actually happens
 
-Set `deploy.target` in `blissful-infra.yaml` before running deploy:
+1. **Build** the service image from its Dockerfile
+2. **kind load** the image onto the cluster node — kind-loaded images never pull, so `imagePullPolicy` is `IfNotPresent`
+3. **Render** the Rollout, canary/stable Services and ConfigMap from the gitops templates
+4. **Commit and push** them to the tenant's Gitea repo — this is the audit trail
+5. **ArgoCD syncs** the commit into the project's namespace
+6. **Argo Rollouts** starts the canary
 
-```yaml
-name: my-app
-backend: spring-boot
-frontend: react-vite
-database: postgres
-deploy:
-  target: cloudflare   # cloudflare | vercel | aws
-```
+Start with `--dry-run` if you want to see the rendered manifests before anything is committed.
 
-You can set the target at scaffold time so the project is ready from the start:
+## The canary
 
-```bash
-blissful-infra start my-app --deploy-target cloudflare
-```
+The rollout walks four weights, pausing at each step so you can promote early or abort:
 
-## Deploy targets
+| Step | Weight | Then |
+|---|---|---|
+| 1 | 10% | pause 2m |
+| 2 | 25% | pause 2m |
+| 3 | 50% | pause 5m |
+| 4 | 100% | done |
 
-### Cloudflare
-
-**Prerequisites:** `wrangler` CLI installed and authenticated.
-
-```bash
-npm install -g wrangler
-wrangler login
-```
-
-**What deploys:**
-
-| Local | Cloudflare |
-|-------|-----------|
-| React + Vite frontend | Cloudflare Pages |
-| Express / Hono backend | Cloudflare Worker |
-| Postgres database | Cloudflare D1 (SQLite) |
-| Redis cache | Cloudflare KV |
-
-The CLI calls `wrangler` for each step, you don't need to know the wrangler commands yourself. A `wrangler.toml` is generated in `frontend/` and `backend/` at scaffold time if you used `--deploy-target cloudflare`. If you're deploying an existing project, the CLI generates them on first deploy.
-
-**Config block (optional):**
-
-```yaml
-deploy:
-  target: cloudflare
-  cloudflare:
-    accountId: your-cf-account-id
-    workerName: my-app-api
-    pagesProject: my-app-frontend
-```
-
-If `accountId` is omitted, wrangler uses your default account from `wrangler login`.
-
-### Vercel
-
-**Prerequisites:** `vercel` CLI installed and authenticated.
+Pauses are time-based rather than metric-driven, because there is no in-cluster Prometheus yet. Each pause is promotable early from the CLI or the dashboard:
 
 ```bash
-npm install -g vercel
-vercel login
+blissful-infra canary status orders
+blissful-infra canary promote orders          # next step
+blissful-infra canary promote orders --full   # straight to 100%
+blissful-infra canary abort orders            # back to stable
 ```
 
-**What deploys:** frontend via `vercel build` + `vercel deploy --prebuilt --prod`, backend via `vercel deploy --prod`.
+[More on `canary` →](/commands/canary)
 
-Vercel uses real Postgres (not SQLite), so no DDL translation is needed. Configure `DATABASE_URL`, Redis (Upstash), and queue (QStash) environment variables in your Vercel project dashboard.
+## Image tags
 
-**Config block (optional):**
-
-```yaml
-deploy:
-  target: vercel
-  vercel:
-    orgId: your-org-id
-    projectId: your-project-id
-```
-
-### AWS
-
-**Prerequisites:** AWS CLI and CDK installed and configured.
+The tag defaults to the service's git short SHA, so each deploy is traceable to a commit. Override it when you need to:
 
 ```bash
-brew install awscli
-npm install -g aws-cdk
-aws configure
+blissful-infra deploy orders --tag experiment-1
 ```
 
-**What deploys:** CDK stacks via `cdk deploy --all`. The scaffold generates CDK stacks for ECS Fargate (backend), S3 + CloudFront (frontend), and RDS Postgres (database).
-
-**Config block (optional):**
-
-```yaml
-deploy:
-  target: aws
-  aws:
-    region: us-east-1
-    cluster: my-app-cluster
-```
-
-## Examples
+## Rolling back
 
 ```bash
-# Deploy from the project directory
-cd my-app
-blissful-infra deploy
-
-# Deploy by project name from parent directory
-blissful-infra deploy my-app
-
-# Preview without making any changes
-blissful-infra deploy --dry-run
+blissful-infra rollback orders
 ```
 
-## Module portability
+This reverts the deploy commit in the gitops repo and lets ArgoCD converge back — which survives ArgoCD's selfHeal, unlike an imperative rollback. [More on `rollback` →](/commands/rollback)
 
-The local modules map to platform-native equivalents so your application code doesn't change when you switch targets:
+## Watching it
 
-| Module | Local | Cloudflare | Vercel | AWS |
-|--------|-------|------------|--------|-----|
-| Frontend | nginx | CF Pages | Vercel | S3 + CloudFront |
-| Backend | Docker | CF Worker | Vercel Functions | ECS Fargate |
-| Database | Postgres | D1 (SQLite) | Vercel Postgres | RDS |
-| Cache | Redis | CF KV | Upstash Redis | ElastiCache |
-| Queue | Kafka | CF Queues | Upstash QStash | SQS |
+The dashboard's Environments tab shows ArgoCD sync state and a live canary card with a weight bar, step counter and Promote / Promote Full / Abort buttons:
 
-To switch platforms, change `deploy.target` in `blissful-infra.yaml` and run `blissful-infra deploy` again.
+```bash
+blissful-infra dashboard up
+```
 
-## Error handling
+You can also open ArgoCD and Gitea directly — `cluster up` prints both URLs and their credentials.
 
-**Missing target:** If `deploy.target` is `local-only` or not set, the CLI prints the config block you need to add and exits.
+## See also
 
-**Missing prerequisite:** If `wrangler`, `vercel`, or `aws` is not installed, the CLI prints the exact install command and exits.
-
-**Deploy failure:** The CLI surfaces the underlying error output and exits with the same code as the failing tool.
+- [The golden path](/guides/golden-path) — the full flow end to end
+- [`cluster`](/commands/cluster) — provision the cluster first
+- [`canary`](/commands/canary) — drive the rollout
+- [`rollback`](/commands/rollback) — undo a deploy

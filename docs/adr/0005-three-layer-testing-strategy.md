@@ -77,9 +77,24 @@ order of cost.
 ```bash
 npm test                  # L1 + L2 (~400ms total, run before every commit)
 npm run test:watch        # vitest watch
+npm run test:e2e          # L2.5: Playwright, added 2026-07-28 (see below)
 npm run test:integration  # L3: real Docker, run before push
 npm run test:all          # everything
 ```
+
+### Amendment (2026-07-28): a browser layer between L2 and L3
+
+The three layers cover the CLI and the generated compose/manifests but say
+nothing about the dashboard, which is a separate React app talking to the API
+server over HTTP. A Playwright suite (`packages/dashboard/e2e/`) now fills that
+gap: it drives the production bundle in headless chromium with every
+`/api/v1/**` response stubbed at the network boundary.
+
+It sits at **L2.5** — slower than L2 (seconds, not milliseconds) but with the
+same "no Docker, no daemon, runs anywhere" property that makes L1/L2 safe to
+gate every PR on. It does not replace L3; a stubbed API proves the UI renders
+and calls the right endpoints, not that the server returns those shapes.
+Closing that gap is the API contract test this ADR's follow-ups already name.
 
 ### Production-code change required for testability
 

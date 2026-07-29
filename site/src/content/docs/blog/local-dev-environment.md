@@ -3,6 +3,12 @@ title: "Stop Paying for Cloud Dev Environments: Run Your Entire Stack Locally"
 description: How to run Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and distributed tracing on your laptop, for free, with one command.
 ---
 
+:::note[Written before blissful-infra 2.0]
+The argument here still holds, but the **commands are out of date**. This post uses `blissful-infra start` and `blissful-infra dev`, both removed in 2.0 and replaced by the tenant / project / service hierarchy.
+
+For the current CLI, start at [Getting Started](/getting-started) or [The tenant model](/guides/tenant-model).
+:::
+
 Cloud development environments have become the default for teams building modern applications. Gitpod, GitHub Codespaces, and cloud-hosted staging environments make it easy to get started, but they come with a cost that compounds quickly: per-hour billing, slow feedback loops because your code has to travel to a data center and back, and a shared environment that breaks when a teammate pushes something bad.
 
 There's a better way. Everything your production stack needs can run on your laptop, and the feedback loop goes from minutes to seconds.

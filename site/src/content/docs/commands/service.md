@@ -1,196 +1,87 @@
 ---
 title: blissful-infra service
-description: Add and manage services within a client environment.
+description: Manage services — atomic processes inside a project. Add backends, frontends and workers, then start, stop and tail them.
 ---
 
-`blissful-infra service` manages **services** inside a [client
-environment](/commands/client). A service is your application (backend,
-optional frontend, optional plugins like LocalStack) attached to the
-client's shared infrastructure (Kafka, Postgres, Jenkins, observability).
+A **service** is one process inside a project — one container family, one bounded context, its own database schema.
 
-A client typically holds one to a handful of related services that share
-the same infra and Docker network.
+```bash
+blissful-infra service add orders --type backend
+```
 
 ## Subcommands
 
-| Subcommand | Purpose |
+| Command | What it does |
 |---|---|
-| `service add <client> <service>` | Scaffold a new service inside a client |
-| `service up <client> <service>` | Start the service (within the client's unified Compose project) |
-| `service down <client> <service>` | Stop and remove the service's containers |
-| `service logs <client> <service>` | Tail logs for the service |
+| `service add <name>` | Add a service to a project |
+| `service up <name>` | Start a service |
+| `service down <name>` | Stop a service |
+| `service logs <name>` | Tail service logs |
+| `service remove <name>` | Remove a service from a project |
 
-## `service add`
+Every subcommand accepts optional leading tenant and project arguments, so all three of these work:
 
 ```bash
-blissful-infra service add <client> <service> [options]
+blissful-infra service up orders               # tenant + project from context
+blissful-infra service up shop orders          # project explicit
+blissful-infra service up acme shop orders     # both explicit
 ```
 
-Scaffolds the service from templates, regenerates the client's infra Compose
-to include it via the unified-project pattern (see
-[ADR-0003](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0003-unified-compose-project-per-client.md)),
-and brings the service up.
+## service add
 
-### Options
-
-| Flag | Description |
+| Flag | What it does |
 |---|---|
-| `-b, --backend <name>` | Backend framework. Choices: `spring-boot`, `lambda-python`, `none`. Default: `spring-boot`. |
-| `-f, --frontend <name>` | Frontend framework. Choices: `react-vite`, `none`. Default: prompted (no default). |
-| `-p, --plugins <list>` | Comma-separated **service-scoped** plugins. Choices: `ai-pipeline`, `agent-service`, `gatling`. |
+| `-t`, `--type <type>` | `backend`, `frontend` or `worker` |
+| `--template <name>` | Backend: `spring-boot` or `lambda-python`. Frontend: `react-vite` |
+| `--runtime <runtime>` | Worker language: `python`, `node` or `go` |
+| `--no-database` | Skip the auto-allocated Postgres schema (backends and workers only) |
+| `-y`, `--skip-prompts` | Skip prompts, accept defaults |
 
-:::caution[localstack/keycloak/clickhouse/mlflow/mage are now client-level]
-These were per-service plugins originally. They've been promoted to
-**client-level infrastructure** (ADRs [0008](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0008-clickhouse-as-client-level-warehouse.md),
-[0009](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0009-keycloak-as-client-level-iam.md),
-[0010](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0010-decompose-ai-pipeline-plugin.md)). Enable them on
-`client create` (interactive checkbox or `infrastructure.<name>: true` in
-the client config). They no longer appear in the `service add` prompt.
+### Service types
 
-You *can* still pass them as `--plugins <name>` for a service-scoped
-instance (backward compat for advanced users who want strong test
-isolation between services), but the recommended path is client-level.
-:::
+| `--type` | Gets an HTTP port | Gets a DB schema | Notes |
+|---|---|---|---|
+| `backend` | yes | yes, unless `--no-database` | Also gets a metrics port |
+| `frontend` | yes | no | |
+| `worker` | no | yes, unless `--no-database` | Headless; pick a language with `--runtime` |
 
-If a flag is omitted in interactive mode, you'll be prompted for it. Pass
-all three flags to skip prompts entirely.
-
-### Interactive mode
+### Examples
 
 ```bash
-blissful-infra service add dev app
+# Spring Boot backend with its own Postgres schema
+blissful-infra service add orders --type backend --template spring-boot
+
+# React frontend
+blissful-infra service add web --type frontend --template react-vite
+
+# Python worker, no database
+blissful-infra service add mailer --type worker --runtime python --no-database
 ```
 
-```text
-? Backend framework  (Use arrow keys)
-> spring-boot
-  lambda-python
-  none
+## Database isolation
 
-? Frontend framework
-> react-vite
-  none
+Every backend and worker gets its **own schema** on the project's shared Postgres instance, not a shared one. This is deliberate: it makes the DDD boundary structural rather than a convention people remember to follow. A service reaching into another service's tables has to work at it.
 
-  Tip: localstack, keycloak, clickhouse, mlflow, mage are now client-level. Enable on `client create`, not here.
+Pass `--no-database` when a service genuinely has no persistence.
 
-? Service-scoped plugins (space to toggle)
-> ◯ ai-pipeline
-  ◯ agent-service
-  ◯ gatling
-```
+On the kubernetes runtime, the database binding is currently stripped at scaffold time — there is no in-cluster Postgres yet.
 
-### Non-interactive mode (CI / scripts)
+## Lifecycle
 
 ```bash
-blissful-infra service add dev app \
-  --backend spring-boot \
-  --frontend react-vite \
-  --yes
+blissful-infra service up orders
+blissful-infra service logs orders
+blissful-infra service down orders
 ```
 
-The `--yes` flag skips both the framework prompts and the optional-deps
-prompt, and **auto-enables any required infrastructure** the service needs
-(see "Infrastructure dependency check" below).
+On a `--runtime kubernetes` project, `service up` delegates to [`deploy`](/commands/deploy), which runs the full GitOps loop rather than starting a container directly.
 
-### Infrastructure dependency check
+## Ports
 
-Before scaffolding, `service add` looks up an infra-deps manifest for the
-chosen backend, frontend, and plugins, then diffs that against the client's
-current `infrastructure:` config. Two outcomes:
+Services are allocated from a high range so they never collide with infrastructure: HTTP from 30000, metrics from 34000, offset by tenant, project and service index. `blissful-infra project status` prints what each service actually got.
 
-- **Required components missing**: for example, `lambda-python` needs
-  `localstack` at the client level. The CLI prompts to enable it. With
-  `--yes`, it auto-enables and prints what it did.
-- **Optional components missing**: for example, `spring-boot` *can* use
-  `localstack` for S3 uploads. The CLI shows them as a checkbox prompt and
-  enables only what you select. With `--yes`, optional components are
-  skipped entirely.
+## See also
 
-```text
-This service needs client-level components that aren't enabled:
-  • postgres: JPA persistence + Flyway migrations
-? Enable postgres on 'dev' now? (Y/n) y
-  ✓ Enabled postgres in dev
-
-This service can use these optional client-level components:
-? Enable any now? (Space to toggle, Enter to skip)
-> ◯ localstack: S3 file uploads via /api/files endpoint
-  ◯ keycloak: JWT auth on protected routes
-```
-
-Toggling a flag only updates `blissful-infra.yaml`, run
-[`blissful-infra client up <client>`](/commands/client) to regenerate the
-Compose file and start the new container(s).
-
-You can also enable / disable infra components on demand later with
-[`blissful-infra client infra add`](/commands/client) and `client infra
-remove`.
-
-### Per-service host ports
-
-Each service in a client gets a deterministic port block, allocated from
-`13000 + (clientBlockIndex × 100) + (serviceIndex × 4)`. For the first
-service of the first client (block 0):
-
-| Container | Host port |
-|---|---|
-| `<client>-<service>-backend` | 13000 |
-| `<client>-<service>-frontend` | 13001 |
-| `<client>-<service>-localstack` (if plugin enabled) | 13002 |
-
-The CLI prints the URLs after a successful `service add`.
-
-## `service up`
-
-```bash
-blissful-infra service up <client> <service>
-```
-
-Starts only the named service's containers within the client's unified
-Compose project. Useful when a single service has crashed or you want to
-restart just one component without affecting the rest.
-
-## `service down`
-
-```bash
-blissful-infra service down <client> <service>
-```
-
-Stops and removes the service's containers (backend, frontend, localstack
-if any). Other services in the client and the client's infra continue
-running. The service config and source files stay on disk, you can re-up
-with `service up`.
-
-## `service logs`
-
-```bash
-blissful-infra service logs <client> <service>
-```
-
-Tails the last 100 log lines from all of the service's containers and
-follows new output. `Ctrl+C` exits.
-
-## Container naming
-
-Services prefix their container names with `<client>-<service>-` so multiple
-services in the same client (or across clients) never collide:
-
-```text
-dev-app-backend
-dev-app-frontend
-dev-app-localstack
-acme-payment-backend
-acme-payment-frontend
-```
-
-This naming is what `service logs` and `service up`/`down` filter on.
-
-## Where things live
-
-| Resource | Location |
-|---|---|
-| Service directory | `~/.blissful-infra/clients/<client>/<service>/` |
-| Service config | `~/.blissful-infra/clients/<client>/<service>/blissful-infra.yaml` |
-| Service Compose (included by parent) | `~/.blissful-infra/clients/<client>/<service>/docker-compose.yaml` |
-| Backend source | `~/.blissful-infra/clients/<client>/<service>/backend/` |
-| Frontend source | `~/.blissful-infra/clients/<client>/<service>/frontend/` |
+- [`project`](/commands/project) — the level above
+- [`deploy`](/commands/deploy) — ship a service to the kubernetes runtime
+- [Templates overview](/templates/overview) — what is inside each template

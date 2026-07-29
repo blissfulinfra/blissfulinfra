@@ -1,75 +1,94 @@
 ---
 title: Build path
-description: One command to a production-grade local stack. Skip the theory, prototype now, dig deeper later.
+description: One command chain to a production-grade local stack. Skip the theory, prototype now, dig deeper later.
 ---
 
-This path is for engineers who already know what they're doing and just want a working stack now. You have an idea. You want to validate it before you commit a weekend to it. You don't want to spend three hours wiring Postgres to a backend before you've written a line of business logic.
+This path is for engineers who already know what they're doing and just want a working stack now. You have an idea. You want to validate it before committing a weekend to it. You don't want to spend three hours wiring Postgres to a backend before writing a line of business logic.
 
-## The 60-second loop
+## The fast loop
 
 ```bash
 npm install -g @blissful-infra/cli
-blissful-infra start my-app --backend spring-boot --database postgres-redis
+blissful-infra init -y
 ```
 
-That's the whole setup. You now have:
+That's the whole setup. `init -y` creates a tenant, a project and a Spring Boot backend service, then brings everything up.
 
-- A backend at `http://localhost:8080` with REST, Kafka, Postgres, and Redis caching wired in
-- A frontend at `http://localhost:3000` already calling the backend
-- Grafana, Prometheus, Loki, Tempo running and pre-provisioned (Grafana shows metrics, logs, and traces with click-through correlation)
-- A Jenkins pipeline ready to build and deploy your service
+You now have:
+
+- A backend service with REST, Kafka and its own Postgres schema wired in
+- Grafana, Prometheus, Loki and Tempo running and pre-provisioned, with click-through correlation between metrics, logs and traces
+- A Jenkins pipeline ready to build the service
 - A management dashboard at `http://localhost:3002`
 
-Open the generated project in your editor. Modify the controllers, add your own endpoints, push events through Kafka. Iterate.
+Run `blissful-infra status` to see the ports everything landed on.
 
-[Quickstart](/getting-started) · [`start` command](/commands/start)
+[Quickstart](/getting-started) · [`init` command](/commands/init)
+
+## Doing it deliberately
+
+`init -y` is fine for a first look, but you will want to name things:
+
+```bash
+blissful-infra tenant create acme && blissful-infra tenant up
+blissful-infra project create shop
+blissful-infra use acme/shop
+
+blissful-infra service add orders --type backend
+blissful-infra service add web --type frontend
+```
+
+`use` sets a persistent context so you stop retyping coordinates.
 
 ## Pick your stack
 
 | Backend | Best for |
 |---|---|
-| [`spring-boot`](/templates/spring-boot) | Long-running HTTP API, JPA + Postgres, Kafka producer + consumer, mature JVM observability |
-| [`lambda-python`](/templates/lambda-python) | Event-driven serverless workloads, learning AWS Lambda locally on LocalStack |
+| [`spring-boot`](/templates/spring-boot) | Long-running HTTP API, JPA + Postgres, Kafka producer and consumer, mature JVM observability |
 
-Frontend is [React + Vite](/templates/react-vite). Other frameworks are deliberately out of scope until they're real. See the [Philosophy](/philosophy) page.
-
-```bash
-blissful-infra start my-app --backend spring-boot --frontend react-vite
-```
-
-## When you outgrow a single project
-
-The moment you have more than one project running locally, switch to the [client model](/guides/client-model). Each client gets its own isolated stack with separate Kafka, Postgres, and observability, so projects don't conflict on ports or pollute each other's data.
+Frontend is [React + Vite](/templates/react-vite). Workers come in Python, Node and Go. Other frameworks are deliberately out of scope until they're real — see [Philosophy](/philosophy).
 
 ```bash
-blissful-infra client create idea-one
-blissful-infra service add idea-one api --backend spring-boot --frontend react-vite
-blissful-infra client up idea-one
+blissful-infra service add orders --type backend --template spring-boot
+blissful-infra service add web --type frontend --template react-vite
+blissful-infra service add mailer --type worker --runtime python
 ```
 
-[Client model guide](/guides/client-model) · [`client` command](/commands/client) · [`service` command](/commands/service)
+## More than one thing at once
 
-## Adding things you actually need
-
-| Need | Add |
-|---|---|
-| AWS-shaped storage / queues / Lambda | LocalStack at the client level. See the [warehouse guide](/guides/warehouse). |
-| ML pipeline (Kafka, classifier, ClickHouse, MLflow) | `--plugins ai-pipeline` on `service add` |
-| Identity provider | Keycloak at the client level (opt-in via `infrastructure.keycloak: true`) |
-| Distributed tracing across services | Tempo is already wired (OTLP backend). Instrument and watch traces inside Grafana, with click-through to logs. |
-
-## Shipping it
-
-When the prototype works and you want it on the internet:
+The hierarchy handles this by construction. A second project gets its own Kafka, Postgres, gateway and Docker network; a second tenant gets its own everything, including CI and observability.
 
 ```bash
-blissful-infra deploy
+blissful-infra project create billing      # separate domain, same tenant
+blissful-infra tenant create other-co      # fully separate stack
 ```
 
-The same `blissful-infra.yaml` that defines your local stack drives the deploy. Cloudflare Pages and Workers are the default target. Vercel and AWS adapters are in flight.
+Ports are derived from tenant and project index, so nothing collides no matter how many you run.
 
-[`deploy` command](/commands/deploy)
+[The tenant model](/guides/tenant-model)
+
+## Trimming what you don't need
+
+The full stack is a lot to run if you only care about the app:
+
+```bash
+blissful-infra tenant create acme --no-jenkins --no-tempo --no-loki
+blissful-infra project create shop --no-kafka --no-redis
+```
+
+## When you want to explore deployment
+
+If the thing you're actually prototyping is the *delivery* pipeline — GitOps, canary rollouts, rollback semantics — switch a project to the Kubernetes runtime:
+
+```bash
+brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-rollouts
+blissful-infra cluster up
+blissful-infra project create shop --runtime kubernetes
+blissful-infra deploy orders
+```
+
+[The golden path](/guides/golden-path)
 
 ## When to read the theory
 
-If you hit something you don't understand (a Kafka consumer-group rebalance, a JPA cascade behavior, a Prometheus histogram quantile), that's when the [Learn path](/paths/learn) becomes useful. The build path gets you running; the learn path explains why each piece looks the way it does.
+If you hit something you don't understand — a Kafka consumer-group rebalance, a JPA cascade, a Prometheus histogram quantile — that's when the [Learn path](/paths/learn) becomes useful. The build path gets you running; the learn path explains why each piece looks the way it does.

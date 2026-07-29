@@ -1,6 +1,6 @@
 # 0010. Decompose the `ai-pipeline` plugin into client-level platform services
 
-- **Status:** Accepted, implemented in client-model `service add` 2026-05-04
+- **Status:** Superseded by [0017](./0017-tenant-project-service-hierarchy.md) — implemented in client-model `service add` 2026-05-04, then removed with the client model and per-service plugin scaffolding in the 2.0 cleanup
 - **Date:** 2026-05-02
 - **Deciders:** @cavanpage
 

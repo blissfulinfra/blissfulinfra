@@ -54,6 +54,20 @@ golden path (ADR-0020).
   (`workerName`, `pagesProject`, `accountId`, `d1Database`, `kvNamespace`).
 
 ### Changed
+- **Documentation and website brought up to 2.0.** The public site still
+  documented the pre-2.0 flat/client CLI end to end: the landing page and
+  quickstart led with `blissful-infra start`, the sidebar listed four removed
+  commands (`start`, `client`, `lambda`, `dev`) and none of the eleven real
+  ones, and no page mentioned the tenant model. Rewritten around
+  tenant/project/service and the Kubernetes golden path, with a page per real
+  command verified against `--help`, three new guides (tenant model, golden
+  path, compose runtime), and dated pre-2.0 banners on the blog posts. Removed
+  the Cloudflare "deploy in two commands" section and the `$5/month hosted
+  tier` schema.org offer — neither exists, and `deploy` now means deploying to
+  the local kind cluster. Also corrected the stated Node requirement (18 → 20),
+  synced the ADR index with the ADR files' own statuses, and marked the
+  unimplemented specs (`cloud-hosting`, `cloud-deploy`, `clickhouse`,
+  `analytics`, `media-pipeline`) as designs rather than shipped behaviour.
 - `deploy`, `rollback`, `canary` and `pipeline` take tenant coordinates
   (positional service + `--tenant`/`--project`, `use` context fills the
   rest). Namespace convention: the project name; rollout name: the

@@ -1,87 +1,78 @@
 ---
 title: Deliver path
-description: For small studios and indie teams running multiple client projects. Per-client isolated stacks with their own Kafka, Postgres, observability, and CI, all on one laptop.
+description: For small studios and indie teams running several projects at once. Isolated per-tenant stacks with their own Kafka, Postgres, observability and CI, all on one laptop.
 ---
 
-This path is for small software studios, freelance engineers, and indie teams who ship work for several clients in parallel. Every client deserves their own stack, but spinning up SaaS subscriptions per client (Vercel + Supabase + Auth0 + Datadog × N clients) gets expensive and messy fast.
+This path is for small software studios, freelance engineers and indie teams shipping work for several customers in parallel. Every engagement deserves its own stack, but stacking up SaaS subscriptions per customer (Vercel + Supabase + Auth0 + Datadog × N) gets expensive and messy fast.
 
-blissful-infra lets you run a fully isolated production-shaped stack for each client on one laptop, free, with the same tooling and workflows everywhere.
+blissful-infra runs a fully isolated, production-shaped stack for each one on a single laptop, free, with the same tooling everywhere.
 
 ## The model
 
-Each **client** is a fully isolated environment with its own:
+Each **tenant** is a fully isolated environment with its own:
 
-- Kafka cluster
-- Postgres + Redis
 - Jenkins server
-- Prometheus + Grafana + Loki + Tempo (one Grafana UI for all three)
-- Docker network. Clients cannot see each other's data or services.
+- Prometheus, Grafana, Tempo and Loki, with one Grafana UI over all of them
+- Port block, so nothing collides with any other tenant
+- Optionally, its own Kubernetes cluster
 
-Inside a client you add **services**: backend + frontend pairs, Lambda functions, ML pipelines. Services in the same client share infrastructure, but each gets its own ports and its own deploy lifecycle.
+Inside a tenant you create **projects** — one per domain — each owning its own Kafka, Postgres, API gateway and Docker network. Inside those you add **services**.
 
 ```bash
-blissful-infra client create acme-corp
-blissful-infra service add acme-corp api --backend spring-boot --frontend react-vite
-blissful-infra service add acme-corp jobs --backend lambda-python
+blissful-infra tenant create acme-corp
+blissful-infra tenant up
 
-blissful-infra client up acme-corp
-blissful-infra client status acme-corp
+blissful-infra use acme-corp
+blissful-infra project create storefront
+blissful-infra service add api --type backend
+blissful-infra service add web --type frontend
+
+blissful-infra status
 ```
 
-[Client model guide](/guides/client-model) · [`client` command](/commands/client) · [`service` command](/commands/service)
+[The tenant model](/guides/tenant-model) · [`tenant`](/commands/tenant) · [`project`](/commands/project) · [`service`](/commands/service)
 
-## Why this beats SaaS-per-client
+## Why this beats SaaS-per-customer
 
-| Concern | Per-client SaaS | blissful-infra client model |
+| Concern | Per-customer SaaS | blissful-infra |
 |---|---|---|
-| Cost per client | Stacks of subscriptions × N | $0 locally, deploys to your own cloud target |
-| Onboarding new client | Provision N services manually | One command |
-| Tearing down a finished engagement | Cancel N subscriptions, hope you got them all | `client remove` |
-| Reproducibility for the next dev | "Hope you have the same plan tier" | `git clone && client up` |
-| Vendor lock-in per client | High | None. All OSS underneath. |
+| Cost per customer | Stacks of subscriptions × N | $0 locally |
+| Onboarding a new one | Provision N services by hand | One command |
+| Tearing down a finished engagement | Cancel N subscriptions and hope you got them all | `tenant remove` |
+| Reproducibility for the next dev | "Hope you have the same plan tier" | Recreate from the same commands |
+| Vendor lock-in | High | None — open source underneath |
 
 ## Practical workflow
 
-**One client, one git repository.** Each client's `blissful-infra.yaml` lives in their own repo. Commits include the config so the stack is reproducible. New devs run `client up` and get the exact same environment.
+**Isolation is structural, not conventional.** Two tenants can both have a project called `main` with a service called `api`. Separate Docker networks, separate volumes, separate port blocks derived from the tenant index. Nothing collides and nothing leaks.
 
-**Per-client deploy targets.** Different clients, different cloud preferences? `deploy.target: cloudflare` for one, `deploy.target: aws` for another. The CLI adapts; your workflow doesn't.
+**Per-tenant observability.** Each tenant has its own Grafana, its own dashboards and its own retention. Useful when one customer wants 30 days of logs and another wants 7.
 
-**Per-client observability.** Each client has its own Grafana with its own dashboards and its own retention policy. Useful when one client wants 30 days of logs and another wants 7.
-
-**Shared dev machine, isolated state.** Two clients can both run a service called `api` without colliding. They're on separate Docker networks and the [client registry](/guides/client-model) allocates non-overlapping ports.
-
-## Adding optional infrastructure per client
-
-When a client opts into a particular stack component:
-
-```yaml
-# ~/.blissful-infra/clients/acme-corp/blissful-infra.yaml
-infrastructure:
-  keycloak: true       # client wants their own IdP
-  localstack: true     # client uses S3 / SQS
-  clickhouse: true     # client has analytics needs
-  mlflow: true         # client trains ML models
-```
-
-`client up` brings up only what's enabled. Other clients on the same machine are unaffected.
-
-## When you ship
+**One dashboard over all of them.** The dashboard is host-level: a single UI at `localhost:3002` with a tenant switcher, so you get the cross-tenant view without running N dashboards.
 
 ```bash
-cd ~/.blissful-infra/clients/acme-corp
-blissful-infra deploy
+blissful-infra dashboard up
 ```
 
-The deploy adapter for the configured target (Cloudflare, Vercel, AWS) ships the services to the client's actual cloud. The local stack stays as your dev mirror.
+**Slim down per tenant.** Not every engagement needs the full stack:
 
-[`deploy` command](/commands/deploy)
+```bash
+blissful-infra tenant create small-job --no-jenkins --no-tempo
+blissful-infra project create main --no-kafka --no-redis
+```
+
+## Capacity
+
+A tenant holds up to 10 projects, and a project up to 20 services. Ports are derived rather than assigned, so the limits exist to keep the port blocks non-overlapping rather than because of any runtime constraint.
+
+The practical limit is your laptop's RAM — the full stack for one tenant runs around 2–3 GB, so plan on running a couple of tenants at a time rather than ten.
 
 ## Where this goes next
 
-The deliver path gets a lot more powerful once you have:
+The deliver path gets more powerful with:
 
-- **Per-client billing visibility**: track which client's stack is using which resources locally
-- **Templated client onboarding**: a `studio.yaml` that scaffolds your standard client starter
-- **Cross-client dashboard**: one view across every client you run
+- **Per-tenant resource visibility** — which tenant's stack is consuming what
+- **Templated tenant onboarding** — a standard starter you scaffold per engagement
+- **The studio layer** — a level above tenants for the organisation running them
 
-These are on the roadmap. If your studio depends on any of them, [open an issue](https://github.com/cavanpage/blissful-infra/issues) and they will move up.
+These are on the roadmap and not yet built. If your studio depends on one, [open an issue](https://github.com/cavanpage/blissful-infra/issues) and it moves up.

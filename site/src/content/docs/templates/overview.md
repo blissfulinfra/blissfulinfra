@@ -3,7 +3,7 @@ title: Templates Overview
 description: How blissful-infra templates work, what they generate, and how to extend them.
 ---
 
-Templates are the source code blueprints that `blissful-infra start` copies and customises to create your project. Each template is a complete, production-ready starting point for a specific technology stack.
+Templates are the source blueprints that `blissful-infra service add` copies and customises. Each is a complete starting point for one technology stack.
 
 ## Template locations
 
@@ -13,103 +13,93 @@ Templates live in `packages/cli/templates/` in the blissful-infra repository:
 packages/cli/templates/
 ├── spring-boot/          # Kotlin + Spring Boot backend
 ├── react-vite/           # React + Vite frontend
-├── lambda-python/        # Python serverless function (LocalStack)
-├── loki/                 # Log aggregation config
-├── prometheus/           # Metrics scrape config
-├── grafana/              # Pre-provisioned dashboards
-├── jenkins/              # Jenkins server configuration
-└── plugins/
-    └── ai-pipeline/      # AI/ML data platform plugin
+├── lambda-python/        # Python serverless function (not wired up — see below)
+├── gitops/               # Rollout, Services, ConfigMap, ArgoCD Application
+├── cluster/              # Terraform workspace for the kind cluster
+└── jenkins/              # Jenkins server configuration
 ```
+
+Observability configuration (Prometheus, Grafana, Loki, Tempo) is **not** templated — it is generated inline when a tenant's compose file is written, so it always matches the tenant's actual port block.
 
 ## Variable substitution
 
-Template files use `{{PROJECT_NAME}}` as a placeholder. When you run `blissful-infra start my-app`, every occurrence of `{{PROJECT_NAME}}` in every file is replaced with `my-app`. This affects:
-
-- Spring Boot application properties (`spring.application.name`)
-- Gradle project name and Docker image tags
-- Docker Compose container names and volume names
-- Database name and credentials
-- Kafka consumer group IDs
-- Nginx configuration
+Template files use `{{VAR_NAME}}` placeholders, replaced at scaffold time. This drives package names, image tags, container names, database schema names, Kafka consumer group IDs and more.
 
 ### Conditional blocks
 
-Templates also support conditional blocks based on the `--database` flag:
+Templates support conditional blocks:
 
 ```
 {{#IF_POSTGRES}}
-// This code is included when database is 'postgres' or 'postgres-redis'
 spring.datasource.url=jdbc:postgresql://postgres:5432/{{PROJECT_NAME}}
 {{/IF_POSTGRES}}
 
-{{#IF_REDIS}}
-// Included when database is 'redis' or 'postgres-redis'
-spring.data.redis.url=${REDIS_URL:redis://localhost:6379}
-{{/IF_REDIS}}
+{{#IF_KUBERNETES}}
+# Included only when the parent project uses --runtime kubernetes
+{{/IF_KUBERNETES}}
 ```
 
-Binary files (images, compiled assets, JARs) are copied as-is without substitution.
+The `IF_KUBERNETES` guard is how one template serves both runtimes — a service scaffolded into a kubernetes-runtime project gets different wiring from the same source files.
+
+Binary files (images, compiled assets, JARs) are copied without substitution.
 
 ## Available templates
 
-### Backend templates
+### Backend
 
 | Template | Language | Framework | Features |
-|----------|----------|-----------|---------|
+|---|---|---|---|
 | `spring-boot` | Kotlin | Spring Boot 3 | Kafka producer/consumer, WebSockets, JPA, Flyway, Actuator, OpenTelemetry |
-| `lambda-python` | Python | AWS Lambda (LocalStack) | Serverless function, deploy + invoke locally |
+| `lambda-python` | Python | AWS Lambda | Scaffolds, but the runtime wiring is [not ported to the tenant model yet](/templates/lambda-python) |
 
-Other stacks (FastAPI, Express, Go) are deliberately out of scope for now, they will land when there is a real, working template behind them rather than a placeholder. See the [Philosophy](/philosophy) page.
+Other stacks (FastAPI, Express, Go) are deliberately out of scope until there is a real working template behind them rather than a placeholder. See [Philosophy](/philosophy).
 
-### Frontend templates
+### Frontend
 
 | Template | Language | Framework | Features |
-|----------|----------|-----------|---------|
+|---|---|---|---|
 | `react-vite` | TypeScript | React + Vite | TailwindCSS, WebSocket client, chat UI, hot reload |
 
-### Infrastructure templates
+### Workers
 
-These are always included and are not selectable:
+Workers (`--type worker --runtime python|node|go`) currently scaffold a minimal placeholder rather than a full template.
 
-| Template | Purpose |
-|----------|---------|
-| `loki` | Loki log aggregation config + Promtail Docker socket scraper |
-| `prometheus` | Prometheus config scraping `backend:8080/actuator/prometheus` |
-| `grafana` | Datasource provisioning + 3 pre-built dashboards |
+### Infrastructure
+
+Not selectable — used automatically by the commands that need them:
+
+| Template | Used by |
+|---|---|
+| `gitops/service/` | [`deploy`](/commands/deploy) — Rollout, canary/stable Services, ConfigMap, ArgoCD Application |
+| `cluster/` | [`cluster up`](/commands/cluster) — the Terraform workspace |
+| `jenkins/` | The tenant's Jenkins container |
 
 ## The default example app
 
-All backend templates generate a working chat application to demonstrate the stack. When you first open your app, you can send messages through the React frontend and see them:
+Backend templates generate a working chat application to demonstrate the stack:
 
-1. Sent from the frontend to the backend via WebSocket
-2. Published to a Kafka topic by the backend
-3. Consumed by a Kafka listener in the backend
-4. Broadcast back to all connected WebSocket clients
-5. Persisted to Postgres (with `postgres` or `postgres-redis`)
-6. Served from the Redis cache on subsequent page loads (with `postgres-redis`)
+1. Sent from the frontend to the backend over WebSocket
+2. Published to a Kafka topic
+3. Consumed by a Kafka listener
+4. Broadcast back to all connected clients
+5. Persisted to the service's own Postgres schema
 
-This means you can observe Kafka message flow, cache hit/miss patterns, and distributed traces all from a working app, inside a single Grafana UI, before writing any code.
+So you can watch Kafka message flow and distributed traces in Grafana before writing any code.
+
+## A note on plugins
+
+Earlier versions had per-service plugins (`ai-pipeline`, `agent-service`, `keycloak`, `localstack`) enabled with a `--plugins` flag. **These were removed in 2.0** along with the client model, and their templates are gone from disk. The `--plugins` flag no longer exists.
+
+The `gatling` load-testing template is the only one still present, and it is not currently wired into `service add`.
 
 ## Extending templates
 
-You can modify the template files directly if you are working on blissful-infra itself (see [blissful-infra dev --templates](/commands/dev)).
+For project-specific changes, edit the generated files in your service directory under `~/.blissful-infra/tenants/<tenant>/projects/<project>/services/<service>/`. They are real files you own — blissful-infra does not regenerate or overwrite them after scaffolding.
 
-For project-specific customisation, edit the generated files in your project directory. They are real files you own, blissful-infra does not re-generate or overwrite them after `start`.
+To change the templates themselves, work in `packages/cli/templates/` in a checkout of the repository.
 
-## Plugins
+## See also
 
-Plugins extend the generated project with additional services. Unlike templates, plugins are additive, they add new containers to `docker-compose.yaml` and new directories to your project.
-
-| Plugin | What it adds |
-|--------|-------------|
-| `ai-pipeline` | FastAPI + scikit-learn classifier consuming Kafka events. Co-deploys ClickHouse (columnar store), MLflow (experiment tracking), and Mage (visual pipeline orchestrator). |
-| `agent-service` | Claude-powered agent service with workspace access. Reads logs, runs tools, and responds to structured task requests via HTTP API. |
-| `gatling` | JVM load-testing harness scoped to the service. Generates a baseline simulation against the backend. |
-
-Enable plugins at creation time:
-
-```bash
-blissful-infra start my-app --plugins ai-pipeline
-blissful-infra start my-app --plugins ai-pipeline,agent-service
-```
+- [Spring Boot template](/templates/spring-boot)
+- [React + Vite template](/templates/react-vite)
+- [`service`](/commands/service) — how templates get used

@@ -1,5 +1,7 @@
 # Blissful Infra Cloud. Hosted Tier Specification
 
+> **Unimplemented design (as of 2026-07-29).** Nothing in this spec ships. There is no hosted tier, no billing integration and no `blissful-infra.com` app hosting. The pricing table below is a proposal, not a live offer. Note also that `blissful-infra deploy` **already exists and means something else**: it deploys a service to the project's local Kubernetes runtime ([ADR-0020](../docs/adr/0020-local-kubernetes-runtime.md)), not to the cloud. Any hosted-tier work needs a different command name or an explicit target flag.
+
 ## Vision
 
 The same app you sandbox locally ships to real infrastructure with one command. No Terraform, no DevOps team, no cloud account required. blissful-infra Cloud is the natural next step after `blissful-infra start`, when you're ready to share your project with the world, you run `blissful-infra deploy` and it's live at `yourproject.blissful-infra.com` in under two minutes.
