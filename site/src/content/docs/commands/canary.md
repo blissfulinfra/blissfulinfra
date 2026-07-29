@@ -1,6 +1,6 @@
 ---
 title: blissful-infra canary
-description: Drive Argo Rollouts canary deployments on the tenant's kind cluster — status, promote, abort, pause, resume.
+description: Drive Argo Rollouts canary deployments on the tenant's kind cluster. status, promote, abort, pause, resume.
 ---
 
 `canary` drives the Argo Rollout that [`deploy`](/commands/deploy) starts. A rollout shifts traffic in steps and pauses between them; these commands let you promote early, hold, or abort back to stable.
@@ -13,7 +13,7 @@ blissful-infra canary status orders
 
 | Command | What it does |
 |---|---|
-| `canary status [service]` | Show rollout status — weight, step, health |
+| `canary status [service]` | Show rollout status: weight, step, health |
 | `canary promote [service]` | Promote to the next step, or fully with `--full` |
 | `canary abort [service]` | Abort the rollout and go back to stable |
 | `canary pause [service]` | Pause at the current step |
@@ -40,7 +40,7 @@ A rollout walks four weights with a pause after each of the first three:
 | 1 | 10% | 2m |
 | 2 | 25% | 2m |
 | 3 | 50% | 5m |
-| 4 | 100% | — |
+| 4 | 100% | - |
 
 Left alone, it walks the whole way on its own. The pauses exist so you have a window to look at the service under partial traffic and decide.
 
@@ -57,11 +57,11 @@ blissful-infra canary promote orders --full   # skip the rest, go to 100%
 blissful-infra canary abort orders
 ```
 
-Sends traffic back to the stable version immediately. The canary ReplicaSet is scaled down. This does not revert the gitops commit — the manifests in Gitea still describe the new version, so ArgoCD may re-sync it. To undo the deploy properly, use [`rollback`](/commands/rollback).
+Sends traffic back to the stable version immediately. The canary ReplicaSet is scaled down. This does not revert the gitops commit. The manifests in Gitea still describe the new version, so ArgoCD may re-sync it. To undo the deploy properly, use [`rollback`](/commands/rollback).
 
 ## Why pauses instead of metrics
 
-Argo Rollouts supports analysis steps that query Prometheus and promote or abort automatically. That needs an in-cluster Prometheus, which the current slice does not ship — the tenant's Prometheus runs on the compose side. So the rollout template uses timed pauses and leaves the judgement call to you.
+Argo Rollouts supports analysis steps that query Prometheus and promote or abort automatically. That needs an in-cluster Prometheus, which the current slice does not ship: the tenant's Prometheus runs on the compose side. So the rollout template uses timed pauses and leaves the judgement call to you.
 
 Wiring in-cluster Prometheus so analysis steps can come back is tracked as a follow-up in ADR-0020.
 
@@ -73,10 +73,10 @@ The Environments tab renders the same rollout as a card with a live weight bar, 
 blissful-infra dashboard up
 ```
 
-The card only appears for kubernetes-runtime projects — compose projects have no Rollout.
+The card only appears for kubernetes-runtime projects. Compose projects have no Rollout.
 
 ## See also
 
-- [`deploy`](/commands/deploy) — starts the rollout
-- [`rollback`](/commands/rollback) — revert the deploy commit
+- [`deploy`](/commands/deploy): starts the rollout
+- [`rollback`](/commands/rollback): revert the deploy commit
 - [The golden path](/guides/golden-path)

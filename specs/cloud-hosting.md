@@ -1,6 +1,8 @@
 # Blissful Infra Cloud. Hosted Tier Specification
 
-> **Unimplemented design (as of 2026-07-29).** Nothing in this spec ships. There is no hosted tier, no billing integration and no `blissful-infra.com` app hosting. The pricing table below is a proposal, not a live offer. Note also that `blissful-infra deploy` **already exists and means something else**: it deploys a service to the project's local Kubernetes runtime ([ADR-0020](../docs/adr/0020-local-kubernetes-runtime.md)), not to the cloud. Any hosted-tier work needs a different command name or an explicit target flag.
+> **Unimplemented design (as of 2026-07-29).** Nothing in this spec ships. There is no hosted tier, no billing integration and no `blissful-infra.com` app hosting. The pricing table below is a proposal, not a live offer, and the docs site makes no such claim.
+>
+> Note the distinction from what *did* ship. [ADR-0022](../docs/adr/0022-cloudflare-as-promotion-target.md) added `deploy <service> --target cloudflare`, which promotes a service to **the user's own Cloudflare account** using their own `wrangler` credentials. That is a bring-your-own-account deploy target, not a managed tier: no billing, no provisioning on our side, no `*.blissful-infra.com` domain. A hosted tier would still be net-new work on top.
 
 ## Vision
 

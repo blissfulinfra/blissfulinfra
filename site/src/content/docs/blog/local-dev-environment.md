@@ -1,6 +1,6 @@
 ---
 title: "Stop Paying for Cloud Dev Environments: Run Your Entire Stack Locally"
-description: How to run Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and distributed tracing on your laptop, for free, with one command.
+description: How to run Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD and distributed tracing on your laptop, for free, with one command.
 ---
 
 :::note[Written before blissful-infra 2.0]
@@ -9,7 +9,7 @@ The argument here still holds, but the **commands are out of date**. This post u
 For the current CLI, start at [Getting Started](/getting-started) or [The tenant model](/guides/tenant-model).
 :::
 
-Cloud development environments have become the default for teams building modern applications. Gitpod, GitHub Codespaces, and cloud-hosted staging environments make it easy to get started, but they come with a cost that compounds quickly: per-hour billing, slow feedback loops because your code has to travel to a data center and back, and a shared environment that breaks when a teammate pushes something bad.
+Cloud development environments have become the default for teams building modern applications. Gitpod, GitHub Codespaces and cloud-hosted staging environments make it easy to get started, but they come with a cost that compounds quickly: per-hour billing, slow feedback loops because your code has to travel to a data center and back, and a shared environment that breaks when a teammate pushes something bad.
 
 There's a better way. Everything your production stack needs can run on your laptop, and the feedback loop goes from minutes to seconds.
 
@@ -22,7 +22,7 @@ A modern production application isn't just a backend and a database. By the time
 - **A database** (Postgres for persistence, Redis for caching)
 - **A message bus** (Kafka for event-driven communication between services)
 - **Observability**: Prometheus for metrics, Grafana for dashboards, Tempo for distributed tracing, Loki for log aggregation (Grafana shows all three with click-through correlation)
-- **CI/CD**: Jenkins (or similar) for automated build, test, and deploy pipelines
+- **CI/CD**: Jenkins (or similar) for automated build, test and deploy pipelines
 - **A reverse proxy** (nginx to route traffic)
 
 Setting all of this up by hand takes days. Keeping it in sync across a team takes ongoing effort. And running it in the cloud costs money before you've written a single line of business logic.
@@ -34,7 +34,7 @@ npm install -g @blissful-infra/cli
 blissful-infra start my-app
 ```
 
-That's it. You have all of the above running locally, wired together, and accessible in your browser. No cloud account. No YAML to write. No DevOps knowledge required.
+That's it. You have all of the above running locally, wired together and accessible in your browser. No cloud account. No YAML to write. No DevOps knowledge required.
 
 Here's what gets created:
 
@@ -51,13 +51,13 @@ Here's what gets created:
 | Postgres | `localhost:5432` | Primary database |
 | Loki | `localhost:3100` | Log aggregation |
 
-Every service is pre-configured to talk to the others. Prometheus already knows where to scrape metrics. Grafana already has datasources for metrics, logs, and traces provisioned. Tempo already receives spans from the backend over OTLP. You don't connect any of it; it's connected.
+Every service is pre-configured to talk to the others. Prometheus already knows where to scrape metrics. Grafana already has datasources for metrics, logs and traces provisioned. Tempo already receives spans from the backend over OTLP. You don't connect any of it; it's connected.
 
 ## Why local beats cloud for development
 
 ### Feedback loops
 
-The single most important metric for developer productivity is how quickly you can go from "I changed code" to "I can see the result." In a cloud dev environment, that round trip involves your code leaving your machine, hitting a build server, deploying to a remote container, and the result coming back. Even with fast CI/CD that's 2 to 5 minutes.
+The single most important metric for developer productivity is how quickly you can go from "I changed code" to "I can see the result." In a cloud dev environment, that round trip involves your code leaving your machine, hitting a build server, deploying to a remote container and the result coming back. Even with fast CI/CD that's 2 to 5 minutes.
 
 Locally, with hot reload:
 
@@ -97,7 +97,7 @@ One of the hardest things to replicate locally is a proper observability setup. 
 
 ### Prometheus + Grafana
 
-The Spring Boot backend exposes metrics at `/actuator/prometheus`. Prometheus is pre-configured to scrape that endpoint every 15 seconds. Grafana has datasources and dashboards provisioned on startup. You open `localhost:3001` and JVM heap, HTTP request rate, and error rate are already graphed.
+The Spring Boot backend exposes metrics at `/actuator/prometheus`. Prometheus is pre-configured to scrape that endpoint every 15 seconds. Grafana has datasources and dashboards provisioned on startup. You open `localhost:3001` and JVM heap, HTTP request rate and error rate are already graphed.
 
 ```yaml
 # prometheus/prometheus.yml (pre-generated)
@@ -110,7 +110,7 @@ scrape_configs:
 
 ### Distributed tracing with Tempo
 
-The backend Dockerfile includes the OpenTelemetry Java agent. Every HTTP request and Kafka message automatically generates a trace span, exported via OTLP to Tempo. Open Grafana at `localhost:3001`, switch to the Explore tab, pick the Tempo datasource, and search for `service.name = backend` to see exactly how long each database query and downstream call took. Click any span to jump to the matching Loki log lines at that timestamp.
+The backend Dockerfile includes the OpenTelemetry Java agent. Every HTTP request and Kafka message automatically generates a trace span, exported via OTLP to Tempo. Open Grafana at `localhost:3001`, switch to the Explore tab, pick the Tempo datasource and search for `service.name = backend` to see exactly how long each database query and downstream call took. Click any span to jump to the matching Loki log lines at that timestamp.
 
 No instrumentation code to write. The agent handles it.
 
@@ -159,7 +159,7 @@ The dashboard at `localhost:3002` includes an AI chat interface that's connected
 - "Show me the slowest database queries in the last hour"
 - "What changed in the last deployment?"
 
-The agent reads your logs, metrics, and traces in real time. It's not answering from documentation; it's looking at your actual running system.
+The agent reads your logs, metrics and traces in real time. It answers from your actual running system rather than from documentation.
 
 ## From local to live
 

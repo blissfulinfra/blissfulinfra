@@ -1,6 +1,6 @@
 ---
 title: Spring Boot Template
-description: Kotlin + Spring Boot 3 backend with Kafka, JPA, WebSockets, and full observability.
+description: Kotlin + Spring Boot 3 backend with Kafka, JPA, WebSockets and full observability.
 ---
 
 The `spring-boot` template generates a production-ready Kotlin + Spring Boot 3 backend. It is the default when you add a backend service without specifying `--template`:
@@ -105,7 +105,7 @@ All of the above, plus:
 
 ### With `--database none`
 
-The JPA, Flyway, and repository layers are omitted entirely. The app runs without any database dependency.
+The JPA, Flyway and repository layers are omitted entirely. The app runs without any database dependency.
 
 ## Observability
 
@@ -113,7 +113,7 @@ The JPA, Flyway, and repository layers are omitted entirely. The app runs withou
 
 The Dockerfile copies the OpenTelemetry Java agent JAR into the image and adds `-javaagent:/otel-agent.jar` via `JAVA_TOOL_OPTIONS`. This instruments all HTTP requests, Kafka produces/consumes, and JDBC queries automatically. Traces are exported via OTLP/HTTP to Tempo at `http://tempo:4318` ([ADR-0016](https://github.com/cavanpage/blissful-infra/blob/main/docs/adr/0016-tempo-replaces-jaeger.md) replaced Jaeger with Tempo).
 
-Open Grafana at `http://localhost:3001`, switch to the Explore tab, pick the Tempo datasource, and search for `service.name = <project-name>-backend`. Click any span to jump to the matching Loki log lines at that timestamp.
+Open Grafana at `http://localhost:3001`, switch to the Explore tab, pick the Tempo datasource and search for `service.name = <project-name>-backend`. Click any span to jump to the matching Loki log lines at that timestamp.
 
 ### Metrics
 
@@ -166,6 +166,6 @@ On a kubernetes-runtime project, ship the change with
 through a canary rollout.
 
 Template development (editing the template source itself) is supported via the
-repo's `dev.sh` script — see the
+repo's `dev.sh` script. See the
 [repository README](https://github.com/cavanpage/blissful-infra) for the
 current workflow.

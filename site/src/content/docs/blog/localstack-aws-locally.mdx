@@ -4,7 +4,7 @@ description: Real AWS is the best way to learn AWS. The free tier doesn't go far
 ---
 
 :::note[Written before blissful-infra 2.0]
-The LocalStack and AWS free-tier reasoning here is unchanged. The **blissful-infra integration is not**: the LocalStack plugin and the `lambda` command were removed in 2.0 along with the client model. LocalStack still works perfectly well on its own — you just won't get it wired up by the CLI today.
+The LocalStack and AWS free-tier reasoning here is unchanged. The **blissful-infra integration is not**: the LocalStack plugin and the `lambda` command were removed in 2.0 along with the client model. LocalStack still works perfectly well on its own. You just won't get it wired up by the CLI today.
 
 For the current CLI, start at [Getting Started](/getting-started).
 :::
@@ -56,7 +56,7 @@ Costs are the harder problem, and they're harder than they should be:
   per-GB-of-storage + per-GB-IO. There's no unified "what does this cost
   per day" view until you set one up.
 - **The bill arrives weeks later.** Charges from May show up on the
-  June 1–15 invoice as cryptic line items grouped by service. By the
+  June 1-15 invoice as cryptic line items grouped by service. By the
   time you see "$47, EC2, us-east-1," you've forgotten what experiment
   ran in May.
 
@@ -81,7 +81,7 @@ state, which you can rebuild in 30 seconds.
 LocalStack is a single Docker container that listens on `localhost:4566`
 and pretends to be the AWS endpoint for ~70 services. Free tier covers the
 basics: S3, Lambda, DynamoDB, SQS, SNS, Kinesis, Step Functions, Secrets
-Manager. The Pro tier adds RDS, EKS, IAM enforcement, and a longer list of
+Manager. The Pro tier adds RDS, EKS, IAM enforcement and a longer list of
 specialized services.
 
 You point the AWS SDK at it the same way you'd point at a different region:

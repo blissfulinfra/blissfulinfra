@@ -39,7 +39,7 @@ The CLI's API server must be running (`blissful-infra dashboard` or `blissful-in
 ## Testing
 
 Playwright drives the built dashboard in headless chromium. There are no unit
-tests here — the app is one big component wired to `fetch`, so browser tests
+tests here. The app is one big component wired to `fetch`, so browser tests
 against the real bundle cost less than mocking React internals.
 
 ```bash
@@ -52,7 +52,7 @@ npm run test:e2e
 ```
 
 `npx playwright test` on its own skips the build and reuses whatever is in
-`dist/` — fine for iterating on a spec, wrong after touching `src/`.
+`dist/`: fine for iterating on a spec, wrong after touching `src/`.
 First run on a new machine needs `npx playwright install chromium`.
 
 **Layout:**
@@ -73,7 +73,7 @@ Unmatched paths return `{}` so nothing hangs. Two ways to change a response:
 // 1. Override a fixture for the whole test
 await mockApi(page, { canary: { canary: null } })
 
-// 2. Register a narrower route afterwards — Playwright runs the
+// 2. Register a narrower route afterwards. Playwright runs the
 //    most-recently-registered matching handler first
 await mockApi(page)
 await page.route('**/api/v1/projects/*/canary/promote*', route =>

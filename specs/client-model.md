@@ -1,6 +1,6 @@
 # Blissful Infra. Client Environment Model
 
-> **Historical (superseded 2026-05-14, removed in 2.0):** the client model described here was replaced by the tenant / project / service hierarchy in [ADR-0017](../docs/adr/0017-tenant-project-service-hierarchy.md). The `client` command and the v1 `service` commands **no longer exist** — they were deleted in the 2.0 cleanup, along with the client registries, compose generators and schemas. Nothing in this spec describes runnable behaviour. It is kept only for context on the isolation design, which the tenant model inherits.
+> **Historical (superseded 2026-05-14, removed in 2.0):** the client model described here was replaced by the tenant / project / service hierarchy in [ADR-0017](../docs/adr/0017-tenant-project-service-hierarchy.md). The `client` command and the v1 `service` commands **no longer exist**. They were deleted in the 2.0 cleanup, along with the client registries, compose generators and schemas. Nothing in this spec describes runnable behaviour. It is kept only for context on the isolation design, which the tenant model inherits.
 
 ## Vision
 

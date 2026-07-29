@@ -96,13 +96,13 @@ at the network boundary is both cheaper and closer to what users hit.
 
 **Location:** `packages/dashboard/e2e/`
 **Runner:** `@playwright/test` (chromium only)
-**Server under test:** `vite preview` serving `dist/` — the same static bundle
+**Server under test:** `vite preview` serving `dist/`, the same static bundle
 the CLI's API server ships. Playwright starts and stops it.
 **Speed:** ~3s for the whole suite. No Docker, no tenant on disk, no API server.
 
 Every `/api/v1/**` request is fulfilled from `e2e/fixtures/api.ts`. A spec that
 needs a different response either passes an override to `mockApi(page, {...})`
-or registers its own `page.route` afterwards — Playwright runs the
+or registers its own `page.route` afterwards. Playwright runs the
 most-recently-registered matching handler first.
 
 The dashboard carries a handful of `data-testid` landmarks (`sidebar`,

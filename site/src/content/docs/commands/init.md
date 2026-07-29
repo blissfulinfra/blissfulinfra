@@ -13,7 +13,7 @@ blissful-infra init
 
 | Flag | What it does |
 |---|---|
-| `-y`, `--skip-prompts` | Accept all defaults — creates tenant `dev`, project `main` and a `spring-boot` backend service called `api`, then starts everything |
+| `-y`, `--skip-prompts` | Accept all defaults: creates tenant `dev`, project `main` and a `spring-boot` backend service called `api`, then starts everything |
 | `--no-start` | Scaffold only; skip the `tenant up` at the end |
 
 ## What it does
@@ -57,7 +57,7 @@ blissful-infra dashboard up    # the web UI at localhost:3002
 
 ## See also
 
-- [`use`](/commands/use) — set a persistent tenant/project context
-- [`tenant`](/commands/tenant) — manage tenants directly
-- [`project`](/commands/project) — manage projects directly
-- [`service`](/commands/service) — add and run services
+- [`use`](/commands/use): set a persistent tenant/project context
+- [`tenant`](/commands/tenant): manage tenants directly
+- [`project`](/commands/project): manage projects directly
+- [`service`](/commands/service): add and run services

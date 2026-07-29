@@ -63,7 +63,7 @@ The generated frontend is a chat UI that connects to the backend via WebSocket. 
 const { messages, sendMessage, connected } = useWebSocket('/ws/chat');
 ```
 
-The hook handles connection state, message queuing during reconnect, and cleanup on unmount.
+The hook handles connection state, message queuing during reconnect and cleanup on unmount.
 
 ## Vite configuration
 
@@ -89,7 +89,7 @@ The Dockerfile uses a two-stage build:
 1. **Build stage**: Node.js image, runs `npm ci && npm run build`, produces a `dist/` directory
 2. **Serve stage**: nginx alpine image, copies `dist/` to `/usr/share/nginx/html`
 
-The result is a minimal image (typically 25–40 MB) containing only nginx and the built static files.
+The result is a minimal image (typically 25-40 MB) containing only nginx and the built static files.
 
 ## nginx integration
 
@@ -133,7 +133,7 @@ blissful-infra service down web && blissful-infra service up web
 ```
 
 Editing the *template* source itself (`packages/cli/templates/react-vite/`) is
-supported via the repo's `dev.sh` script — see the
+supported via the repo's `dev.sh` script. See the
 [repository README](https://github.com/cavanpage/blissful-infra) for the
 current workflow.
 

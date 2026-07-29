@@ -1,9 +1,9 @@
 ---
 title: blissful-infra tenant
-description: Manage tenants — the top level of the hierarchy. A tenant owns the dashboard, Jenkins, the observability stack and optionally a Kubernetes cluster.
+description: Manage tenants. the top level of the hierarchy. A tenant owns the dashboard, Jenkins, the observability stack and optionally a Kubernetes cluster.
 ---
 
-A **tenant** is the top level of the hierarchy. It maps to an organization and owns the shared platform services: Jenkins, Prometheus, Grafana, Tempo, Loki, and optionally a local Kubernetes cluster.
+A **tenant** is the top level of the hierarchy. It maps to an organization and owns the shared platform services: Jenkins, Prometheus, Grafana, Tempo, Loki and optionally a local Kubernetes cluster.
 
 ```bash
 blissful-infra tenant create acme
@@ -16,7 +16,7 @@ blissful-infra tenant up
 |---|---|
 | `tenant create <name>` | Create a new tenant |
 | `tenant list` | List all tenants |
-| `tenant status [name]` | Show tenant detail — projects, services, ports |
+| `tenant status [name]` | Show tenant detail: projects, services, ports |
 | `tenant up [name]` | Start the tenant's infrastructure |
 | `tenant down [name]` | Stop the tenant's infrastructure |
 | `tenant remove [name]` | Remove a tenant and **all** its projects and services |
@@ -53,7 +53,7 @@ blissful-infra tenant up acme
 blissful-infra tenant down acme
 ```
 
-Starts or stops the tenant's own compose stack (`docker-compose.tenant.yaml`) — Jenkins and observability. This does **not** start the projects inside it; use [`project up`](/commands/project) for those.
+Starts or stops the tenant's own compose stack (`docker-compose.tenant.yaml`): Jenkins and observability. This does **not** start the projects inside it; use [`project up`](/commands/project) for those.
 
 ## tenant remove
 
@@ -80,10 +80,10 @@ Each tenant gets a deterministic port block derived from its index, so tenants n
 
 The second tenant gets 3001, 3101, 3201 and so on. `blissful-infra tenant status` prints the real allocation.
 
-The dashboard is not in this table because it is host-level, not per-tenant — one dashboard on `localhost:3002` manages every tenant.
+The dashboard is not in this table because it is host-level, not per-tenant. One dashboard on `localhost:3002` manages every tenant.
 
 ## See also
 
-- [`project`](/commands/project) — the next level down
-- [`cluster`](/commands/cluster) — give a tenant a Kubernetes cluster
-- [`use`](/commands/use) — set a default tenant
+- [`project`](/commands/project): the next level down
+- [`cluster`](/commands/cluster): give a tenant a Kubernetes cluster
+- [`use`](/commands/use): set a default tenant

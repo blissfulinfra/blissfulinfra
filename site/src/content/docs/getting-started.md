@@ -7,9 +7,9 @@ blissful-infra gives you a production-grade sandbox on your laptop: backend, fro
 
 ## Prerequisites
 
-- **Node.js 20 or newer** — the CLI is a Node.js package (`engines: >=20.0.0`)
-- **Docker Desktop**, running — every service is a container
-- **4 GB free RAM** recommended; the full stack with monitoring uses ~2–3 GB
+- **Node.js 20 or newer**: the CLI is a Node.js package (`engines: >=20.0.0`)
+- **Docker Desktop**, running: every service is a container
+- **4 GB free RAM** recommended; the full stack with monitoring uses ~2-3 GB
 
 That is everything you need for the default compose runtime. The [Kubernetes runtime](#going-further-the-kubernetes-runtime) needs three more tools, covered below.
 
@@ -43,10 +43,10 @@ blissful-infra organises everything into three levels. It is worth understanding
 | Level | Maps to | Owns |
 |---|---|---|
 | **Tenant** | Organization | Dashboard, Jenkins, observability stack (Prometheus, Grafana, Tempo, Loki), optionally a Kubernetes cluster |
-| **Project** | Domain | Kafka event bus, Postgres, API gateway, isolated Docker network, and a runtime |
+| **Project** | Domain | Kafka event bus, Postgres, API gateway, isolated Docker network and a runtime |
 | **Service** | Bounded context | One process, with its own database schema |
 
-[The full model →](/guides/tenant-model)
+[The full model](/guides/tenant-model)
 
 ## Doing it by hand
 
@@ -106,6 +106,7 @@ blissful-infra service add orders --type backend --no-database
 | Template | `--type` | Stack |
 |---|---|---|
 | `spring-boot` | `backend` | Kotlin + Spring Boot 3 + Kafka + Actuator + OpenTelemetry |
+| `hono` | `backend` | TypeScript + Hono. Runs in a container locally and promotes to Cloudflare Workers |
 | `react-vite` | `frontend` | React + Vite + TypeScript + TailwindCSS |
 | `lambda-python` | `backend` | Python serverless handler *(template on disk; the tenant-model port is still open)* |
 
@@ -129,7 +130,7 @@ blissful-infra project down           # stop the project's infrastructure
 blissful-infra tenant down            # stop the tenant's CI and observability
 ```
 
-Stopping and restarting is cheap — the stack is fully containerised, so you can tear a project down mid-experiment and bring it back where it was.
+Stopping and restarting is cheap. The stack is fully containerised, so you can tear a project down mid-experiment and bring it back where it was.
 
 ## The dashboard
 
@@ -137,7 +138,7 @@ Stopping and restarting is cheap — the stack is fully containerised, so you ca
 blissful-infra dashboard up
 ```
 
-One dashboard at `http://localhost:3002` manages every tenant: live service health, Loki-backed logs, Prometheus metrics, deployment history, a system topology graph and an AI chat tab. [More on the dashboard →](/commands/dashboard)
+One dashboard at `http://localhost:3002` manages every tenant: live service health, Loki-backed logs, Prometheus metrics, deployment history, a system topology graph and an AI chat tab. [More on the dashboard](/commands/dashboard)
 
 ## Where things live
 
@@ -172,19 +173,19 @@ brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-roll
 Then:
 
 ```bash
-blissful-infra cluster up                              # ~3–5 min first run
+blissful-infra cluster up                              # ~3-5 min first run
 blissful-infra project create shop --runtime kubernetes
 blissful-infra service add orders --type backend
 blissful-infra deploy orders
 ```
 
-[Walk the golden path →](/guides/golden-path)
+[Walk the golden path](/guides/golden-path)
 
 ## Next steps
 
-- [The tenant model](/guides/tenant-model) — how tenants, projects and services fit together
-- [The golden path](/guides/golden-path) — Kubernetes, ArgoCD and canary deploys end to end
-- [Commands: init](/commands/init) — every flag on the wizard
-- [Commands: service](/commands/service) — adding and running services
-- [Commands: dashboard](/commands/dashboard) — the local control plane
-- [Templates overview](/templates/overview) — what lives inside each template
+- [The tenant model](/guides/tenant-model): how tenants, projects and services fit together
+- [The golden path](/guides/golden-path): Kubernetes, ArgoCD and canary deploys end to end
+- [Commands: init](/commands/init): every flag on the wizard
+- [Commands: service](/commands/service): adding and running services
+- [Commands: dashboard](/commands/dashboard): the local control plane
+- [Templates overview](/templates/overview): what lives inside each template

@@ -45,8 +45,9 @@ blissful-infra service add web --type frontend
 | Backend | Best for |
 |---|---|
 | [`spring-boot`](/templates/spring-boot) | Long-running HTTP API, JPA + Postgres, Kafka producer and consumer, mature JVM observability |
+| `hono` | TypeScript, and the only backend that can be promoted to Cloudflare Workers |
 
-Frontend is [React + Vite](/templates/react-vite). Workers come in Python, Node and Go. Other frameworks are deliberately out of scope until they're real — see [Philosophy](/philosophy).
+Frontend is [React + Vite](/templates/react-vite). Workers come in Python, Node and Go. Other frameworks are deliberately out of scope until they're real. See [Philosophy](/philosophy).
 
 ```bash
 blissful-infra service add orders --type backend --template spring-boot
@@ -78,7 +79,7 @@ blissful-infra project create shop --no-kafka --no-redis
 
 ## When you want to explore deployment
 
-If the thing you're actually prototyping is the *delivery* pipeline — GitOps, canary rollouts, rollback semantics — switch a project to the Kubernetes runtime:
+If the thing you're actually prototyping is the *delivery* pipeline (GitOps, canary rollouts, rollback semantics), switch a project to the Kubernetes runtime:
 
 ```bash
 brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-rollouts
@@ -91,4 +92,4 @@ blissful-infra deploy orders
 
 ## When to read the theory
 
-If you hit something you don't understand — a Kafka consumer-group rebalance, a JPA cascade, a Prometheus histogram quantile — that's when the [Learn path](/paths/learn) becomes useful. The build path gets you running; the learn path explains why each piece looks the way it does.
+If you hit something you don't understand (a Kafka consumer-group rebalance, a JPA cascade, a Prometheus histogram quantile), that's when the [Learn path](/paths/learn) becomes useful. The build path gets you running; the learn path explains why each piece looks the way it does.

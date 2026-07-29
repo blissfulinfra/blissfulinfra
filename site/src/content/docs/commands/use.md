@@ -42,7 +42,7 @@ Commands that take tenant/project coordinates resolve them in this order:
 
 1. An explicit `--tenant` / `--project` flag on the command
 2. The context stored by `use`
-3. For some commands, a registry scan — if exactly one project contains the named service, it is used
+3. For some commands, a registry scan: if exactly one project contains the named service, it is used
 
 This means an explicit flag always wins, so you can reach across to another tenant for a single command without disturbing your context:
 
@@ -55,6 +55,6 @@ The context is stored in `~/.blissful-infra/context.json`.
 
 ## See also
 
-- [`status`](/commands/status) — see what exists across all tenants
-- [`tenant`](/commands/tenant) — manage tenants
-- [`project`](/commands/project) — manage projects
+- [`status`](/commands/status): see what exists across all tenants
+- [`tenant`](/commands/tenant): manage tenants
+- [`project`](/commands/project): manage projects

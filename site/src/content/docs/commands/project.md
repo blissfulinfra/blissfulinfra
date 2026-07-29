@@ -1,9 +1,9 @@
 ---
 title: blissful-infra project
-description: Manage projects — a domain inside a tenant. A project owns Kafka, Postgres, the API gateway and an isolated Docker network, and picks a compose or kubernetes runtime.
+description: Manage projects. a domain inside a tenant. A project owns Kafka, Postgres, the API gateway and an isolated Docker network, and picks a compose or kubernetes runtime.
 ---
 
-A **project** is a domain inside a tenant. It owns the data infrastructure its services share: a Kafka event bus, Postgres, an API gateway, and an isolated Docker network.
+A **project** is a domain inside a tenant. It owns the data infrastructure its services share: a Kafka event bus, Postgres, an API gateway and an isolated Docker network.
 
 ```bash
 blissful-infra project create shop
@@ -15,12 +15,12 @@ blissful-infra project create shop
 |---|---|
 | `project create [tenant] <name>` | Create a project inside a tenant |
 | `project list [tenant]` | List projects in a tenant |
-| `project status [tenant] [name]` | Show project detail — services, ports |
+| `project status [tenant] [name]` | Show project detail: services, ports |
 | `project up [tenant] [name]` | Start the project's infrastructure |
 | `project down [tenant] [name]` | Stop the project's infrastructure |
 | `project remove [tenant] [name]` | Remove a project and all its services |
 
-The tenant argument is optional everywhere — it resolves from your [`use`](/commands/use) context when omitted. So both of these work:
+The tenant argument is optional everywhere. It resolves from your [`use`](/commands/use) context when omitted. So both of these work:
 
 ```bash
 blissful-infra project create shop           # tenant from context
@@ -68,6 +68,6 @@ Plus exporter sidecars on 9121 (Redis), 9187 (Postgres) and 9308 (Kafka). The ne
 
 ## See also
 
-- [`tenant`](/commands/tenant) — the level above
-- [`service`](/commands/service) — the level below
-- [`cluster`](/commands/cluster) — required before `--runtime kubernetes`
+- [`tenant`](/commands/tenant): the level above
+- [`service`](/commands/service): the level below
+- [`cluster`](/commands/cluster): required before `--runtime kubernetes`

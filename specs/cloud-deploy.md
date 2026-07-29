@@ -1,6 +1,12 @@
 # Cloud Deploy. Design Spec
 
-> **Unimplemented design (as of 2026-07-29).** No cloud deploy path exists — `deploy.ts` contains no Cloudflare, Vercel or AWS code. `blissful-infra deploy` deploys to the local kind cluster via GitOps ([ADR-0020](../docs/adr/0020-local-kubernetes-runtime.md)). Companion to [cloud-hosting.md](cloud-hosting.md); both need a command-name decision before implementation.
+> **Superseded in part by [ADR-0022](../docs/adr/0022-cloudflare-as-promotion-target.md) (updated 2026-07-29).** Cloudflare deploy **now ships**, but not in the shape this spec describes. Read the ADR first; the differences matter.
+>
+> What shipped: `blissful-infra deploy <service> --target cloudflare` promotes **one service at a time**, keyed to the tenant/project/service model, restricted to the `hono` (Workers) and `react-vite` (Pages) templates. Config lives in `service.yaml` under `deploy.cloudflare`.
+>
+> What this spec got wrong: it assumes a whole-project deploy driven by `blissful-infra.yaml` (the flat model, deleted in 2.0), a `deployProject()` dispatcher (deleted), and module mapping for Kafka to CF Queues and Redis to KV (not built; a promoted service simply loses Kafka and the project's Postgres). It also predates the finding that `spring-boot` and `lambda-python` can never run on Workers.
+>
+> Still unimplemented: the **Vercel** and **AWS** targets. AWS is the live follow-up, since ECS/Fargate suits the container-shaped services Cloudflare structurally cannot host. The Vercel and AWS sections below remain the design sketch for those.
 
 Local prototype → cloud deploy in one command. No Terraform, no DevOps team required.
 

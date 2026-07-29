@@ -1,15 +1,15 @@
 ---
 title: "A Developer's Guide to IAM: Authentication, Authorization, and RBAC in Modern Web Apps"
-description: Learn the difference between authentication and authorization, how JWT and OAuth2/OIDC work, how to implement RBAC, and how to run a full IAM stack locally with Keycloak and Spring Boot.
+description: Learn the difference between authentication and authorization, how JWT and OAuth2/OIDC work, how to implement RBAC and how to run a full IAM stack locally with Keycloak and Spring Boot.
 ---
 
 :::note[Written before blissful-infra 2.0]
-The IAM concepts in this post — authentication, authorization, JWT, OAuth2/OIDC, RBAC — are unchanged and stand on their own. The **blissful-infra commands are not**: this was written against the pre-2.0 CLI, and the Keycloak plugin it uses was removed in 2.0 along with the client model. There is currently no built-in local Keycloak setup.
+The IAM concepts in this post (authentication, authorization, JWT, OAuth2/OIDC, RBAC) are unchanged and stand on their own. The **blissful-infra commands are not**: this was written against the pre-2.0 CLI, and the Keycloak plugin it uses was removed in 2.0 along with the client model. There is currently no built-in local Keycloak setup.
 
 For the current CLI, start at [Getting Started](/getting-started).
 :::
 
-Identity and Access Management (IAM) is one of those topics that every developer knows they need to understand, but the surface area is wide enough that most people piece it together from Stack Overflow answers and half-understood OAuth flows. This guide covers the core concepts clearly, shows you how a real IAM stack fits together, and walks through running it locally with one command.
+Identity and Access Management (IAM) is one of those topics that every developer knows they need to understand, but the surface area is wide enough that most people piece it together from Stack Overflow answers and half-understood OAuth flows. This guide covers the core concepts clearly, shows you how a real IAM stack fits together and walks through running it locally with one command.
 
 ## Authentication vs Authorization
 
@@ -142,7 +142,7 @@ Keycloak is the de facto open source IAM solution. It handles everything:
 
 In production, Keycloak runs in front of all your services. For local development, you run it in Docker.
 
-A Keycloak **realm** is an isolated namespace, one per application (or per environment). A realm has users, clients, and roles.
+A Keycloak **realm** is an isolated namespace, one per application (or per environment). A realm has users, clients and roles.
 
 A **client** represents an application that uses Keycloak for auth. Your Spring Boot API is a confidential client. Your React frontend is a public client (can't keep secrets).
 
@@ -171,7 +171,7 @@ Services after adding the plugin:
 | Backend API | `http://localhost:8080` | Spring Boot (validates JWTs) |
 | Frontend | `http://localhost:3000` | React (acquires tokens) |
 
-The admin console is at `http://localhost:8001/admin`. Username `admin`, password `admin`. This is where you manage users, roles, and clients in a visual UI.
+The admin console is at `http://localhost:8001/admin`. Username `admin`, password `admin`. This is where you manage users, roles and clients in a visual UI.
 
 ---
 
@@ -390,4 +390,4 @@ blissful-infra start my-app --plugins keycloak
 
 Admin console is at `http://localhost:8001/admin`. The Spring Boot backend validates tokens automatically. Test users for each role are pre-created.
 
-[Get started](/getting-started) or [view all plugins](/getting-started#choosing-your-stack)
+[Get started](/getting-started) or [see the available templates](/getting-started#choosing-a-stack)

@@ -37,7 +37,7 @@ It also keeps the audit trail honest: the repo shows a deploy followed by a reve
 
 ## The escape hatch
 
-`--immediate` runs `kubectl-argo-rollouts undo` directly. It is faster, and useful when you need traffic moved *now* and will fix the repo afterwards — but it does not survive selfHeal.
+`--immediate` runs `kubectl-argo-rollouts undo` directly. It is faster, and useful when you need traffic moved *now* and will fix the repo afterwards, but it does not survive selfHeal.
 
 ```bash
 blissful-infra rollback orders --immediate              # list revisions
@@ -56,6 +56,6 @@ Shows which commit would be reverted without touching the repo.
 
 ## See also
 
-- [`deploy`](/commands/deploy) — what you are undoing
-- [`canary`](/commands/canary) — abort an in-flight rollout instead
+- [`deploy`](/commands/deploy): what you are undoing
+- [`canary`](/commands/canary): abort an in-flight rollout instead
 - [The golden path](/guides/golden-path)

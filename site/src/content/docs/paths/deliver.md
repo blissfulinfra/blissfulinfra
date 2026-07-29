@@ -16,7 +16,7 @@ Each **tenant** is a fully isolated environment with its own:
 - Port block, so nothing collides with any other tenant
 - Optionally, its own Kubernetes cluster
 
-Inside a tenant you create **projects** — one per domain — each owning its own Kafka, Postgres, API gateway and Docker network. Inside those you add **services**.
+Inside a tenant you create **projects**, one per domain, each owning its own Kafka, Postgres, API gateway and Docker network. Inside those you add **services**.
 
 ```bash
 blissful-infra tenant create acme-corp
@@ -40,7 +40,7 @@ blissful-infra status
 | Onboarding a new one | Provision N services by hand | One command |
 | Tearing down a finished engagement | Cancel N subscriptions and hope you got them all | `tenant remove` |
 | Reproducibility for the next dev | "Hope you have the same plan tier" | Recreate from the same commands |
-| Vendor lock-in | High | None — open source underneath |
+| Vendor lock-in | High | None, open source underneath |
 
 ## Practical workflow
 
@@ -65,14 +65,14 @@ blissful-infra project create main --no-kafka --no-redis
 
 A tenant holds up to 10 projects, and a project up to 20 services. Ports are derived rather than assigned, so the limits exist to keep the port blocks non-overlapping rather than because of any runtime constraint.
 
-The practical limit is your laptop's RAM — the full stack for one tenant runs around 2–3 GB, so plan on running a couple of tenants at a time rather than ten.
+The practical limit is your laptop's RAM. The full stack for one tenant runs around 2-3 GB, so plan on running a couple of tenants at a time rather than ten.
 
 ## Where this goes next
 
 The deliver path gets more powerful with:
 
-- **Per-tenant resource visibility** — which tenant's stack is consuming what
-- **Templated tenant onboarding** — a standard starter you scaffold per engagement
-- **The studio layer** — a level above tenants for the organisation running them
+- **Per-tenant resource visibility**: which tenant's stack is consuming what
+- **Templated tenant onboarding**: a standard starter you scaffold per engagement
+- **The studio layer**: a level above tenants for the organisation running them
 
 These are on the roadmap and not yet built. If your studio depends on one, [open an issue](https://github.com/cavanpage/blissful-infra/issues) and it moves up.

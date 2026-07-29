@@ -1,6 +1,6 @@
 ---
 title: The compose runtime
-description: The default runtime — every service is a container on the project's isolated Docker network, with Kafka, Postgres, observability and CI wired in.
+description: The default runtime. every service is a container on the project's isolated Docker network, with Kafka, Postgres, observability and CI wired in.
 ---
 
 The default runtime. Every service is a container on its project's isolated Docker network, with the full infrastructure set wired in. Nothing to install beyond Docker.
@@ -41,7 +41,7 @@ None of this is opt-in. A service you scaffold is observable from the moment it 
 
 ## Isolation
 
-Each project gets its own Docker network. Services in different projects cannot reach each other directly — they go through the gateway or the event bus. Each tenant's containers, volumes and port block are separate from every other tenant's.
+Each project gets its own Docker network. Services in different projects cannot reach each other directly. They go through the gateway or the event bus. Each tenant's containers, volumes and port block are separate from every other tenant's.
 
 This is what makes running several unrelated things on one laptop workable: two tenants can both have a service called `api` on a project called `main`, and nothing collides.
 
@@ -56,7 +56,7 @@ blissful-infra project down      # stop Kafka, Postgres, gateway
 blissful-infra tenant down       # stop CI and observability
 ```
 
-Stopping and restarting costs nothing — everything is containerised, so you can tear a project down mid-experiment and bring it back where it was.
+Stopping and restarting costs nothing. Everything is containerised, so you can tear a project down mid-experiment and bring it back where it was.
 
 ## Trimming the stack
 
@@ -92,5 +92,5 @@ These are plain compose files. Read them, edit them, learn from them.
 ## See also
 
 - [The tenant model](/guides/tenant-model)
-- [The golden path](/guides/golden-path) — the other runtime
+- [The golden path](/guides/golden-path): the other runtime
 - [`service`](/commands/service) · [`project`](/commands/project)
