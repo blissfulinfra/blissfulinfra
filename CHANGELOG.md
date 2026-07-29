@@ -32,6 +32,19 @@ golden path (ADR-0020).
 - Tenant port blocks gain `kubeApi`/`argocd`/`gitea` (lazily backfilled
   on existing registries).
 - CI now runs the test suite (previously build + typecheck only).
+- **MCP server rebuilt as an in-process control plane** ([ADR-0021](docs/adr/0021-mcp-in-process-control-plane.md)):
+  21 tenant-model tools covering discovery, scaffolding, lifecycle, the
+  Kubernetes golden path (`cluster_up`, `deploy_service`, `canary_status`,
+  `canary_control`) and observability. Long operations return a job id
+  polled with `get_job` instead of blocking past the client timeout.
+- **Cloudflare promotion target** ([ADR-0022](docs/adr/0022-cloudflare-as-promotion-target.md)):
+  `deploy <service> --target cloudflare` ships frontends to Pages and
+  `hono` backends to Workers, provisioning declared D1/KV bindings.
+- **`hono` backend template** — TypeScript app whose `src/app.ts` avoids
+  `node:*`, so one source tree runs under Node in the container (compose
+  and kubernetes runtimes) and on Cloudflare Workers.
+- `service.yaml` gains an optional `deploy.cloudflare` block
+  (`workerName`, `pagesProject`, `accountId`, `d1Database`, `kvNamespace`).
 
 ### Changed
 - `deploy`, `rollback`, `canary` and `pipeline` take tenant coordinates
@@ -39,8 +52,10 @@ golden path (ADR-0020).
   rest). Namespace convention: the project name; rollout name: the
   service name.
 - `service up` on a kubernetes-runtime project delegates to `deploy`.
-- Rollout manifests probe `/actuator/health` (the previous manifests
-  probed `/ready`/`/live`, which the Spring Boot template never served).
+- Rollout manifests probe a per-template health path rendered from
+  `service.yaml` (`spring-boot` → `/actuator/health`, `hono` → `/health`,
+  frontend → `/`). It was hardcoded to the actuator path, which would have
+  left every non-Spring service permanently failing readiness.
 - Jenkins pipeline URLs resolve from the tenant's port block instead of
   a hardcoded `localhost:8081`.
 
@@ -55,6 +70,14 @@ golden path (ADR-0020).
 - Per-service plugin scaffolding (`ai-pipeline`, `agent-service`,
   `gatling`, `keycloak`, `localstack` templates) and the `mcp --client`
   flag.
+- The `mcp --api` flag and the old flat-model tool surface
+  (`list_projects`, `create_project`, `start_project`, `get_health`,
+  `query_agent`, …). `start_project` had been dead since the flat-model
+  purge — it shelled a command that no longer existed.
+- The unreachable flat-model cloud deploy modules (`deploy/index.ts`,
+  `deploy/vercel.ts`, `deploy/aws.ts`). Nothing imported `deployProject`;
+  they were keyed to the purged `blissful-infra.yaml` and stale against
+  wrangler v4. AWS returns as a `--target` per ADR-0022.
 - Legacy k8s manifests under `templates/spring-boot/k8s/` (replaced by
   `templates/gitops/service/`) and the Jenkinsfile kubectl/argocd
   stages — CI is off the deploy critical path.

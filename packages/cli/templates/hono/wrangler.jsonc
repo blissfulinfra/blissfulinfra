@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "{{PROJECT_NAME}}",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "SERVICE_NAME": "{{PROJECT_NAME}}"
+  }
+  // Bindings are added by `blissful-infra deploy --target cloudflare` when the
+  // service declares deploy.cloudflare.d1Database / kvNamespace in service.yaml.
+  // The project's Postgres does not exist on Cloudflare — use D1 instead.
+}
