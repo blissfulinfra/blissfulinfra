@@ -32,6 +32,13 @@ golden path (ADR-0020).
 - Tenant port blocks gain `kubeApi`/`argocd`/`gitea` (lazily backfilled
   on existing registries).
 - CI now runs the test suite (previously build + typecheck only).
+- **Dashboard browser tests**: a Playwright suite (`packages/dashboard/e2e/`)
+  drives the production bundle in headless chromium with every `/api/v1/**`
+  response stubbed at the network boundary, so it needs no Docker, no API
+  server and no tenant on disk. Covers the shell, tenant switching, project
+  detail, service health, the pipeline/deployments/environments tabs and the
+  canary card. Runs as its own `e2e` CI job on every push and PR; locally via
+  `npm run test:e2e`.
 - **MCP server rebuilt as an in-process control plane** ([ADR-0021](docs/adr/0021-mcp-in-process-control-plane.md)):
   21 tenant-model tools covering discovery, scaffolding, lifecycle, the
   Kubernetes golden path (`cluster_up`, `deploy_service`, `canary_status`,

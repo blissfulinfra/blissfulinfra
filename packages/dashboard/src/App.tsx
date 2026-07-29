@@ -1939,7 +1939,7 @@ function App() {
 
       <div className="flex h-[calc(100vh-73px)]">
         {/* Sidebar - Tenant overview + Projects in this tenant */}
-        <aside className="w-80 border-r border-gray-800 p-4 flex flex-col">
+        <aside data-testid="sidebar" className="w-80 border-r border-gray-800 p-4 flex flex-col">
           {links.clientName && (
             <button
               onClick={() => {
@@ -1972,6 +1972,8 @@ function App() {
               {projects.map((project) => (
                 <div
                   key={project.name}
+                  data-testid="project-card"
+                  data-project={project.name}
                   className={`group bg-gray-800 rounded-lg p-3 cursor-pointer transition-colors ${
                     selectedProject?.name === project.name
                       ? 'ring-2 ring-blue-500'
@@ -2091,7 +2093,7 @@ function App() {
           ) : selectedProject ? (
             <>
               {/* Project Header */}
-              <div className="border-b border-gray-800 p-4">
+              <div data-testid="project-detail" className="border-b border-gray-800 p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-lg font-semibold">{selectedProject.name}</h2>
@@ -2137,7 +2139,7 @@ function App() {
 
                 {/* Service Health */}
                 {currentHealth.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 mt-3">
+                  <div data-testid="service-health" className="flex flex-wrap gap-2 mt-3">
                     {currentHealth.map((service) => {
                       const svcMeta = selectedProject.services.find(s => s.name === service.name)
                       return (
@@ -2205,7 +2207,7 @@ function App() {
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-gray-800">
+              <div data-testid="tab-nav" className="flex border-b border-gray-800">
                 <button
                   onClick={() => setActiveTab('logs')}
                   className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
@@ -2909,7 +2911,7 @@ function App() {
               ) : activeTab === 'environments' ? (
                 <div className="flex-1 overflow-auto p-6 space-y-4">
                   {canary && (
-                    <div className="bg-gray-800 rounded-lg p-4">
+                    <div data-testid="canary-card" className="bg-gray-800 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <h3 className="font-medium">Canary Rollout</h3>
