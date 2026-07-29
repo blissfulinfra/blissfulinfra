@@ -8,7 +8,7 @@
 - **Gateway route generation (ADR-0018, proposed):** every project ships a Caddy gateway with a placeholder Caddyfile; the registry-generated path-prefix routing model awaits review/implementation.
 - User session analytics (ClickHouse + Kafka pipeline + frontend SDK + dashboard Sessions tab), designed in [specs/analytics.md](specs/analytics.md) — spec predates the tenant model and needs a re-read before building.
 - **Compliance-grade audit logging (ADR-0011)** and **data governance / DSAR (ADR-0012)** remain proposed; both were written in client-model vocabulary and should be re-scoped to tenant/project levels before implementation.
-- **L3 integration coverage:** the client-model L3 suite went with the purge. A `k8s-golden-path` integration test (gated on kind+terraform being installed) is the intended replacement; until then the golden path is verified manually per the README quickstart.
+- **L3 integration coverage:** the client-model L3 suite went with the purge. A `k8s-golden-path` integration test (gated on kind+terraform being installed) is the intended replacement; until then the golden path is verified manually per the README quickstart. The dashboard half of the golden path (canary card, environments, deploy actions) is now covered by the Playwright suite against a stubbed API.
 
 ## What this repo is
 
@@ -159,12 +159,14 @@ needed). Run L3 before pushing or when changing code that touches Docker.
 |---|---|---|---|---|
 | **L1** | Schema validation + pure logic | `src/**/__tests__/*.test.ts` | ~ms | `npm test` |
 | **L2** | Compose YAML correctness (real `docker compose config`) | `src/utils/__tests__/*.test.ts` | ~hundreds of ms | `npm test` |
+| **L2.5** | Dashboard in a real browser, API stubbed at the network boundary | `packages/dashboard/e2e/*.spec.ts` | ~seconds | `npm run test:e2e` |
 | **L3** | End-to-end (real Docker, real client/service lifecycle) | `src/__tests__/integration/**/*.test.ts` | ~minutes | `npm run test:integration` |
 
 **Root scripts:**
 ```bash
 npm test              # L1 + L2: fast, run on every save / before commit
 npm run test:watch    # vitest watch mode in packages/cli
+npm run test:e2e      # L2.5: Playwright against the built dashboard, no Docker
 npm run test:integration   # L3: real Docker, slow, before push
 npm run test:all      # everything
 ```
@@ -180,6 +182,7 @@ npm run test:all      # everything
 **When to add what:**
 - Changed a schema or pure function → add an L1 test
 - Changed a compose generator → add an L2 assertion (parse the YAML, assert structure)
+- Changed a dashboard tab, panel or API call → add an L2.5 spec (see [packages/dashboard/CLAUDE.md](packages/dashboard/CLAUDE.md))
 - Changed `client create` / `service add` flow → existing L3 covers; add a new L3 only for new flows
 
 ---

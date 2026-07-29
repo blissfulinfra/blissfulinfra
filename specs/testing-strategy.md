@@ -86,14 +86,37 @@ Highest-value targets in `packages/cli/src/utils/`:
 
 These are pure-ish functions with file I/O, use a temp directory (`os.tmpdir()` + unique suffix) for tests that write files. No Docker required.
 
-### packages/dashboard. Component Tests
+### packages/dashboard. Browser Tests
 
-Vitest + `@testing-library/react`. Test the data transformation and display logic, not the full render tree.
+**Shipped (2026-07-28).** Playwright, not `@testing-library/react`. The whole
+app is one 3800-line component driven by `fetch` against the CLI API server,
+so component-level rendering tests would need more mocking than the thing they
+test. Driving the real production bundle in a real browser with the API stubbed
+at the network boundary is both cheaper and closer to what users hit.
 
-Priority targets:
-- Deployment row: renders correct status badge, latency delta color, trace explorer link (Grafana / Tempo per ADR-0016)
-- Metrics chart: handles empty data gracefully, renders with mocked Recharts
-- Type safety: TypeScript compilation with shared schema types is test enough for most UI shapes
+**Location:** `packages/dashboard/e2e/`
+**Runner:** `@playwright/test` (chromium only)
+**Server under test:** `vite preview` serving `dist/` — the same static bundle
+the CLI's API server ships. Playwright starts and stops it.
+**Speed:** ~3s for the whole suite. No Docker, no tenant on disk, no API server.
+
+Every `/api/v1/**` request is fulfilled from `e2e/fixtures/api.ts`. A spec that
+needs a different response either passes an override to `mockApi(page, {...})`
+or registers its own `page.route` afterwards — Playwright runs the
+most-recently-registered matching handler first.
+
+The dashboard carries a handful of `data-testid` landmarks (`sidebar`,
+`project-card`, `project-detail`, `tab-nav`, `service-health`, `canary-card`)
+so specs anchor on structure instead of Tailwind classes. Add one when a new
+panel needs a stable handle; do not sprinkle them on every element.
+
+Current coverage:
+- **Shell:** header, tenant badge, Grafana / ArgoCD / Gitea links, sidebar project list, empty state, tenant switching, and the API-server-is-down path
+- **Project detail:** stack summary, lifecycle button enablement, live service health overriding stale registry status, log streaming, and the pipeline / deployments / environments tabs
+- **Canary (ADR-0020):** status, step counter, traffic split, promote / promote-full / abort posting to the right endpoint, the error modal on a failed promotion, and the card being absent for compose-runtime projects
+
+Not covered yet: metrics charts (Recharts in a headless browser is slow and
+low-value), the AI chat tab, the in-dashboard terminal, and the ontology graph.
 
 ---
 
@@ -334,7 +357,7 @@ export default defineConfig({
 
 | Trigger | Tests run |
 |---|---|
-| Every commit / PR | Unit tests + schema tests + API contract tests |
+| Every commit / PR | Unit tests + schema tests + API contract tests + dashboard Playwright suite |
 | PR to `main` | + Integration tests (requires Docker) |
 | Nightly | + Template smoke tests (all templates × database variants) |
 | Pre-release | + E2E tests |

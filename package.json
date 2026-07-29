@@ -37,7 +37,8 @@
     "test": "npm run test -w packages/shared && npm run test -w packages/cli",
     "test:watch": "npm run test:watch -w packages/cli",
     "test:integration": "npm run build:cli && npm run test:integration -w packages/cli",
-    "test:all": "npm run test && npm run test:integration"
+    "test:e2e": "npm run build:shared && npm run test:e2e -w packages/dashboard",
+    "test:all": "npm run test && npm run test:e2e && npm run test:integration"
   },
   "engines": {
     "node": ">=20.0.0"
