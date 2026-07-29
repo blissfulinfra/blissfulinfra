@@ -67,6 +67,7 @@ The dashboard is **host-level** since the ADR-0017 revision of 2026-05-26 (`util
 |---|---|---|
 | `cluster up/down/status` | `cluster.ts` | Terraform-provision the tenant's kind cluster (ArgoCD + Argo Rollouts + Gitea) |
 | `deploy <service>` | `deploy.ts` → `deploy/kubernetes.ts` | Build → kind load → gitops push → ArgoCD sync → Rollout canary |
+| `deploy <service> --target cloudflare` | `deploy.ts` → `deploy/cloudflare.ts` | Promote to Cloudflare Workers (hono backends) or Pages (frontends), [ADR-0022](../../docs/adr/0022-cloudflare-as-promotion-target.md) |
 | `canary status/promote/abort/pause/resume/test` | `canary.ts` | Drive the Argo Rollout (namespace = project, rollout = service) |
 | `rollback <service>` | `rollback.ts` | GitOps revert (default) or `--immediate` kubectl-argo-rollouts undo |
 
@@ -162,17 +163,40 @@ The dashboard fetches from `http://localhost:3002`. Jenkins pipelines reach it a
 
 ---
 
-## MCP server (`src/server/mcp.ts`)
+## MCP server (`src/server/mcp/`)
 
-Implements the Model Context Protocol over **stdio** transport, designed to be spawned as a subprocess by Claude Desktop / Claude Code / Cursor, not exposed over a network port. Internally a thin shim: each MCP tool proxies to a `/api/v1/...` endpoint on the API server (`list_projects`, `get_logs`, `query_logs`, `get_metrics`, `get_health`, `trigger_build`, `deploy`, pipeline / environments / plugins tools).
+Implements the Model Context Protocol over **stdio**, spawned as a subprocess by Claude Desktop / Claude Code / Cursor. Not a network service, and since [ADR-0021](../../docs/adr/0021-mcp-in-process-control-plane.md) **not** an HTTP shim over the API server either — it calls this package's own library layer.
 
-**Tenant auto-scoping:** every proxied request gets `?tenant=<default>` appended unless the path already carries one. The default resolves from `context.json`, then falls back to the first tenant in `registry.json`, then to none (legacy flat mode). Resolution is cached for the life of the process, restart the MCP server after `blissful-infra use <other-tenant>`.
+```
+src/server/mcp/
+├── index.ts    # createMcpServer: registers the 21 tools
+├── coords.ts   # tenant/project/service resolution + actionable CoordinateError
+├── inspect.ts  # read helpers (tree, pods, containers, links)
+└── jobs.ts     # subprocess runner + in-memory job registry
+```
+
+**Three execution modes**, picked by what the operation needs:
+- **In-process** — registry reads, coordinate resolution, rollout status, links, logs.
+- **CLI subprocess, awaited** (`runCli`) — fast mutations. Subprocess, not a direct call, because the command actions print via chalk/ora and **this process's stdout is the JSON-RPC stream**. Never `console.log` in MCP code.
+- **CLI subprocess as a job** (`startJob`) — `cluster_up`, `deploy_service`, lifecycle. Returns a `jobId`; the agent polls `get_job`.
+
+**Coordinate resolution** (`coords.ts`) fills `tenant`/`project`/`service` from the `use` context, **re-read on every call** so `blissful-infra use` takes effect without a restart. Failures throw `CoordinateError` naming what does exist — an agent has no terminal, so the error string is its only chance to self-correct. Passing a *project* name where a service is expected is explicitly rejected (it used to silently return an empty payload).
+
+### Tool surface
+
+| Group | Tools |
+|---|---|
+| Discovery | `get_context` (start here — full tenant/project/service tree + runtimes + cluster state), `set_context`, `describe_service`, `get_links` |
+| Scaffolding | `create_tenant`, `create_project`, `add_service` |
+| Lifecycle | `tenant_lifecycle`, `project_lifecycle`, `service_lifecycle` (each `up`/`down`/`remove`) |
+| Kubernetes (ADR-0020) | `cluster_up`, `cluster_down`, `cluster_status`, `deploy_service`, `rollback_service`, `canary_status`, `canary_control` |
+| Observability / CI | `get_logs`, `run_pipeline` |
+| Jobs | `get_job`, `list_jobs` |
 
 ### Wiring it up
 
 ```bash
-blissful-infra mcp                             # default: host dashboard on :3002, auto-starts it if down
-blissful-infra mcp --api http://localhost:3013 # explicit URL override
+blissful-infra mcp    # no flags: no port, no dashboard, no --api
 ```
 
 The dashboard's own AI chat uses the same server: in Docker the chat runs `claude -p` with `/app/.mcp.json` (`--mcp-config` + `--allowed-tools mcp__blissful-infra`), so the agent retrieves logs/metrics on demand instead of relying on prompt stuffing (see `utils/claude.ts`).
@@ -194,7 +218,14 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ### Verification harness
 
-`scripts/mcp-verify.mjs` and `scripts/mcp-verify-client.mjs` spawn the MCP server, perform the handshake, list tools, and call `list_projects` / `get_health`. Use these for smoke-testing after any change to api.ts or mcp.ts.
+`scripts/mcp-verify.mjs` spawns the MCP server, handshakes, asserts the tool surface, then exercises the read tools against whatever is in `BLISSFUL_HOME` — including the error paths that used to return empty success payloads. `--deep` adds a dry-run deploy. Run it after any change to `src/server/mcp/`.
+
+```bash
+node scripts/mcp-verify.mjs          # read-only
+node scripts/mcp-verify.mjs --deep   # + dry-run deploy
+```
+
+Unit coverage lives in `src/server/mcp/__tests__/` (coordinate resolution, job registry).
 
 ---
 

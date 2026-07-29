@@ -8,10 +8,13 @@ import {
 } from "../utils/tenant-registry.js";
 import { DeployTargetError, PrereqMissingError, DeployFailedError } from "../deploy/errors.js";
 
+export type DeployTarget = "kubernetes" | "cloudflare";
+
 export interface DeployCommandOptions {
   tenant?: string;
   project?: string;
   tag?: string;
+  target?: DeployTarget;
   dryRun?: boolean;
 }
 
@@ -58,7 +61,13 @@ async function resolveServiceCoords(
 }
 
 /**
- * Deploy a service. Routes on the parent project's runtime:
+ * Deploy a service.
+ *
+ * `--target cloudflare` promotes the service to Cloudflare (Workers for a
+ * backend, Pages for a frontend) regardless of the project's local runtime —
+ * local kind is the rehearsal, Cloudflare is production (ADR-0022).
+ *
+ * Otherwise the target follows the parent project's runtime:
  *
  *   kubernetes → build image, kind-load it into the tenant's cluster, push
  *                rendered manifests to the tenant's gitops repo, ArgoCD syncs,
@@ -73,6 +82,11 @@ export async function deployAction(
   const runtime = await readProjectRuntime(coords.tenant, coords.project);
 
   try {
+    if (opts.target === "cloudflare") {
+      const { deployCloudflare } = await import("../deploy/cloudflare.js");
+      await deployCloudflare(coords, { tag: opts.tag, dryRun: opts.dryRun });
+      return;
+    }
     if (runtime === "kubernetes") {
       const { deployKubernetes } = await import("../deploy/kubernetes.js");
       await deployKubernetes(coords, { tag: opts.tag, dryRun: opts.dryRun });
@@ -82,6 +96,8 @@ export async function deployAction(
       `Project '${coords.project}' runs on the compose runtime — there is nothing to deploy.\n` +
       `Use the service lifecycle instead:\n` +
       `  blissful-infra service up ${coords.service}\n` +
+      `Deploy it to Cloudflare:\n` +
+      `  blissful-infra deploy ${coords.service} --target cloudflare\n` +
       `Or create a kubernetes-runtime project (kind + ArgoCD + Argo Rollouts):\n` +
       `  blissful-infra project create <name> --runtime kubernetes`,
     );
@@ -102,11 +118,12 @@ export async function deployAction(
 export { resolveServiceCoords };
 
 export const deployCommand = new Command("deploy")
-  .description("Deploy a service to the project's kubernetes runtime (kind + ArgoCD + Argo Rollouts)")
+  .description("Deploy a service — locally to kind + ArgoCD, or to Cloudflare with --target cloudflare")
   .argument("[service]", "Service name (resolves through `use` context)")
   .option("--tenant <tenant>", "Tenant (defaults to context)")
   .option("--project <project>", "Project (defaults to context, falls back to registry scan)")
   .option("--tag <tag>", "Image tag (defaults to the service's git short SHA)")
+  .option("--target <target>", "Deploy target: kubernetes (default, follows the project runtime) or cloudflare")
   .option("--dry-run", "Show what would be deployed without making any changes")
   .action(async (service: string | undefined, opts: DeployCommandOptions) => {
     await deployAction(service, opts);

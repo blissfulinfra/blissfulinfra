@@ -45,6 +45,7 @@ interface ServiceAddV2Options {
   skipPrompts?: boolean;
 }
 
+const BACKEND_TEMPLATES: BackendTemplate[] = ["spring-boot", "lambda-python", "hono"];
 const DEFAULT_BACKEND_TEMPLATE: BackendTemplate = "spring-boot";
 const DEFAULT_FRONTEND_TEMPLATE: FrontendTemplate = "react-vite";
 const DEFAULT_WORKER_RUNTIME: WorkerRuntime = "python";
@@ -205,8 +206,8 @@ function buildServiceConfig(input: BuildServiceConfigInput): unknown {
   switch (input.type) {
     case "backend": {
       const template = (input.template as BackendTemplate | undefined) ?? DEFAULT_BACKEND_TEMPLATE;
-      if (!["spring-boot", "lambda-python"].includes(template)) {
-        throw new Error(`Unknown backend template '${template}' (expected spring-boot or lambda-python)`);
+      if (!BACKEND_TEMPLATES.includes(template)) {
+        throw new Error(`Unknown backend template '${template}' (expected ${BACKEND_TEMPLATES.join(", ")})`);
       }
       return { ...base, backend: { template }, database };
     }
@@ -485,7 +486,7 @@ serviceCommandV2
   .argument("[arg2]", "Service name, or project name when followed by more args")
   .argument("[arg3]", "Service name (when tenant + project are also given)")
   .requiredOption("-t, --type <type>", "Service type: backend, frontend, or worker")
-  .option("--template <name>", "Backend: spring-boot|lambda-python | Frontend: react-vite")
+  .option("--template <name>", "Backend: spring-boot|lambda-python|hono | Frontend: react-vite")
   .option("--runtime <runtime>", "Worker runtime: python|node|go")
   .option("--no-database", "Skip the auto-allocated Postgres schema (backends/workers only)")
   .option("-y, --skip-prompts", "Skip prompts; accept defaults")

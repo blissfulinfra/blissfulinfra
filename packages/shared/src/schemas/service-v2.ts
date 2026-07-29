@@ -32,7 +32,14 @@ const PostgresIdentifierSchema = z
 
 export const ServiceTypeSchema = z.enum(["backend", "frontend", "worker"]);
 
-export const BackendTemplateSchema = z.enum(["spring-boot", "lambda-python"]);
+/**
+ * `hono` is the only backend template that runs on Cloudflare Workers: it
+ * targets the Web-standard fetch handler, so the same source runs under Node
+ * in a container (compose / kubernetes runtimes) and on Workers (ADR-0022).
+ * spring-boot is a JVM app and lambda-python a Python one — neither has a
+ * Workers runtime.
+ */
+export const BackendTemplateSchema = z.enum(["spring-boot", "lambda-python", "hono"]);
 export const FrontendTemplateSchema = z.enum(["react-vite"]);
 export const WorkerRuntimeSchema = z.enum(["python", "node", "go"]);
 
@@ -61,6 +68,28 @@ export const ServiceDatabaseSchema = z.object({
   migrations: z.boolean().default(true),
 });
 
+/**
+ * Cloudflare promotion target (ADR-0022). Absent until the service has been
+ * configured for it; every field defaults from the service coordinates at
+ * deploy time, so an empty block is a valid "use the conventions" opt-in.
+ */
+export const CloudflareDeploySchema = z.object({
+  /** Worker name for backends/workers. Defaults to <project>-<service>. */
+  workerName: z.string().optional(),
+  /** Pages project name for frontends. Defaults to <project>-<service>. */
+  pagesProject: z.string().optional(),
+  /** Explicit account when the wrangler login has access to several. */
+  accountId: z.string().optional(),
+  /** D1 database to create and bind. Omit for stateless services. */
+  d1Database: z.string().optional(),
+  /** KV namespace to create and bind. */
+  kvNamespace: z.string().optional(),
+});
+
+export const ServiceDeploySchema = z.object({
+  cloudflare: CloudflareDeploySchema.optional(),
+});
+
 export const ServiceConfigV2Schema = z.object({
   type: z.literal("service"),
   name: NameSchema,
@@ -77,6 +106,8 @@ export const ServiceConfigV2Schema = z.object({
   database: ServiceDatabaseSchema.optional(),
   /** Service-scoped plugins (gatling, agent-service, etc.). */
   plugins: z.array(z.string()).default([]),
+  /** Remote deploy targets. Local runtime is the project's concern, not this. */
+  deploy: ServiceDeploySchema.optional(),
   /** Per-service role overrides. Inherits project + tenant roles if unset. */
   roles: RolesSchema.optional(),
 }).superRefine((s, ctx) => {
@@ -125,5 +156,7 @@ export type BackendBlock      = z.infer<typeof BackendBlockSchema>;
 export type FrontendBlock     = z.infer<typeof FrontendBlockSchema>;
 export type WorkerBlock       = z.infer<typeof WorkerBlockSchema>;
 export type ServiceDatabase   = z.infer<typeof ServiceDatabaseSchema>;
+export type CloudflareDeploy  = z.infer<typeof CloudflareDeploySchema>;
+export type ServiceDeploy     = z.infer<typeof ServiceDeploySchema>;
 export type ServiceConfigV2   = z.infer<typeof ServiceConfigV2Schema>;
 export type ServicePorts      = z.infer<typeof ServicePortsSchema>;
