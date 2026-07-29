@@ -51,25 +51,26 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
-          # Spring Boot actuator serves /actuator/health; the scaffolded app
-          # has no /ready or /live endpoints.
+          # Health path varies by template — Spring Boot serves
+          # /actuator/health, hono serves /health. Rendered from the service's
+          # service.yaml; the scaffolded apps have no separate /ready or /live.
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: {{HEALTH_PATH}}
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: {{HEALTH_PATH}}
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 3
           startupProbe:
             httpGet:
-              path: /actuator/health
+              path: {{HEALTH_PATH}}
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5

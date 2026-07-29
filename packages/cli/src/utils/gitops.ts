@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { getTenantDir } from "./tenant-registry.js";
+import { getTenantDir, readServiceConfig } from "./tenant-registry.js";
 import { getTemplateDir } from "./template.js";
 
 export interface GitopsCoords {
@@ -48,6 +48,29 @@ export async function ensureCheckout(tenant: string, pushUrl: string): Promise<s
 
 const MANIFEST_VAR = /\{\{([A-Z_]+)\}\}/g;
 
+/** Where each backend template serves its health check. */
+const HEALTH_PATHS: Record<string, string> = {
+  "spring-boot": "/actuator/health",
+  "lambda-python": "/health",
+  hono: "/health",
+};
+
+/**
+ * Probe path for a service's Rollout. Reading service.yaml keeps the k8s
+ * manifests correct for any template; an unreadable config falls back to the
+ * Spring Boot path, which is what every pre-existing deployment used.
+ */
+async function resolveHealthPath(coords: GitopsCoords): Promise<string> {
+  try {
+    const config = await readServiceConfig(coords.tenant, coords.project, coords.service);
+    if (config.serviceType === "frontend") return "/";
+    const template = config.backend?.template;
+    return (template && HEALTH_PATHS[template]) ?? "/actuator/health";
+  } catch {
+    return "/actuator/health";
+  }
+}
+
 /**
  * Render templates/gitops/service/ into projects/<project>/<service>/ inside
  * the gitops checkout. Returns the manifest dir.
@@ -65,6 +88,7 @@ export async function renderServiceManifests(
     IMAGE_NAME: imageName,
     IMAGE_TAG: imageTag,
     GITOPS_REPO_URL: gitopsRepoUrl,
+    HEALTH_PATH: await resolveHealthPath(coords),
   };
   const srcDir = getTemplateDir("gitops/service");
   const destDir = serviceManifestDir(coords);

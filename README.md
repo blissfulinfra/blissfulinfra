@@ -1,6 +1,6 @@
 <div align="center">
 
-# blissful-infra
+# Blissful Infra
 
 **An enterprise sandbox on your laptop.**
 
@@ -114,7 +114,7 @@ Backends get a dedicated Postgres schema on the project's instance (DDD by const
 
 ## MCP server
 
-`blissful-infra mcp` exposes the whole surface (projects, health, logs, metrics, deployments, pipelines) as Model Context Protocol tools for Claude Desktop / Claude Code:
+`blissful-infra mcp` lets Claude drive the golden path — provision a cluster, deploy a service, watch the canary, promote or abort — as Model Context Protocol tools for Claude Desktop / Claude Code:
 
 ```json
 {
@@ -124,12 +124,27 @@ Backends get a dedicated Postgres schema on the project's instance (DDD by const
 }
 ```
 
+21 tools across discovery (`get_context` returns the whole tenant/project/service tree), scaffolding, lifecycle, Kubernetes (`cluster_up`, `deploy_service`, `canary_control`) and observability. Long operations like `cluster_up` return a job id to poll, so nothing hangs the client. No dashboard, port or API server needed ([ADR-0021](docs/adr/0021-mcp-in-process-control-plane.md)).
+
+## Ship to production: Cloudflare
+
+Local kind is the rehearsal; Cloudflare is production. The same service promotes without changing its local runtime:
+
+```bash
+blissful-infra service add orders --type backend --template hono
+blissful-infra deploy orders                        # local: kind + ArgoCD + canary
+blissful-infra deploy orders --target cloudflare    # production: Workers
+```
+
+Frontends go to Pages, `hono` backends go to Workers. The `hono` template keeps its app code free of `node:*` imports, so one source tree runs in the container *and* on Workers. `spring-boot` and `lambda-python` are JVM and CPython, which Workers cannot run — promoting one fails immediately with that explanation rather than a wrangler error. Needs `wrangler` and `wrangler login`; see [ADR-0022](docs/adr/0022-cloudflare-as-promotion-target.md) for the D1-instead-of-Postgres caveat.
+
 ## Commands
 
 | Group | Commands |
 |---|---|
 | Hierarchy | `init`, `use`, `tenant create/list/status/up/down/remove`, `project create/list/status/up/down/remove`, `service add/remove/up/down/logs` |
 | Kubernetes | `cluster up/down/status`, `deploy`, `canary status/promote/abort/pause/resume/test`, `rollback` |
+| Cloud | `deploy <service> --target cloudflare` |
 | CI | `pipeline`, `jenkins`, `status` |
 | Intelligence | `agent`, `analyze`, `suggest`, `generate`, `mcp`, `dashboard` |
 | Resilience | `perf`, `chaos`, `compare` *(deferred — still keyed to the pre-2.0 flat model)* |
