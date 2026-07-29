@@ -18,6 +18,13 @@ templates/
 │   ├── Jenkinsfile       # CI pipeline (build/test/scan; deploys are CLI-driven)
 │   ├── build.gradle.kts  # Gradle build: Kotlin, Spring Boot, Kafka, JPA
 │   └── k6/               # k6 load test scripts
+├── hono/                 # TypeScript backend that runs on Node AND on Workers
+│   ├── src/app.ts        # the app — imports nothing from node:*, which is what
+│   │                     # makes it portable between the two entry points
+│   ├── src/server.ts     # Node entry (@hono/node-server, :8080) — container image
+│   ├── src/worker.ts     # Cloudflare Workers entry (default-exports the app)
+│   ├── wrangler.jsonc    # Workers config for `deploy --target cloudflare`
+│   └── Dockerfile        # node:20-alpine, serves /health on 8080
 ├── react-vite/           # React + Vite + TypeScript + TailwindCSS frontend
 │   ├── src/              # React app (pages, components, hooks, lib)
 │   ├── Dockerfile        # nginx-based production image
@@ -81,8 +88,14 @@ string replace (no conditional blocks):
   provider versions are pinned here — bump them here.
 - `gitops/service/` → rendered by `utils/gitops.ts` into the tenant's gitops
   checkout on first `deploy`. Vars: `TENANT_NAME`, `PROJECT_NAME`,
-  `SERVICE_NAME`, `IMAGE_NAME`, `IMAGE_TAG`, `GITOPS_REPO_URL`. Subsequent
-  deploys only rewrite the kustomization `newTag`.
+  `SERVICE_NAME`, `IMAGE_NAME`, `IMAGE_TAG`, `GITOPS_REPO_URL`, `HEALTH_PATH`.
+  Subsequent deploys only rewrite the kustomization `newTag`.
+
+  `HEALTH_PATH` is derived from the service's own `service.yaml`
+  (`spring-boot` → `/actuator/health`, `hono` → `/health`, frontend → `/`),
+  defaulting to the actuator path. It was hardcoded to the actuator path
+  before, which would have left every non-Spring service permanently failing
+  its readiness probe.
 
 ---
 
@@ -109,6 +122,21 @@ The Jenkinsfile is the most complex template. Key behaviors:
 - Kubernetes-runtime deploys do NOT go through Jenkins — `blissful-infra deploy` owns that path (ADR-0020).
 
 ---
+
+## Hono template specifics
+
+The only template that can reach Cloudflare Workers ([ADR-0022](../../../docs/adr/0022-cloudflare-as-promotion-target.md)) — Workers runs Web-standard fetch handlers on a V8 isolate, so `spring-boot` (JVM) and `lambda-python` (CPython) are structurally ineligible.
+
+- **Portability rule:** `src/app.ts` must never import from `node:*`. That single constraint is what lets `src/server.ts` (Node, container) and `src/worker.ts` (Workers) share it. Breaking it breaks the Cloudflare path silently until deploy time.
+- **Port 8080** in the container, matching the Rollout's `containerPort`.
+- **Health:** `/health` (rendered into the Rollout probes via `HEALTH_PATH`).
+- **Cloudflare config:** `wrangler.jsonc` carries the name and compatibility date; per-service overrides (worker name, D1, KV, account) live in `service.yaml` under `deploy.cloudflare`.
+- **No Kafka or project Postgres on Workers.** A promoted service loses those bindings; D1 is the substitute. This is the sharpest edge in the promotion model.
+
+```bash
+blissful-infra service add orders --type backend --template hono
+blissful-infra deploy orders --target cloudflare
+```
 
 ## React Vite template specifics
 

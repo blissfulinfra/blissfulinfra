@@ -67,6 +67,8 @@ Use `_template.md` as a starting point.
 | [0018](./0018-caddy-as-project-api-gateway.md) | Caddy as the project-level API gateway | Proposed | 2026-07-21 |
 | [0019](./0019-studio-level-infra-and-plane-tracker.md) | Studio-level infrastructure layer with Plane (renumbered from 0016) | Proposed | 2026-05-05 |
 | [0020](./0020-local-kubernetes-runtime.md) | Local Kubernetes runtime: kind + Terraform + ArgoCD + Argo Rollouts + Gitea | Accepted | 2026-07-27 |
+| [0021](./0021-mcp-in-process-control-plane.md) | The MCP server is an in-process control plane, not an HTTP shim | Accepted | 2026-07-28 |
+| [0022](./0022-cloudflare-as-promotion-target.md) | Cloudflare is a promotion target, and Hono is the template that can reach it | Accepted | 2026-07-28 |
 
 When you add an ADR, append a row to this index in the same PR.
 

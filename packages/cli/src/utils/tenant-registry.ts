@@ -6,6 +6,8 @@ import {
   ProjectConfigSchema,
   type ProjectConfig,
   type ProjectRuntime,
+  ServiceConfigV2Schema,
+  type ServiceConfigV2,
   TenantRegistrySchema,
   type TenantRegistry,
   type RegistryTenantEntry,
@@ -394,6 +396,22 @@ export async function findServiceProject(
 export async function readProjectConfig(tenant: string, project: string): Promise<ProjectConfig> {
   const raw = await fs.readFile(path.join(getProjectDir(tenant, project), "project.yaml"), "utf-8");
   return ProjectConfigSchema.parse(yaml.load(raw));
+}
+
+/** Parse services/<service>/service.yaml (throws if missing or invalid). */
+export async function readServiceConfig(
+  tenant: string,
+  project: string,
+  service: string,
+): Promise<ServiceConfigV2> {
+  const raw = await fs.readFile(path.join(getServiceDir(tenant, project, service), "service.yaml"), "utf-8");
+  return ServiceConfigV2Schema.parse(yaml.load(raw));
+}
+
+/** Rewrite service.yaml, preserving every field the caller didn't change. */
+export async function writeServiceConfig(config: ServiceConfigV2): Promise<void> {
+  const file = path.join(getServiceDir(config.tenant, config.project, config.name), "service.yaml");
+  await fs.writeFile(file, yaml.dump(ServiceConfigV2Schema.parse(config)), "utf-8");
 }
 
 /** The project's runtime; defaults to compose when the config is unreadable. */
