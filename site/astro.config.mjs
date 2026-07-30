@@ -106,6 +106,7 @@ export default defineConfig({
             { label: 'pipeline', link: '/commands/pipeline' },
             { label: 'jenkins', link: '/commands/jenkins' },
             { label: 'dashboard', link: '/commands/dashboard' },
+            { label: 'mcp', link: '/commands/mcp' },
           ],
         },
         {

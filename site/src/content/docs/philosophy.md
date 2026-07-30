@@ -7,13 +7,15 @@ blissful-infra is opinionated about a few things. Those opinions shape what gets
 
 ## Real services, not vendor emulation
 
-Whenever a real open-source equivalent exists, blissful-infra runs the real thing. Keycloak, not a Cognito mock. Postgres, not a managed-RDS feel-alike. Kafka, not an SQS shim. The exception is [LocalStack](https://localstack.cloud/) for AWS-API-shaped services where the wire protocol is itself the contract. There's no portable equivalent for Lambda event shapes or S3's signed-URL semantics, so emulating the API is the right call.
+Whenever a real open-source equivalent exists, blissful-infra runs the real thing. Keycloak for IAM, not a mock. Postgres for persistence, not an emulator. Kafka for events, not a shim. Prometheus for metrics, Grafana for visualization, ArgoCD for GitOps. The point is operational reality, not API surface memorization.
 
-This matters because emulators teach you the API surface, but real services teach you operational reality. Running Postgres locally exposes you to connection pooling, vacuum behavior and index bloat. The things you actually need to know. Running an emulator that pretends to be Postgres only teaches you what queries to write.
+This matters because real services teach you what actually breaks at scale. Running Postgres locally exposes you to connection pooling, vacuum behavior and index bloat. The things you actually need to know. An emulator that mimics the wire protocol only teaches you what queries to write. You graduate to the managed equivalent later knowing what it's hiding from you.
+
+**Note on AWS:** LocalStack used to be bundled to emulate AWS Lambda and S3 shapes locally, but the plugin system and client model that scaffolded it were removed in 2.0. AWS services are out of scope for the current architecture. If you're learning AWS patterns, using real AWS with a free-tier account and tight spend limits is the way to go.
 
 ## No paid tiers, no upsells
 
-blissful-infra never bundles or recommends a paid tier. Not LocalStack Pro, not Datadog, not Confluent Cloud. The aim is "production-grade local infrastructure with zero ongoing cost." Anything that requires a license either has an open-source equivalent that ships instead, or stays out of scope until one exists.
+blissful-infra never bundles or recommends a paid tier. Not Datadog, not Confluent Cloud, not Auth0. The aim is "production-grade local infrastructure with zero ongoing cost." Anything that requires a license either has an open-source equivalent that ships instead, or stays out of scope until one exists.
 
 This is a deliberate choice, not an ideological one. The audiences blissful-infra serves (students, working engineers experimenting with patterns, small studios) are the ones for whom paid tiers create friction. The free tier of an OSS tool you run yourself is more powerful for learning than the paid tier of a managed service you can't take apart.
 
@@ -29,9 +31,8 @@ Managed equivalents exist for almost everything blissful-infra runs locally:
 | Postgres | [RDS](https://aws.amazon.com/rds/), [Cloud SQL](https://cloud.google.com/sql), [Supabase](https://supabase.com/) |
 | Kafka | [Confluent Cloud](https://www.confluent.io/), [MSK](https://aws.amazon.com/msk/), [Redpanda Cloud](https://redpanda.com/) |
 | Prometheus + Grafana + Loki | [Datadog](https://www.datadoghq.com/), [New Relic](https://newrelic.com/), [Honeycomb](https://www.honeycomb.io/) |
+| ArgoCD (GitOps) | [Cloud CI/CD](https://aws.amazon.com/codepipeline/), [GitHub Actions](https://github.com/features/actions), [GitLab CI](https://about.gitlab.com/) |
 | Jenkins | [GitHub Actions](https://github.com/features/actions), [CircleCI](https://circleci.com/), [GitLab CI](https://about.gitlab.com/) |
-| LocalStack | Real AWS |
-| MLflow | [Weights & Biases](https://wandb.ai/), [Vertex AI](https://cloud.google.com/vertex-ai), [SageMaker](https://aws.amazon.com/sagemaker/) |
 
 Those services are excellent. They're faster to start with, ship with built-in compliance and remove most of the operational burden. When you're a small team shipping a real product, reaching for one is often the right call. blissful-infra does not exist to argue against that.
 
