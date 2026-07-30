@@ -217,7 +217,7 @@ Stores values indexed by a key. Extremely fast because it operates in memory. Su
 
 #### DynamoDB
 
-Amazon's fully managed key-value and document database. There is no open-source self-hosted equivalent: DynamoDB is an AWS-only service. LocalStack emulates the full DynamoDB API locally, so you can develop and test against it without incurring AWS costs.
+Amazon's fully managed key-value and document database. There is no open-source self-hosted equivalent: DynamoDB is an AWS-only service. For learning DynamoDB patterns, use a real AWS account with a free-tier budget and tight spend limits rather than an emulator.
 
 The access model is fundamentally different from relational databases. You design your entire data model around access patterns upfront, using a partition key (and optional sort key) to determine how data is stored and retrieved. The widely used "single-table design" pattern collapses all entity types into one table with carefully chosen key structures.
 

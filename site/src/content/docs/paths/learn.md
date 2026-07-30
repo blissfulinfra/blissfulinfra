@@ -18,8 +18,8 @@ By the end of this path you will have:
 - A running full-stack service: Spring Boot API, React frontend, Postgres, Kafka, Redis cache
 - Production-shaped observability: Prometheus metrics, Grafana dashboards, Loki logs, Tempo distributed tracing (click-through correlation between all three)
 - A real CI/CD pipeline: Jenkins, multi-stage build, deploy on green
-- An identity layer: Keycloak with realms, JWTs, role-based access
-- AWS-shaped services running locally: LocalStack for S3, Lambda, SQS
+- Production observability: metrics, logs, traces and distributed tracing correlation
+- A real CI/CD pipeline with GitOps and progressive delivery
 - Kubernetes deploy (planned): your service on a real local cluster with kind (coming in a later module)
 
 You will understand what each piece does, why it exists and what tradeoffs the managed equivalent makes for you.
@@ -84,7 +84,7 @@ The background reading still stands on its own: [A Developer's Guide to IAM](/bl
 
 ## Why hands-on, not managed
 
-Many of the technologies in this course have excellent managed equivalents. The course teaches the open-source originals on purpose. Once you understand Keycloak you understand what Auth0 abstracts; once you understand Kafka you understand what SQS trades away for simplicity; once you understand Postgres you understand what RDS does for you.
+Many of the technologies in this course have excellent managed equivalents. The course teaches the open-source originals on purpose. Once you understand Kafka you understand what SQS trades away for simplicity; once you understand Postgres you understand what RDS does for you; once you understand ArgoCD you understand what GitHub Actions or CircleCI actually orchestrate.
 
 That mental model is the part that transfers. You can replace any component with a managed version in a day. Understanding why it exists and what it's doing. That takes hands-on time.
 
