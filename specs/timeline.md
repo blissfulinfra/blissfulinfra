@@ -15,12 +15,14 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ✅ Complete |
 | **Phase 5.5** | Foundation | Schema contracts, modularity, docs site, testing strategy | 🔧 In Progress |
-| **Phase 6** | Client Model | Per-client isolated environments, client create/service add commands, port blocks, external networks | ⏳ Next |
-| **Phase 6.5** | Test Coverage | Vitest suite: schemas, utils, API contract, template smoke | ⏳ Next |
-| **Phase 7** | Cloud Hosting | $5 hosted tier. Cloudflare deploy, billing, dashboard | ⏳ Planned |
-| **Phase 8** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
-| **Phase 9** | Observability++ | Kafka → Flink → ClickHouse metrics pipeline, EWMA anomaly detection, S3 archival | ⏳ Planned |
-| **Phase 10** | Security | Penetration testing framework. OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
+| **Phase 6** | Cloud Hosting | Cloudflare + AWS + Vercel deploy targets | ⏳ Next |
+| **Phase 6a** | Cloudflare Foundation | Control plane, auth, billing, D1/KV/Queues | ⏳ Next |
+| **Phase 6e** | AWS Deployment | ECS Fargate + RDS + SQS + ALB | ⏳ Planned |
+| **Phase 6f** | Vercel Deployment | Serverless functions + Vercel Postgres | ⏳ Planned |
+| **Phase 7** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
+| **Phase 8** | Enterprise Templates | Additional runtimes (FastAPI, Express, Go), multi-language support | ⏳ Planned |
+| **Phase 9** | Security | Penetration testing framework. OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
+| **Phase 10** | Observability++ | Kafka → Flink → ClickHouse metrics pipeline, EWMA anomaly detection, S3 archival | ⏳ Planned |
 
 ---
 
@@ -879,9 +881,125 @@ Full spec: [cloud-hosting.md](./cloud-hosting.md)
 - [ ] Worker adapter for Spring Boot (lightweight JS proxy until Cloudflare Containers GA)
 - [ ] Cloudflare Containers integration when GA (full JVM support)
 
-### 6e. Additional Deploy Targets ⏳
+### 6e. AWS Deployment (ECS Fargate + RDS + SQS) ⏳
+
+**Goal:** Deploy container-based services (Spring Boot, Express, FastAPI) to AWS Fargate with managed databases and message queues.
+
+**Rationale:** Cloudflare suits serverless / edge-computed workloads; AWS ECS Fargate is the natural complement for stateful, container-shaped applications that need persistent databases and async job queues. `deploy --target aws` complements `deploy --target cloudflare` rather than replacing it.
+
+#### 6e.1 Foundation & Credentials
+- [ ] AWS account provisioning flow (or bring-your-own)
+- [ ] IAM role + policy generation (least-privilege `blissful-infra-*` roles for ECS, RDS, SQS)
+- [ ] AWS credentials storage in `~/.blissful-infra/aws/` (encrypted or via `aws-vault`)
+- [ ] `blissful-infra cloud auth aws` command for OAuth flow (via temporary STS tokens, no long-lived keys)
+- [ ] Credential validation before deploy attempt
+
+**Location:** `packages/cli/src/commands/cloud-auth.ts`, `packages/cli/src/utils/aws-credentials.ts`
+
+#### 6e.2 Compute Layer (ECS Fargate)
+- [ ] ECS cluster provisioning (one per tenant, shared across projects)
+- [ ] Fargate launch type (no EC2 instances to manage)
+- [ ] Task definition generation from `blissful-infra.yaml` (CPU/memory request, env vars, port mapping)
+- [ ] ECR repository per project (auto-created, image push as part of deploy)
+- [ ] Service definition with load balancer target group + health check
+- [ ] Task role + execution role with minimal permissions
+- [ ] Auto-scaling policy (scale by CPU/memory/request count)
+
+**Location:** `packages/cli/src/utils/aws-ecs.ts`, `packages/cli/templates/aws/ecs/`
+
+#### 6e.3 Data Layer (RDS + SQS)
+- [ ] RDS instance provisioning (one per cluster, Postgres default)
+- [ ] Database creation + credentials management (stored in Secrets Manager)
+- [ ] Automatic connection string injection into task environment
+- [ ] SQS queue provisioning (maps from Kafka in local dev)
+- [ ] Queue URL + IAM permissions injected into task environment
+- [ ] ElastiCache (optional Redis) for caching layer
+- [ ] DB snapshot + backup strategy (daily snapshots, 7-day retention)
+
+**Location:** `packages/cli/src/utils/aws-rds.ts`, `packages/cli/src/utils/aws-sqs.ts`
+
+#### 6e.4 Networking (VPC + ALB)
+- [ ] VPC provisioning (one per tenant) with public + private subnets
+- [ ] Application Load Balancer for ingress (HTTP/HTTPS)
+- [ ] Auto-generated DNS (`<project>.aws.blissful-infra.com` or custom domain)
+- [ ] SSL/TLS certificates (AWS Certificate Manager, auto-renewed)
+- [ ] Security groups (restrictive ingress, permissive egress)
+- [ ] NAT Gateway for private subnet egress
+
+**Location:** `packages/cli/src/utils/aws-vpc.ts`, `packages/cli/src/utils/aws-alb.ts`
+
+#### 6e.5 Logging & Monitoring
+- [ ] CloudWatch Logs integration (container stdout → CloudWatch log groups)
+- [ ] CloudWatch Metrics (ECS task CPU/memory, ALB request counts, RDS performance)
+- [ ] X-Ray tracing (optional, for distributed tracing across Fargate tasks)
+- [ ] CloudWatch Dashboard auto-generated (similar to local Grafana)
+- [ ] Alarm definitions (high error rate, task failures, DB connection limits)
+
+**Location:** `packages/cli/src/utils/aws-cloudwatch.ts`
+
+#### 6e.6 Configuration & State Management
+- [ ] Terraform modules for IaC (cluster, services, databases, networking)
+- [ ] Terraform state stored in S3 + DynamoDB lock (per tenant)
+- [ ] `blissful-infra.yaml` config extension: `deploy.aws.region`, `deploy.aws.instanceClass`, `deploy.aws.multiAz`
+- [ ] Deployment tracking (create deployment record on push, update on success/failure)
+- [ ] Rollback capability (previous task definition, database snapshots)
+
+**Location:** `packages/cli/templates/aws/terraform/`, `packages/cli/src/utils/aws-terraform.ts`
+
+#### 6e.7 CLI Commands
+- [ ] `blissful-infra deploy --target aws [--region us-east-1]` - deploy service to Fargate
+- [ ] `blissful-infra aws logs [--follow] [--filter error]` - tail CloudWatch logs
+- [ ] `blissful-infra aws dashboard` - open CloudWatch dashboard
+- [ ] `blissful-infra aws scale <service> <count>` - update task count
+- [ ] `blissful-infra aws rollback [--to <revision>]` - rollback to previous task definition
+- [ ] `blissful-infra aws cost` - estimate monthly spend (Fargate, RDS, data transfer)
+
+**Location:** `packages/cli/src/commands/aws.ts`, `packages/cli/src/commands/deploy.ts`
+
+#### 6e.8 Documentation
+- [ ] `/deploy/aws` docs page covering: architecture diagram, IAM setup, cost assumptions, limits
+- [ ] Example: "Deploy Spring Boot to AWS Fargate in 2 minutes"
+- [ ] Pricing calculator (input: vCPU, memory, data storage, request volume → monthly estimate)
+
+**Location:** `site/src/content/docs/deploy/aws.md`
+
+#### Phase 6e Definition of Done
+```bash
+# Authenticate with AWS
+$ blissful-infra cloud auth aws
+✓ AWS credentials configured
+
+# Deploy to Fargate
+$ blissful-infra deploy --target aws --region us-east-1
+Deploying to AWS Fargate...
+✓ ECR repository created
+✓ Image pushed to ECR
+✓ Task definition registered
+✓ Service running on 2 tasks
+✓ Load balancer health check passing
+✓ DNS: my-app.aws.blissful-infra.com
+
+# Access the app
+$ curl https://my-app.aws.blissful-infra.com/health
+{"status": "ok"}
+
+# View logs
+$ blissful-infra aws logs --follow
+2026-07-29T14:32:15Z INFO Application started in 2.3s
+2026-07-29T14:32:18Z INFO Ready to accept requests
+
+# View metrics
+$ blissful-infra aws dashboard
+Opening CloudWatch dashboard...
+# Shows: task CPU/memory, ALB request count, error rate, RDS connections
+
+# Scale up
+$ blissful-infra aws scale my-app 5
+✓ Updated task count to 5 (was 2)
+```
+
+### 6f. Additional Deploy Targets ⏳
 - [ ] `blissful-infra deploy --target vercel` (frontend on Vercel, serverless functions, Vercel Postgres)
-- [ ] `blissful-infra deploy --target aws` (ECS Fargate + RDS + SQS)
 - [ ] Unified deploy command reads `deploy.target` from `blissful-infra.yaml`
 
 ### 6.1 Additional Templates
