@@ -2301,13 +2301,18 @@ async function listAllTenantSummaries(): Promise<Array<{
   isCurrent: boolean;
 }>> {
   const tenants = await listTenants();
-  let running = new Set<string>();
+  // A tenant counts as running if ANY of its containers are up: tenant-level
+  // infra (<t>-jenkins, <t>-grafana, ...), project containers (<t>-<p>-...)
+  // or its kind cluster node (blissful-<t>-control-plane). The old check
+  // looked for <t>-dashboard, which stopped existing when the dashboard
+  // became host-level — every tenant read as stopped forever.
+  let containerNames: string[] = [];
   try {
-    const { stdout } = await execa("docker", [
-      "ps", "--filter", "name=-dashboard$", "--format", "{{.Names}}",
-    ], { reject: false });
-    running = new Set(stdout.trim().split("\n").filter(Boolean).map(n => n.replace(/-dashboard$/, "")));
+    const { stdout } = await execa("docker", ["ps", "--format", "{{.Names}}"], { reject: false });
+    containerNames = stdout.trim().split("\n").filter(Boolean);
   } catch { /* docker unavailable */ }
+  const tenantIsRunning = (name: string): boolean =>
+    containerNames.some(n => n.startsWith(`${name}-`) || n === `blissful-${name}-control-plane`);
 
   const currentTenant = process.env.TENANT_NAME ?? null;
   return tenants.map(t => ({
@@ -2316,7 +2321,7 @@ async function listAllTenantSummaries(): Promise<Array<{
     dashboardPort: t.portBlock.dashboard,
     projectCount: t.projects.length,
     serviceCount: t.projects.reduce((sum, p) => sum + p.services.length, 0),
-    status: running.has(t.name) ? "running" as const : "stopped" as const,
+    status: tenantIsRunning(t.name) ? "running" as const : "stopped" as const,
     isCurrent: currentTenant === t.name,
   }));
 }
