@@ -72,3 +72,21 @@ export async function terraformApply(dir: string): Promise<void> {
 export async function terraformDestroy(dir: string): Promise<void> {
   await runTerraform(dir, ["destroy", "-auto-approve"]);
 }
+
+/**
+ * Drop terraform state for a cluster that no longer exists (deleted via
+ * `kind delete cluster`, a Docker Desktop purge, etc.). Without this the
+ * kind provider fails refreshing the recorded cluster instead of
+ * recreating it. Safe because every resource in this workspace lives
+ * inside the kind cluster — if the cluster is gone, so are they.
+ */
+export async function resetStaleState(dir: string): Promise<boolean> {
+  let removed = false;
+  for (const f of ["terraform.tfstate", "terraform.tfstate.backup"]) {
+    try {
+      await fs.rm(path.join(dir, f), { force: false });
+      removed = true;
+    } catch { /* not present */ }
+  }
+  return removed;
+}

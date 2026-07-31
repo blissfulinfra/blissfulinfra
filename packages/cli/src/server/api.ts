@@ -167,6 +167,14 @@ export function createApiServer(workingDir: string, port = 3002) {
       return process.env.TENANT_NAME ?? url.searchParams.get("tenant") ?? null;
     };
 
+    // In the container, kubectl must use each cluster's INTERNAL kubeconfig
+    // (host-loopback API endpoints are unreachable from here). All internal
+    // kubeconfigs merge via KUBECONFIG; context names match the host's
+    // (kind-blissful-<tenant>), so every --context call works unchanged.
+    if (DOCKER_MODE) {
+      await refreshContainerKubeconfigs();
+    }
+
     try {
       // GET /api/links - Tool URLs (Tempo/Grafana/etc) for the current
       // tenant. The dashboard sends ?tenant=<name> in control-plane mode so
@@ -1676,6 +1684,24 @@ async function listProjects(workingDir: string, currentTenant?: string | null): 
  * dashboard sidebar renders the new model without UI changes. Phase 7b will
  * do the proper 3-level tree view.
  */
+async function refreshContainerKubeconfigs(): Promise<void> {
+  try {
+    const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
+    const tenantsDir = path.join(home, "tenants");
+    const files: string[] = [];
+    for (const entry of await fs.readdir(tenantsDir)) {
+      const f = path.join(tenantsDir, entry, "cluster", "kubeconfig-internal");
+      try {
+        await fs.access(f);
+        files.push(f);
+      } catch { /* tenant has no cluster */ }
+    }
+    if (files.length > 0) {
+      process.env.KUBECONFIG = files.join(":");
+    }
+  } catch { /* no tenants dir yet */ }
+}
+
 async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> {
   // Read the registry directly (no CLI subprocess). BLISSFUL_HOME is set on
   // the dashboard container to point at the mounted host registry.
@@ -1711,9 +1737,47 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
     });
   } catch { /* docker unavailable */ }
 
+  // Kubernetes-runtime projects run as pods inside the kind node, so their
+  // containers never appear in the host's docker ps — derive their status
+  // from pod readiness instead (one kubectl call per k8s project).
+  const k8sStatuses = new Map<string, Map<string, "running" | "starting" | "stopped">>();
+  for (const p of tenant.projects) {
+    if ((await readProjectRuntime(tenantName, p.name)) !== "kubernetes") continue;
+    const svcStatuses = new Map<string, "running" | "starting" | "stopped">();
+    try {
+      const { stdout } = await execa("kubectl", [
+        "--context", kubeContext(tenantName), "get", "pods", "-n", p.name, "-o", "json",
+      ], { stdio: "pipe", timeout: 8000 });
+      const pods = (JSON.parse(stdout).items ?? []) as Array<{
+        metadata?: { labels?: Record<string, string> };
+        status?: { phase?: string; containerStatuses?: Array<{ ready?: boolean }> };
+      }>;
+      for (const s of p.services) {
+        const own = pods.filter(pod => pod.metadata?.labels?.app === s.name);
+        if (own.length === 0) {
+          svcStatuses.set(s.name, "stopped");
+        } else {
+          const anyReady = own.some(pod =>
+            pod.status?.phase === "Running" &&
+            (pod.status?.containerStatuses ?? []).some(cs => cs.ready));
+          svcStatuses.set(s.name, anyReady ? "running" : "starting");
+        }
+      }
+    } catch {
+      // Cluster unreachable (not provisioned / docker down) — pods can't be
+      // running, report stopped rather than lying with docker-ps state.
+      for (const s of p.services) svcStatuses.set(s.name, "stopped");
+    }
+    k8sStatuses.set(p.name, svcStatuses);
+  }
+
   return tenant.projects.map(p => {
     // Service-level statuses
+    const k8s = k8sStatuses.get(p.name);
     const services = p.services.map(s => {
+      if (k8s) {
+        return { name: s.name, status: k8s.get(s.name) ?? "stopped", port: s.ports.http };
+      }
       const cName = `${tenantName}-${p.name}-${s.name}`;
       const c = containers.find(x => x.name === cName);
       const status: "running" | "stopped" | "starting" | "unhealthy" =
@@ -2237,13 +2301,18 @@ async function listAllTenantSummaries(): Promise<Array<{
   isCurrent: boolean;
 }>> {
   const tenants = await listTenants();
-  let running = new Set<string>();
+  // A tenant counts as running if ANY of its containers are up: tenant-level
+  // infra (<t>-jenkins, <t>-grafana, ...), project containers (<t>-<p>-...)
+  // or its kind cluster node (blissful-<t>-control-plane). The old check
+  // looked for <t>-dashboard, which stopped existing when the dashboard
+  // became host-level — every tenant read as stopped forever.
+  let containerNames: string[] = [];
   try {
-    const { stdout } = await execa("docker", [
-      "ps", "--filter", "name=-dashboard$", "--format", "{{.Names}}",
-    ], { reject: false });
-    running = new Set(stdout.trim().split("\n").filter(Boolean).map(n => n.replace(/-dashboard$/, "")));
+    const { stdout } = await execa("docker", ["ps", "--format", "{{.Names}}"], { reject: false });
+    containerNames = stdout.trim().split("\n").filter(Boolean);
   } catch { /* docker unavailable */ }
+  const tenantIsRunning = (name: string): boolean =>
+    containerNames.some(n => n.startsWith(`${name}-`) || n === `blissful-${name}-control-plane`);
 
   const currentTenant = process.env.TENANT_NAME ?? null;
   return tenants.map(t => ({
@@ -2252,7 +2321,7 @@ async function listAllTenantSummaries(): Promise<Array<{
     dashboardPort: t.portBlock.dashboard,
     projectCount: t.projects.length,
     serviceCount: t.projects.reduce((sum, p) => sum + p.services.length, 0),
-    status: running.has(t.name) ? "running" as const : "stopped" as const,
+    status: tenantIsRunning(t.name) ? "running" as const : "stopped" as const,
     isCurrent: currentTenant === t.name,
   }));
 }

@@ -2,6 +2,8 @@
 
 import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
+import { demoCommand } from "./commands/demo.js";
+import { cleanCommand } from "./commands/clean.js";
 import { agentCommand } from "./commands/agent.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 // CI/CD and deployment
@@ -35,6 +37,8 @@ program
 
 // Tenant/Project/Service (ADR-0017)
 program.addCommand(initCommand);
+program.addCommand(demoCommand);
+program.addCommand(cleanCommand);
 program.addCommand(useCommand);
 program.addCommand(tenantCommand);
 program.addCommand(projectCommand);

@@ -126,6 +126,24 @@ export async function headSha(tenant: string): Promise<string> {
   return (await git(getGitopsDir(tenant), ["rev-parse", "HEAD"])).trim();
 }
 
+/**
+ * Is `ancestor` contained in `descendant`'s history? Used by the deploy sync
+ * wait: when a newer push supersedes ours mid-wait, ArgoCD reports only the
+ * newest revision — if that revision contains our commit, our change shipped.
+ */
+export async function isAncestor(tenant: string, ancestor: string, descendant: string): Promise<boolean> {
+  const dir = getGitopsDir(tenant);
+  try {
+    await git(dir, ["fetch", "origin", "main"]);
+  } catch { /* offline — try with what we have */ }
+  try {
+    await git(dir, ["merge-base", "--is-ancestor", ancestor, descendant]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Commit + push everything staged under the checkout. False if no changes. */
 export async function commitAndPush(tenant: string, message: string): Promise<boolean> {
   const dir = getGitopsDir(tenant);

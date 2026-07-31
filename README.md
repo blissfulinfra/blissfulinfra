@@ -37,9 +37,18 @@ Everything hangs off a three-level hierarchy ([ADR-0017](docs/adr/0017-tenant-pr
 
 `blissful-infra use <tenant>[/<project>]` sets a persistent context so you rarely retype the path. Data lives under `~/.blissful-infra/tenants/`, ports are allocated deterministically per level so collisions are impossible by construction.
 
+## Just show me (one command)
+
+```bash
+brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-rollouts   # one-time, plus Docker Desktop running
+git clone https://github.com/cavanpage/blissful-infra.git && cd blissful-infra && ./demo.sh
+```
+
+`./demo.sh` builds the repo and runs `blissful-infra demo`: it provisions a kind cluster with ArgoCD, Argo Rollouts and Gitea via Terraform, scaffolds a hono service, deploys it through the full GitOps loop and opens up the dashboard on [localhost:3002](http://localhost:3002). Rerun it after editing the service to watch a canary deploy at 10% waiting for your Promote. Everything is idempotent; tear down with `./demo.sh clean` (or `blissful-infra clean --all` to remove every tenant and the dashboard). Curious what it actually built? See [docs/demo-architecture.md](docs/demo-architecture.md).
+
 ## Golden path: Kubernetes + ArgoCD + canary deploys
 
-The flagship flow ([ADR-0020](docs/adr/0020-local-kubernetes-runtime.md)): a tenant-level kind cluster provisioned by Terraform, with ArgoCD, Argo Rollouts and Gitea inside it. Deploys are GitOps for real — the CLI pushes manifests to the in-cluster Gitea repo, ArgoCD syncs them, and the Rollout canaries the new version.
+The same flow, step by step ([ADR-0020](docs/adr/0020-local-kubernetes-runtime.md)): a tenant-level kind cluster provisioned by Terraform, with ArgoCD, Argo Rollouts and Gitea inside it. Deploys are GitOps for real — the CLI pushes manifests to the in-cluster Gitea repo, ArgoCD syncs them, and the Rollout canaries the new version.
 
 ### Prerequisites (one-time)
 

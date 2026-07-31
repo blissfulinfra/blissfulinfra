@@ -23,7 +23,7 @@ import { ensureDashboardImage } from "./infra-images.js";
 export const HOST_DASHBOARD_PORT = 3002;
 export const HOST_DASHBOARD_CONTAINER = "blissful-dashboard";
 
-export function buildHostDashboardCompose(): string {
+export function buildHostDashboardCompose(attachKindNetwork = false): string {
   const hostBlissfulHome = process.env.BLISSFUL_HOME ?? path.join(os.homedir(), ".blissful-infra");
   // Dedicated, persistent auth dir for the in-container `claude` CLI. We
   // give the container its OWN ~/.claude rather than sharing the host's,
@@ -55,9 +55,34 @@ export function buildHostDashboardCompose(): string {
         restart: "unless-stopped",
       },
     },
-  };
+  } as Record<string, unknown> & { services: { dashboard: Record<string, unknown> } };
+
+  // The kind API server is published on the HOST loopback, unreachable from
+  // inside this container. Joining kind's docker network lets the in-container
+  // kubectl reach the control-plane node directly via the --internal
+  // kubeconfig (server https://<node>:6443, cert SAN matches the node name).
+  if (attachKindNetwork) {
+    compose.services.dashboard.networks = ["default", "kind"];
+    compose.networks = { default: {}, kind: { external: true } };
+  }
 
   return yaml.dump(compose, { lineWidth: 120 });
+}
+
+export async function kindNetworkExists(): Promise<boolean> {
+  const r = await execa("docker", ["network", "inspect", "kind"], { reject: false, stdio: "pipe" });
+  return r.exitCode === 0;
+}
+
+async function dashboardOnKindNetwork(): Promise<boolean> {
+  try {
+    const { stdout } = await execa("docker", [
+      "inspect", HOST_DASHBOARD_CONTAINER, "--format", "{{json .NetworkSettings.Networks}}",
+    ], { stdio: "pipe" });
+    return Object.keys(JSON.parse(stdout) as Record<string, unknown>).includes("kind");
+  } catch {
+    return false;
+  }
 }
 
 export async function writeHostDashboardCompose(): Promise<string> {
@@ -67,7 +92,7 @@ export async function writeHostDashboardCompose(): Promise<string> {
   // owned by root (which would block `claude login` from writing tokens).
   await fs.mkdir(path.join(home, "dashboard-claude"), { recursive: true });
   const composePath = path.join(home, "docker-compose.dashboard.yaml");
-  await fs.writeFile(composePath, buildHostDashboardCompose());
+  await fs.writeFile(composePath, buildHostDashboardCompose(await kindNetworkExists()));
   return composePath;
 }
 
@@ -97,9 +122,15 @@ export async function ensureHostDashboardRunning(opts: {
   forceRecreate?: boolean;
   silent?: boolean;
 } = {}): Promise<void> {
-  const { forceRecreate = false, silent = false } = opts;
+  let { forceRecreate = false } = opts;
+  const { silent = false } = opts;
 
-  if (!forceRecreate && await isDashboardUp()) return;
+  if (!forceRecreate && await isDashboardUp()) {
+    // A dashboard started before any kind cluster existed isn't on the kind
+    // network — recreate it so the in-container kubectl can reach the cluster.
+    if (!(await kindNetworkExists()) || await dashboardOnKindNetwork()) return;
+    forceRecreate = true;
+  }
 
   const log = (msg: string) => { if (!silent) process.stderr.write(`${msg}\n`); };
   const spinner = silent ? null : ora("Starting host dashboard...").start();

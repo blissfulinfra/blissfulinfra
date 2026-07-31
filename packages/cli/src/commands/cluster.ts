@@ -6,13 +6,14 @@ import fs from "node:fs/promises";
 import { execa } from "execa";
 import { resolveOrExit } from "../utils/context.js";
 import { getTenant, ensureClusterPorts, getClusterDir } from "../utils/tenant-registry.js";
-import { ensureKind, ensureKubectl, clusterExists, clusterName, kubeContext, writeKubeconfig } from "../utils/kind.js";
+import { ensureKind, ensureKubectl, clusterExists, clusterName, kubeContext, writeKubeconfig, writeInternalKubeconfig, warnIfLowDockerMemory } from "../utils/kind.js";
 import {
   ensureTerraform,
   renderClusterWorkspace,
   terraformInit,
   terraformApply,
   terraformDestroy,
+  resetStaleState,
 } from "../utils/terraform.js";
 import { PrereqMissingError } from "../deploy/errors.js";
 import { toExecError } from "../utils/errors.js";
@@ -26,6 +27,7 @@ async function ensurePrereqs(): Promise<void> {
   } catch {
     throw new PrereqMissingError("docker", "Docker must be running (start Docker Desktop).");
   }
+  await warnIfLowDockerMemory();
 }
 
 async function readArgoCDPassword(tenant: string): Promise<string | null> {
@@ -66,6 +68,13 @@ export async function clusterUpAction(tenantName: string): Promise<void> {
   const ports = await ensureClusterPorts(tenantName);
   const workspace = await renderClusterWorkspace(tenantName, ports);
 
+  // Drift guard: if the kind cluster was deleted outside terraform (kind
+  // delete cluster, Docker Desktop purge), the recorded state points at a
+  // cluster that no longer exists and the provider fails on refresh.
+  if (!(await clusterExists(tenantName)) && (await resetStaleState(workspace))) {
+    console.log(chalk.yellow(`Cluster '${clusterName(tenantName)}' no longer exists but terraform state did — state reset, recreating from scratch.`));
+  }
+
   console.log(chalk.dim(`Terraform workspace: ${workspace}`));
   console.log(chalk.dim("Provisioning kind cluster + ArgoCD + Argo Rollouts + Gitea."));
   console.log(chalk.dim("First run downloads providers and helm charts — expect 3-5 minutes.\n"));
@@ -83,6 +92,9 @@ export async function clusterUpAction(tenantName: string): Promise<void> {
 
   const kubeconfigFile = path.join(workspace, "kubeconfig");
   await writeKubeconfig(tenantName, kubeconfigFile);
+  // The internal variant is consumed by the containerized dashboard (joined
+  // to the kind docker network) — same context name, different server addr.
+  await writeInternalKubeconfig(tenantName, path.join(workspace, "kubeconfig-internal"));
 
   const argocdPassword = await readArgoCDPassword(tenantName);
 
