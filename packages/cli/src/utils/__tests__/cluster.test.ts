@@ -13,6 +13,7 @@ import {
   MAX_SERVICES_PER_PROJECT,
 } from "../tenant-registry.js";
 import { renderClusterWorkspace } from "../terraform.js";
+import { HOST_DASHBOARD_PORT } from "../host-dashboard-compose.js";
 
 let testHome: string;
 
@@ -61,6 +62,32 @@ describe("cluster port allocation", () => {
 
     for (const [port, owner] of clusterPorts) {
       expect(otherPorts.has(port), `${owner} (${port}) collides with an existing range`).toBe(false);
+    }
+  });
+
+  it("no tenant/project/service port ever lands on the host dashboard port", () => {
+    // Regression: grafana base 3000 put blockIndex 2's Grafana on 3002, the
+    // host control-plane dashboard's fixed port.
+    const claim = (port: number | undefined, owner: string) => {
+      if (port === undefined) return;
+      expect(port, `${owner} collides with the host dashboard (${HOST_DASHBOARD_PORT})`).not.toBe(HOST_DASHBOARD_PORT);
+    };
+    for (let t = 0; t < MAX_TENANTS; t++) {
+      const tb = tenantPortBlock(`t${t}`, t);
+      for (const [k, v] of Object.entries(tb)) {
+        if (typeof v === "number" && k !== "blockIndex") claim(v, `tenant[${t}].${k}`);
+      }
+      for (let p = 0; p < MAX_PROJECTS_PER_TENANT; p++) {
+        const pb = projectPortBlock(`t${t}`, `p${p}`, t, p);
+        for (const [k, v] of Object.entries(pb)) {
+          if (typeof v === "number" && k !== "projectIndex") claim(v, `project[${t}.${p}].${k}`);
+        }
+        for (let sv = 0; sv < MAX_SERVICES_PER_PROJECT; sv++) {
+          const sp = servicePorts(`t${t}`, `p${p}`, `s${sv}`, "backend", t, p, sv);
+          claim(sp.http, `service[${t}.${p}.${sv}].http`);
+          claim(sp.metrics, `service[${t}.${p}.${sv}].metrics`);
+        }
+      }
     }
   });
 });

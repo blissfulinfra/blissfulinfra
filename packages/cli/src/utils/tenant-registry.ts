@@ -72,7 +72,10 @@ export const MAX_SERVICES_PER_PROJECT = 20;
 const TENANT_BASES = {
   dashboard:  3010,
   jenkins:    8081,
-  grafana:    3000,
+  // Grafana must stay clear of the host control-plane dashboard's fixed
+  // port 3002 (HOST_DASHBOARD_PORT) — the old base of 3000 collided with it
+  // at blockIndex 2.
+  grafana:    3030,
   prometheus: 9090,
   tempo:      3200,
   loki:       3100,

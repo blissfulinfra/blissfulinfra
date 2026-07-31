@@ -32,7 +32,7 @@ describe("port math (pure)", () => {
     it("tenantIndex 0 returns base ports", () => {
       const b = tenantPortBlock("acme", 0);
       expect(b).toMatchObject({
-        dashboard: 3010, jenkins: 8081, grafana: 3000,
+        dashboard: 3010, jenkins: 8081, grafana: 3030,
         prometheus: 9090, tempo: 3200, loki: 3100,
       });
     });
@@ -40,7 +40,7 @@ describe("port math (pure)", () => {
     it("tenantIndex N adds N to every port", () => {
       const b = tenantPortBlock("acme", 3);
       expect(b).toMatchObject({
-        dashboard: 3013, jenkins: 8084, grafana: 3003,
+        dashboard: 3013, jenkins: 8084, grafana: 3033,
         prometheus: 9093, tempo: 3203, loki: 3103,
       });
     });
