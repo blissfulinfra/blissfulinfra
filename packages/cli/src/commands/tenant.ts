@@ -19,6 +19,7 @@ import {
 } from "../utils/tenant-registry.js";
 import { writeTenantCompose, projectComposeIncludePath } from "../utils/tenant-compose.js";
 import { ensureJenkinsImage } from "../utils/infra-images.js";
+import { HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
 import { toExecError } from "../utils/errors.js";
 import { resolveOrExit, writeContext } from "../utils/context.js";
 
@@ -128,13 +129,12 @@ export async function tenantCreateAction(name: string, opts: TenantCreateOptions
   console.log();
   console.log(chalk.green.bold(`✓ Tenant '${name}' created.`));
   console.log();
-  console.log(chalk.dim("Port block ") + chalk.cyan(`#${registryEntry.portBlock.blockIndex}`));
-  console.log(chalk.dim("  Dashboard:  ") + chalk.cyan(`http://localhost:${registryEntry.portBlock.dashboard}`));
+  console.log(chalk.dim("Port block ") + chalk.cyan(`#${registryEntry.portBlock.blockIndex}`) + chalk.dim(" — ports reserved, nothing running yet"));
   if (config.infrastructure.jenkins) {
-    console.log(chalk.dim("  Jenkins:    ") + chalk.cyan(`http://localhost:${registryEntry.portBlock.jenkins}`));
+    console.log(chalk.dim("  Jenkins:    ") + chalk.cyan(`localhost:${registryEntry.portBlock.jenkins}`) + chalk.dim("  (live after `tenant up`)"));
   }
   if (config.infrastructure.observability.grafana) {
-    console.log(chalk.dim("  Grafana:    ") + chalk.cyan(`http://localhost:${registryEntry.portBlock.grafana}`));
+    console.log(chalk.dim("  Grafana:    ") + chalk.cyan(`localhost:${registryEntry.portBlock.grafana}`) + chalk.dim("  (live after `tenant up`)"));
   }
   // Convenience: select this tenant as the current context so follow-up
   // commands don't need to retype the name.
@@ -143,8 +143,9 @@ export async function tenantCreateAction(name: string, opts: TenantCreateOptions
   console.log();
   console.log(chalk.dim("Tenant is scaffolded and selected as current context."));
   console.log(chalk.dim("Next:"));
+  console.log(chalk.cyan(`  blissful-infra tenant up`) + chalk.dim("                  start Jenkins + observability"));
+  console.log(chalk.cyan(`  blissful-infra dashboard up`) + chalk.dim("               web UI at http://localhost:3002"));
   console.log(chalk.cyan(`  blissful-infra project create <project>`) + chalk.dim("   uses tenant from context"));
-  console.log(chalk.cyan(`  blissful-infra tenant up`) + chalk.dim("                  start containers"));
   console.log();
 }
 
@@ -183,7 +184,7 @@ async function tenantStatusAction(name: string): Promise<void> {
   console.log();
   console.log(chalk.bold(`Tenant: ${name}`));
   console.log(chalk.dim(`  Block #${t.portBlock.blockIndex}`));
-  console.log(chalk.dim(`  Dashboard:  http://localhost:${t.portBlock.dashboard}`));
+  console.log(chalk.dim(`  Dashboard:  http://localhost:${HOST_DASHBOARD_PORT}  (host-level, blissful-infra dashboard up)`));
   console.log(chalk.dim(`  Jenkins:    http://localhost:${t.portBlock.jenkins}`));
   console.log(chalk.dim(`  Grafana:    http://localhost:${t.portBlock.grafana}`));
   console.log();
@@ -271,7 +272,9 @@ export async function tenantUpAction(name: string): Promise<void> {
       "compose", "-f", "docker-compose.tenant.yaml", "up", "-d", "--build",
     ], { cwd: tenantDir, stdio: "inherit" });
     console.log(chalk.green(`✓ Tenant '${name}' is up.`));
-    console.log(chalk.dim(`  Dashboard: http://localhost:${t.portBlock.dashboard}`));
+    console.log(chalk.dim(`  Jenkins:   http://localhost:${t.portBlock.jenkins}`));
+    console.log(chalk.dim(`  Grafana:   http://localhost:${t.portBlock.grafana}`));
+    console.log(chalk.dim(`  Dashboard: http://localhost:${HOST_DASHBOARD_PORT}  (blissful-infra dashboard up)`));
   } catch (err) {
     const e = toExecError(err);
     if (e.stderr) console.error(chalk.red(e.stderr));
