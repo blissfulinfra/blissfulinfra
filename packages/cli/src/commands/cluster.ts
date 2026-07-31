@@ -13,6 +13,7 @@ import {
   terraformInit,
   terraformApply,
   terraformDestroy,
+  resetStaleState,
 } from "../utils/terraform.js";
 import { PrereqMissingError } from "../deploy/errors.js";
 import { toExecError } from "../utils/errors.js";
@@ -65,6 +66,13 @@ export async function clusterUpAction(tenantName: string): Promise<void> {
 
   const ports = await ensureClusterPorts(tenantName);
   const workspace = await renderClusterWorkspace(tenantName, ports);
+
+  // Drift guard: if the kind cluster was deleted outside terraform (kind
+  // delete cluster, Docker Desktop purge), the recorded state points at a
+  // cluster that no longer exists and the provider fails on refresh.
+  if (!(await clusterExists(tenantName)) && (await resetStaleState(workspace))) {
+    console.log(chalk.yellow(`Cluster '${clusterName(tenantName)}' no longer exists but terraform state did — state reset, recreating from scratch.`));
+  }
 
   console.log(chalk.dim(`Terraform workspace: ${workspace}`));
   console.log(chalk.dim("Provisioning kind cluster + ArgoCD + Argo Rollouts + Gitea."));
