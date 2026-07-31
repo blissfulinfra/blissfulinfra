@@ -44,7 +44,7 @@ brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-roll
 git clone https://github.com/cavanpage/blissful-infra.git && cd blissful-infra && ./demo.sh
 ```
 
-`./demo.sh` builds the repo and runs `blissful-infra demo`: it provisions a kind cluster with ArgoCD, Argo Rollouts and Gitea via Terraform, scaffolds a hono service, deploys it through the full GitOps loop and opens up the dashboard on [localhost:3002](http://localhost:3002). Rerun it after editing the service to watch a canary deploy at 10% waiting for your Promote. Everything is idempotent; tear down with `./demo.sh clean` (or `blissful-infra clean --all` to remove every tenant and the dashboard).
+`./demo.sh` builds the repo and runs `blissful-infra demo`: it provisions a kind cluster with ArgoCD, Argo Rollouts and Gitea via Terraform, scaffolds a hono service, deploys it through the full GitOps loop and opens up the dashboard on [localhost:3002](http://localhost:3002). Rerun it after editing the service to watch a canary deploy at 10% waiting for your Promote. Everything is idempotent; tear down with `./demo.sh clean` (or `blissful-infra clean --all` to remove every tenant and the dashboard). Curious what it actually built? See [docs/demo-architecture.md](docs/demo-architecture.md).
 
 ## Golden path: Kubernetes + ArgoCD + canary deploys
 

@@ -167,6 +167,7 @@ export async function demoAction(): Promise<void> {
   console.log(chalk.cyan(`  blissful-infra rollback ${SERVICE}`) + chalk.dim("            git-revert + ArgoCD converges back"));
   console.log();
   console.log(chalk.dim("Tear down: ") + chalk.cyan("blissful-infra clean") + chalk.dim("   (or ./demo.sh clean; --all removes every tenant)"));
+  console.log(chalk.dim("How it fits together: docs/demo-architecture.md"));
   console.log();
 }
 
