@@ -35,7 +35,7 @@ describe("renderServiceManifests", () => {
     const files = await readdir(dir);
     expect(files.sort()).toEqual([
       "application.yaml", "configmap.yaml", "kustomization.yaml",
-      "rollout.yaml", "service-canary.yaml", "service-stable.yaml",
+      "rollout.yaml", "service-canary.yaml", "service-stable.yaml", "service.yaml",
     ]);
     for (const f of files) {
       const content = await readFile(join(dir, f), "utf-8");
@@ -72,6 +72,26 @@ describe("renderServiceManifests", () => {
     }
     expect(kustomization).not.toContain("- application.yaml");
     expect(kustomization).toContain('newTag: "abc1234"');
+  });
+});
+
+describe("combined service exposure", () => {
+  it("renders a NodePort service pinned to the allocated http port", async () => {
+    const dir = await renderServiceManifests(
+      COORDS, "blissful-acme/shop-orders-api", "abc1234", giteaInClusterRepoUrl("acme"), 30400,
+    );
+    const svc = await readFile(join(dir, "service.yaml"), "utf-8");
+    expect(svc).toContain("type: NodePort");
+    expect(svc).toContain("nodePort: 30400");
+    const kustomization = await readFile(join(dir, "kustomization.yaml"), "utf-8");
+    expect(kustomization).toContain("- service.yaml");
+  });
+
+  it("falls back to ClusterIP when the service has no http port", async () => {
+    const dir = await render();
+    const svc = await readFile(join(dir, "service.yaml"), "utf-8");
+    expect(svc).not.toContain("type: NodePort");
+    expect(svc).not.toMatch(/^\s*nodePort:/m);
   });
 });
 

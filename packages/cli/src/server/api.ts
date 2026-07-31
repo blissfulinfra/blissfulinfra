@@ -1017,6 +1017,53 @@ export function createApiServer(workingDir: string, port = 3002) {
       }
 
       // POST /api/projects/:name/rollback - Trigger rollback
+      // Preview proxy (kubernetes runtime): forwards to the service's
+      // combined NodePort Service so the browser can open the deployed app
+      // (and watch canary traffic mix across versions). From the dashboard
+      // container the kind node is reachable by name on the kind network; on
+      // the host the NodePort isn't published, so we fail with guidance.
+      const previewMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/preview(\/.*)?$/);
+      if (previewMatch) {
+        const serviceName = previewMatch[1];
+        const previewTenant = tenantFromRequest();
+        const owning = previewTenant ? await findServiceProject(previewTenant, serviceName) : null;
+        const nodePort = owning?.service.ports.http;
+        if (!owning || !nodePort) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `No previewable service '${serviceName}' (needs a tenant and an http port)` }));
+          return;
+        }
+        const targetHost = DOCKER_MODE
+          ? `blissful-${previewTenant}-control-plane`
+          : "127.0.0.1";
+        const rest = previewMatch[2] ?? "/";
+        const query = url.search ? url.search.replace(/([?&])tenant=[^&]*&?/, "$1").replace(/[?&]$/, "") : "";
+        const target = `http://${targetHost}:${nodePort}${rest}${query}`;
+        try {
+          const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
+          const upstream = await fetch(target, {
+            method: req.method,
+            headers: { "content-type": req.headers["content-type"] ?? "application/octet-stream" },
+            body,
+            signal: AbortSignal.timeout(10000),
+          });
+          const buf = Buffer.from(await upstream.arrayBuffer());
+          res.writeHead(upstream.status, {
+            "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream",
+          });
+          res.end(buf);
+        } catch {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: `Could not reach ${serviceName} at ${target}`,
+            hint: DOCKER_MODE
+              ? "Is the service deployed and its pods Ready? (blissful-infra canary status)"
+              : `NodePorts aren't published to the host. Use the containerized dashboard, or: kubectl --context kind-blissful-${previewTenant} -n ${owning.project} port-forward svc/${serviceName} 8080:8080`,
+          }));
+        }
+        return;
+      }
+
       // Canary rollout endpoints (kubernetes runtime). :name is the service;
       // the owning project (= namespace) resolves through the registry.
       const canaryStatusMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canary$/);

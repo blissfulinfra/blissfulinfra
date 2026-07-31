@@ -71,7 +71,7 @@ test.describe('project detail', () => {
     await selectProject(page)
     await page.getByTestId('tab-nav').getByRole('button', { name: 'Environments' }).click()
 
-    const row = page.getByRole('row').filter({ hasText: 'production' })
+    const row = page.getByRole('row').filter({ hasText: 'production' }).first()
     await expect(row).toContainText('9f8e7d6')
     await expect(row).toContainText('OutOfSync')
     await expect(row).toContainText('1/3')
@@ -86,7 +86,7 @@ test.describe('project detail', () => {
     const deployed = page.waitForRequest(
       request => request.method() === 'POST' && /\/projects\/[^/]+\/deploy$/.test(new URL(request.url()).pathname),
     )
-    await page.getByRole('row').filter({ hasText: 'staging' }).getByRole('button', { name: 'Deploy' }).click()
+    await page.getByRole('row').filter({ hasText: 'staging' }).first().getByRole('button', { name: 'Deploy' }).click()
     expect((await deployed).postDataJSON()).toMatchObject({ env: 'staging' })
   })
 })

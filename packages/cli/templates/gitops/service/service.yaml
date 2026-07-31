@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{SERVICE_NAME}}
+  labels:
+    app: {{SERVICE_NAME}}
+spec:
+  # Combined traffic entry: selects ALL pods (stable + canary), so requests
+  # mix across versions by replica ratio while a canary is in flight — this
+  # is the Service you open to *see* the rollout happen. NodePort makes it
+  # reachable from the kind docker network (dashboard preview proxy) without
+  # host port mappings; the nodePort is the service's allocated http port,
+  # which lands inside the 30000-32767 NodePort range by construction.
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: http
+      nodePort: {{SERVICE_NODEPORT}}
+      protocol: TCP
+      name: http
+  selector:
+    app: {{SERVICE_NAME}}

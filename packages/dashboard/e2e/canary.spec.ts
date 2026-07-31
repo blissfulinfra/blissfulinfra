@@ -20,7 +20,7 @@ test.describe('canary rollout card', () => {
 
     const card = page.getByTestId('canary-card')
     await expect(card).toBeVisible()
-    await expect(card.getByRole('heading', { name: 'Canary Rollout' })).toBeVisible()
+    await expect(card.getByRole('heading', { name: 'Canary Rollout — api' })).toBeVisible()
     await expect(card).toContainText('Paused')
     await expect(card).toContainText('step 2/4')
     await expect(card).toContainText('40% canary / 60% stable')
@@ -31,7 +31,7 @@ test.describe('canary rollout card', () => {
     await mockApi(page, { canary: { canary: null } })
     await openEnvironments(page)
 
-    await expect(page.getByRole('row').filter({ hasText: 'staging' })).toBeVisible()
+    await expect(page.getByRole('row').filter({ hasText: 'staging' }).first()).toBeVisible()
     await expect(page.getByTestId('canary-card')).toHaveCount(0)
   })
 
@@ -47,7 +47,7 @@ test.describe('canary rollout card', () => {
       const posted = page.waitForRequest(
         request =>
           request.method() === 'POST' &&
-          new URL(request.url()).pathname.endsWith(`/projects/${PROJECT}/canary/${action}`),
+          new URL(request.url()).pathname.endsWith(`/projects/api/canary/${action}`),
       )
       await page.getByTestId('canary-card').getByRole('button', { name: label, exact: true }).click()
       await posted
@@ -69,7 +69,7 @@ test.describe('canary rollout card', () => {
 
   test('disables the actions once the rollout is fully healthy', async ({ page }) => {
     await mockApi(page, {
-      canary: { canary: { status: 'Healthy', step: 4, totalSteps: 4, currentWeight: 100 } },
+      canary: { canary: { service: 'api', project: 'checkout', status: 'Healthy', step: 4, totalSteps: 4, currentWeight: 100 } },
     })
     await openEnvironments(page)
 

@@ -80,6 +80,7 @@ export async function renderServiceManifests(
   imageName: string,
   imageTag: string,
   gitopsRepoUrl: string,
+  nodePort?: number,
 ): Promise<string> {
   const vars: Record<string, string> = {
     TENANT_NAME: coords.tenant,
@@ -89,13 +90,21 @@ export async function renderServiceManifests(
     IMAGE_TAG: imageTag,
     GITOPS_REPO_URL: gitopsRepoUrl,
     HEALTH_PATH: await resolveHealthPath(coords),
+    SERVICE_NODEPORT: nodePort !== undefined ? String(nodePort) : "",
   };
   const srcDir = getTemplateDir("gitops/service");
   const destDir = serviceManifestDir(coords);
   await fs.mkdir(destDir, { recursive: true });
   for (const entry of await fs.readdir(srcDir)) {
     const content = await fs.readFile(path.join(srcDir, entry), "utf-8");
-    const rendered = content.replace(MANIFEST_VAR, (match, name: string) => vars[name] ?? match);
+    let rendered = content.replace(MANIFEST_VAR, (match, name: string) => vars[name] ?? match);
+    // Services without an allocated http port (workers) fall back to
+    // ClusterIP — strip the NodePort lines rather than templating a blank.
+    if (entry === "service.yaml" && nodePort === undefined) {
+      rendered = rendered
+        .replace("  type: NodePort\n", "")
+        .replace(/^\s*nodePort:.*\n/m, "");
+    }
     await fs.writeFile(path.join(destDir, entry), rendered);
   }
   return destDir;
