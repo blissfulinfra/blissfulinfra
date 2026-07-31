@@ -11,6 +11,13 @@
 set -e
 cd "$(dirname "$0")"
 
+# `./demo.sh clean [--all|tenants...]` tears environments down instead.
+if [ "$1" = "clean" ]; then
+  shift
+  npm run build > /dev/null 2>&1 || npm install --silent && npm run build > /dev/null
+  exec node packages/cli/dist/index.js clean "$@"
+fi
+
 echo "→ Installing dependencies..."
 npm install --silent
 

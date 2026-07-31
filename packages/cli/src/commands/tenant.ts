@@ -206,7 +206,7 @@ async function tenantStatusAction(name: string): Promise<void> {
 
 // ─── tenant remove ───────────────────────────────────────────────────────────
 
-async function tenantRemoveAction(name: string, opts: { skipPrompts?: boolean }): Promise<void> {
+export async function tenantRemoveAction(name: string, opts: { skipPrompts?: boolean }): Promise<void> {
   const t = await getTenant(name);
   if (!t) {
     console.error(chalk.red(`Tenant '${name}' not found.`));

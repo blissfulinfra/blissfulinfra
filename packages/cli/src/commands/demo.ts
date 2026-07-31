@@ -166,7 +166,7 @@ export async function demoAction(): Promise<void> {
   console.log(chalk.cyan(`  blissful-infra canary promote ${SERVICE} --full`) + chalk.dim("  ship it"));
   console.log(chalk.cyan(`  blissful-infra rollback ${SERVICE}`) + chalk.dim("            git-revert + ArgoCD converges back"));
   console.log();
-  console.log(chalk.dim("Tear down: ") + chalk.cyan("blissful-infra cluster down demo") + chalk.dim(" then ") + chalk.cyan("blissful-infra tenant remove demo"));
+  console.log(chalk.dim("Tear down: ") + chalk.cyan("blissful-infra clean") + chalk.dim("   (or ./demo.sh clean; --all removes every tenant)"));
   console.log();
 }
 
