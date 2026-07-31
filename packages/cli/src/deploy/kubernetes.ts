@@ -16,6 +16,7 @@ import {
   serviceManifestDir,
   commitAndPush,
   headSha,
+  isAncestor,
 } from "../utils/gitops.js";
 import { saveDeployment } from "../utils/deployment-storage.js";
 
@@ -61,11 +62,18 @@ async function waitForArgoSync(
       last = stdout || last;
       const [state, revision] = last.split(" @ ");
       const [sync, health] = (state ?? "").split("/");
-      // A canary mid-steps reports Synced/Progressing (or Paused) — that's a
-      // successful handoff, the Rollout takes over from here.
-      if (sync === "Synced" && revision === targetRevision
-          && health && health !== "Missing" && health !== "Unknown") {
-        return state;
+      // A canary mid-steps reports Synced/Progressing (or Paused/Suspended) —
+      // that's a successful handoff, the Rollout takes over from here.
+      if (sync === "Synced" && health && health !== "Missing" && health !== "Unknown" && revision) {
+        if (revision === targetRevision) {
+          return state;
+        }
+        // A concurrent deploy/rollback may have pushed on top of us —
+        // ArgoCD only ever reports the newest revision. If it contains our
+        // commit, our change is live (inside the superseding state).
+        if (await isAncestor(coords.tenant, targetRevision, revision)) {
+          return `${state} — superseded by ${revision.slice(0, 7)}`;
+        }
       }
     } catch {
       // App may not exist yet right after apply
