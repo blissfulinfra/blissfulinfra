@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import { execa } from "execa";
 import { resolveOrExit } from "../utils/context.js";
 import { getTenant, ensureClusterPorts, getClusterDir } from "../utils/tenant-registry.js";
-import { ensureKind, ensureKubectl, clusterExists, clusterName, kubeContext, writeKubeconfig } from "../utils/kind.js";
+import { ensureKind, ensureKubectl, clusterExists, clusterName, kubeContext, writeKubeconfig, writeInternalKubeconfig, warnIfLowDockerMemory } from "../utils/kind.js";
 import {
   ensureTerraform,
   renderClusterWorkspace,
@@ -27,6 +27,7 @@ async function ensurePrereqs(): Promise<void> {
   } catch {
     throw new PrereqMissingError("docker", "Docker must be running (start Docker Desktop).");
   }
+  await warnIfLowDockerMemory();
 }
 
 async function readArgoCDPassword(tenant: string): Promise<string | null> {
@@ -91,6 +92,9 @@ export async function clusterUpAction(tenantName: string): Promise<void> {
 
   const kubeconfigFile = path.join(workspace, "kubeconfig");
   await writeKubeconfig(tenantName, kubeconfigFile);
+  // The internal variant is consumed by the containerized dashboard (joined
+  // to the kind docker network) — same context name, different server addr.
+  await writeInternalKubeconfig(tenantName, path.join(workspace, "kubeconfig-internal"));
 
   const argocdPassword = await readArgoCDPassword(tenantName);
 

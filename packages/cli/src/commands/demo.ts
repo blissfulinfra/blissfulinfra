@@ -7,13 +7,14 @@ import {
   getService,
   ensureClusterPorts,
   readProjectRuntime,
+  getClusterDir,
 } from "../utils/tenant-registry.js";
 import { tenantCreateAction } from "./tenant.js";
 import { projectCreateAction } from "./project.js";
 import { serviceAddV2Action } from "./service-v2.js";
 import { deployAction } from "./deploy.js";
 import { clusterUpAction } from "./cluster.js";
-import { ensureKind, ensureKubectl, clusterExists, kubeContext } from "../utils/kind.js";
+import { ensureKind, ensureKubectl, clusterExists, kubeContext, writeInternalKubeconfig, warnIfLowDockerMemory } from "../utils/kind.js";
 import { ensureTerraform } from "../utils/terraform.js";
 import { ensureHostDashboardRunning, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
 import { GITEA_USER, GITEA_PASSWORD } from "../utils/gitea.js";
@@ -52,6 +53,10 @@ async function checkPrereqs(): Promise<void> {
     await execa("docker", ["info"], { stdio: "pipe" });
   } catch {
     dockerUp = false;
+  }
+
+  if (dockerUp) {
+    await warnIfLowDockerMemory();
   }
 
   if (missing.length > 0 || !dockerUp) {
@@ -109,6 +114,8 @@ export async function demoAction(): Promise<void> {
   if (await clusterExists(TENANT)) {
     console.log(chalk.dim(`Cluster 'blissful-${TENANT}' already running — reusing.`));
     await ensureClusterPorts(TENANT);
+    const path = await import("node:path");
+    await writeInternalKubeconfig(TENANT, path.join(getClusterDir(TENANT), "kubeconfig-internal")).catch(() => {});
   } else {
     await clusterUpAction(TENANT);
   }

@@ -38,7 +38,14 @@ RUN npm run build -w packages/dashboard
 FROM node:20-alpine
 # bash + common operator tools so the in-dashboard terminal feels familiar.
 # libstdc++ keeps node-pty's prebuilt .node loadable at runtime on Alpine.
-RUN apk add --no-cache docker-cli docker-cli-compose bash curl vim git ncurses libstdc++
+RUN apk add --no-cache docker-cli docker-cli-compose bash curl vim git ncurses libstdc++ kubectl
+
+# kubectl-argo-rollouts plugin — the canary endpoints shell `kubectl argo
+# rollouts` for status/promote/abort against the tenant's kind cluster.
+RUN ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64;; aarch64) ARCH=arm64;; esac; \
+    curl -sSL -o /usr/local/bin/kubectl-argo-rollouts \
+      "https://github.com/argoproj/argo-rollouts/releases/download/v1.9.0/kubectl-argo-rollouts-linux-${ARCH}" \
+    && chmod +x /usr/local/bin/kubectl-argo-rollouts
 
 # Claude Code CLI — lets the in-container Agent endpoint reach Claude.ai via
 # the user's subscription instead of demanding an ANTHROPIC_API_KEY env var.
