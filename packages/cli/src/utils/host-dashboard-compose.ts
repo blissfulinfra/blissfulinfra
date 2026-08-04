@@ -56,6 +56,10 @@ export function buildHostDashboardCompose(attachKindNetwork = false): string {
           `${hostBlissfulHome}:/blissful-home:rw`,
           `${hostBlissfulHome}:${hostBlissfulHome}:rw`,
           `${dashboardClaudeDir}:/root/.claude:rw`,
+          // `claude` keeps its config in ~/.claude.json — OUTSIDE the
+          // ~/.claude dir — so without this bind every container recreate
+          // discarded the login. Bind the file itself, next to the auth dir.
+          `${path.join(dashboardClaudeDir, "config.json")}:/root/.claude.json:rw`,
         ],
         restart: "unless-stopped",
       },
@@ -95,7 +99,16 @@ export async function writeHostDashboardCompose(): Promise<string> {
   await fs.mkdir(home, { recursive: true });
   // Pre-create the auth dir so Docker doesn't bind-mount an empty inode
   // owned by root (which would block `claude login` from writing tokens).
-  await fs.mkdir(path.join(home, "dashboard-claude"), { recursive: true });
+  const claudeDir = path.join(home, "dashboard-claude");
+  await fs.mkdir(claudeDir, { recursive: true });
+  // Pre-create the config file too: Docker would otherwise bind-mount a
+  // DIRECTORY at /root/.claude.json and `claude` would fail to read it.
+  const claudeConfig = path.join(claudeDir, "config.json");
+  try {
+    await fs.access(claudeConfig);
+  } catch {
+    await fs.writeFile(claudeConfig, "{}\n");
+  }
   const composePath = path.join(home, "docker-compose.dashboard.yaml");
   await fs.writeFile(composePath, buildHostDashboardCompose(await kindNetworkExists()));
   return composePath;
