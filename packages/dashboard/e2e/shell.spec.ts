@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { defaultFixtures, mockApi, TENANT } from './fixtures/api'
+import { defaultFixtures, mockApi, PROJECT, TENANT } from './fixtures/api'
 
 test.describe('dashboard shell', () => {
   test('renders the header, the tenant badge and the tool links', async ({ page }) => {
@@ -72,7 +72,10 @@ test.describe('dashboard shell', () => {
     await switcher.selectOption('globex')
     await refetch
 
-    await expect(page.getByTestId('project-detail')).toHaveCount(0)
+    // The first project of the newly-selected tenant is auto-selected so the
+    // detail view is never empty.
+    await expect(page.getByTestId('project-detail')).toBeVisible()
+    await expect(page.getByTestId('project-detail')).toContainText(PROJECT)
   })
 
   test('renders the tenant overview when the tenant card is clicked', async ({ page }) => {

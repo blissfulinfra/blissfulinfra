@@ -672,6 +672,13 @@ function App() {
     jenkinsUrl: string | null
     argocdUrl: string | null
     giteaUrl: string | null
+    argocdPassword?: string | null
+    giteaUser?: string | null
+    giteaPassword?: string | null
+    gitopsRepo?: string | null
+    kubeContextName?: string | null
+    grafanaUser?: string | null
+    grafanaPassword?: string | null
   }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null, argocdUrl: null, giteaUrl: null })
 
   useEffect(() => {
@@ -744,10 +751,13 @@ function App() {
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects || [])
-        // Update selected project if it exists
+        // Update selected project if it exists; otherwise auto-select the
+        // first project so the detail view isn't empty on load/tenant switch.
         if (selectedProject) {
           const updated = data.projects.find((p: Project) => p.name === selectedProject.name)
           if (updated) setSelectedProject(updated)
+        } else if ((data.projects || []).length > 0 && !showClientOverview) {
+          setSelectedProject(data.projects[0])
         }
       }
     } catch (e) {
@@ -2290,6 +2300,44 @@ function App() {
                         >
                           gateway :{selectedProject.infra.gateway}
                         </a>
+                      )}
+                    </div>
+                  )}
+                  {selectedProject.runtime === 'kubernetes' && links.argocdUrl && (
+                    <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
+                      <span className="uppercase tracking-wider">cluster</span>
+                      <a href={links.argocdUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ArgoCD</a>
+                      {links.argocdPassword && (
+                        <CopyChip label={`admin / ${links.argocdPassword}`} value={links.argocdPassword} />
+                      )}
+                      {links.giteaUrl && (
+                        <a href={links.giteaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Gitea</a>
+                      )}
+                      {links.giteaUser && links.giteaPassword && (
+                        <CopyChip label={`${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} />
+                      )}
+                      {links.gitopsRepo && (
+                        <span className="font-mono">{links.gitopsRepo}</span>
+                      )}
+                      {links.kubeContextName && (
+                        <CopyChip label={links.kubeContextName} value={`kubectl --context ${links.kubeContextName} `} />
+                      )}
+                    </div>
+                  )}
+                  {(links.grafanaUrl || links.jenkinsUrl) && (
+                    <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
+                      <span className="uppercase tracking-wider">tenant</span>
+                      {links.grafanaUrl && (
+                        <a href={links.grafanaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Grafana</a>
+                      )}
+                      {links.grafanaUser && links.grafanaPassword && (
+                        <CopyChip label={`${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} />
+                      )}
+                      {links.prometheusUrl && (
+                        <a href={links.prometheusUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Prometheus</a>
+                      )}
+                      {links.jenkinsUrl && (
+                        <a href={links.jenkinsUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Jenkins</a>
                       )}
                     </div>
                   )}

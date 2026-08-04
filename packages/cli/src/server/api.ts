@@ -225,6 +225,15 @@ export function createApiServer(workingDir: string, port = 3002) {
           // Kubernetes runtime (ADR-0020) — live only while the cluster is.
           argocdUrl: clusterUp && tenantPorts.argocd ? `http://localhost:${tenantPorts.argocd}` : null,
           giteaUrl: clusterUp && tenantPorts.gitea ? `http://localhost:${tenantPorts.gitea}` : null,
+          // Dev credentials, surfaced in the dashboard's connections card.
+          // Everything here is local-only, fixed, dev-grade by design.
+          argocdPassword: clusterUp && currentTenant ? await readArgoCDAdminPassword(currentTenant) : null,
+          giteaUser: clusterUp ? "blissful" : null,
+          giteaPassword: clusterUp ? "blissful-dev-pw" : null,
+          gitopsRepo: clusterUp && currentTenant ? `blissful/${currentTenant}-gitops` : null,
+          kubeContextName: clusterUp && currentTenant ? `kind-blissful-${currentTenant}` : null,
+          grafanaUser: grafanaUp ? "admin" : null,
+          grafanaPassword: grafanaUp ? "admin" : null,
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(links));
@@ -1759,6 +1768,25 @@ async function refreshContainerKubeconfigs(): Promise<void> {
       process.env.KUBECONFIG = files.join(":");
     }
   } catch { /* no tenants dir yet */ }
+}
+
+const argocdPasswordCache = new Map<string, { value: string | null; at: number }>();
+
+/** ArgoCD's generated admin password, from the cluster secret. Cached 60s. */
+async function readArgoCDAdminPassword(tenant: string): Promise<string | null> {
+  const cached = argocdPasswordCache.get(tenant);
+  if (cached && Date.now() - cached.at < 60_000) return cached.value;
+  let value: string | null = null;
+  try {
+    const { stdout } = await execa("kubectl", [
+      "--context", kubeContext(tenant),
+      "-n", "argocd", "get", "secret", "argocd-initial-admin-secret",
+      "-o", "jsonpath={.data.password}",
+    ], { stdio: "pipe", timeout: 8000 });
+    value = stdout ? Buffer.from(stdout, "base64").toString("utf-8") : null;
+  } catch { /* cluster not reachable */ }
+  argocdPasswordCache.set(tenant, { value, at: Date.now() });
+  return value;
 }
 
 async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> {
