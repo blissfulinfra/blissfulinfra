@@ -34,8 +34,7 @@ import {
   BarChart3,
   CheckCircle,
   XCircle,
-  HelpCircle,
-  GitBranch,
+    GitBranch,
   Server,
   ArrowUpCircle,
   RotateCcw,
@@ -2181,79 +2180,17 @@ function App() {
                   </div>
                 </div>
 
-                {/* Service Health */}
-                {currentHealth.length > 0 ? (
-                  <div data-testid="service-health" className="flex flex-wrap gap-2 mt-3">
-                    {currentHealth.map((service) => {
-                      const svcMeta = selectedProject.services.find(s => s.name === service.name)
-                      return (
-                        <div
-                          key={service.name}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border ${
-                            service.status === 'healthy'
-                              ? 'border-green-500/50 bg-green-500/10'
-                              : service.status === 'unhealthy'
-                              ? 'border-red-500/50 bg-red-500/10'
-                              : 'border-gray-600 bg-gray-700/50'
-                          }`}
-                        >
-                          {service.status === 'healthy' ? (
-                            <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                          ) : service.status === 'unhealthy' ? (
-                            <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                          ) : (
-                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          )}
-                          <span className="capitalize">{service.name}</span>
-                          {svcMeta?.port && (
-                            <a
-                              href={serviceUrl(svcMeta.port)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:underline"
-                            >
-                              :{svcMeta.port}
-                            </a>
-                          )}
-                          {service.status === 'unhealthy' && service.details && (
-                            <span className="text-red-300 text-xs ml-1">{service.details}</span>
-                          )}
-                          {service.status === 'healthy' && service.responseTimeMs !== undefined && (
-                            <span className="text-gray-500 text-xs">{service.responseTimeMs}ms</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {selectedProject.services.map((service) => (
-                      <div
-                        key={service.name}
-                        className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-sm"
-                      >
-                        <span className={`w-2 h-2 rounded-full ${statusDot(service.status)}`} />
-                        <span>{service.name}</span>
-                        {service.port && (
-                          <a
-                            href={serviceUrl(service.port)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-400 hover:underline"
-                          >
-                            :{service.port}
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
                 {/* Connections: how to reach each service + the infra creds
                     the scaffold wired in. */}
                 <div data-testid="service-connections" className="mt-3 bg-gray-800/60 border border-gray-700 rounded-lg divide-y divide-gray-700/60 text-sm">
-                  {selectedProject.services.map(svc => (
+                  {selectedProject.services.map(svc => {
+                    const health = currentHealth.find(h => h.name === svc.name)
+                    const dot = health
+                      ? health.status === 'healthy' ? 'bg-green-400' : health.status === 'unhealthy' ? 'bg-red-400' : 'bg-gray-500'
+                      : statusDot(svc.status)
+                    return (
                     <div key={svc.name} className="flex items-center gap-3 px-3 py-2 flex-wrap">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                       <span className="font-mono">{svc.name}</span>
                       {svc.serviceType && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">{svc.serviceType}</span>
@@ -2261,7 +2198,7 @@ function App() {
                       {svc.template && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300">{svc.template}</span>
                       )}
-                      {svc.url && (
+                      {svc.url ? (
                         <a
                           href={svc.url.startsWith('/') ? withTenant(svc.url) : svc.url}
                           target="_blank"
@@ -2270,15 +2207,31 @@ function App() {
                         >
                           {svc.url.startsWith('/') ? 'Open (via cluster proxy)' : svc.url.replace('http://', '')}
                         </a>
-                      )}
+                      ) : svc.port ? (
+                        <a
+                          href={serviceUrl(svc.port)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline text-xs"
+                        >
+                          :{svc.port}
+                        </a>
+                      ) : null}
                       {svc.dbSchema && selectedProject.infra?.postgres && (
                         <CopyChip
                           label={`db schema ${svc.dbSchema}`}
                           value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app?currentSchema=${svc.dbSchema}`}
                         />
                       )}
+                      {health?.status === 'healthy' && health.responseTimeMs !== undefined && (
+                        <span className="text-gray-500 text-xs">{health.responseTimeMs}ms</span>
+                      )}
+                      {health?.status === 'unhealthy' && health.details && (
+                        <span className="text-red-300 text-xs">{health.details}</span>
+                      )}
                     </div>
-                  ))}
+                    )
+                  })}
                   {selectedProject.infra && (
                     <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
                       <span className="uppercase tracking-wider">infra</span>

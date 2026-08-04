@@ -9,7 +9,7 @@ test.describe('dashboard shell', () => {
     await expect(page.getByRole('heading', { name: 'blissful-infra' })).toBeVisible()
     await expect(page.getByText(TENANT, { exact: true }).first()).toBeVisible()
 
-    await expect(page.getByRole('link', { name: 'Grafana' })).toHaveAttribute('href', 'http://localhost:3100')
+    await expect(page.getByRole('link', { name: 'Grafana' }).first()).toHaveAttribute('href', 'http://localhost:3100')
     await expect(page.getByRole('link', { name: 'ArgoCD' })).toHaveAttribute('href', 'http://localhost:8081')
     await expect(page.getByRole('link', { name: 'Gitea' })).toHaveAttribute('href', 'http://localhost:3000')
   })
