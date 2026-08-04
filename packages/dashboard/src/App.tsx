@@ -22,9 +22,6 @@ import {
   BarChart3,
   Network,
   TerminalSquare,
-  CheckCircle,
-  XCircle,
-    GitBranch,
   Server,
   ArrowUpCircle,
   RotateCcw,
@@ -165,21 +162,6 @@ interface AlertsResponse {
     notifyOnConsole: boolean
     cooldownMs: number
   }
-}
-
-interface PipelineStage {
-  name: string
-  status: 'success' | 'failure' | 'running' | 'skipped' | 'pending'
-}
-
-interface PipelineData {
-  lastRun?: {
-    status: 'success' | 'failure' | 'running' | 'unknown'
-    duration?: number
-    timestamp?: string
-    stages: PipelineStage[]
-  }
-  jenkinsUrl?: string
 }
 
 interface EnvironmentInfo {
@@ -359,11 +341,6 @@ function App() {
   // Plugin state
   const [pluginStatuses, setPluginStatuses] = useState<PluginStatus[]>([])
 
-  // Pipeline state
-  const [pipelineData, setPipelineData] = useState<PipelineData | null>(null)
-  const [pipelineRunning, setPipelineRunning] = useState(false)
-  const [pipelineOptions, setPipelineOptions] = useState({ push: true, skipTests: false, skipScan: false })
-
   // Environments state
   const [environments, setEnvironments] = useState<EnvironmentInfo[]>([])
   const [deployingEnv, setDeployingEnv] = useState<string | null>(null)
@@ -380,9 +357,6 @@ function App() {
     message?: string
   }>>([])
   const [canaryActionPending, setCanaryActionPending] = useState<string | null>(null)
-
-  // Deployments state
-  const [deployments, setDeployments] = useState<any[]>([])
 
   // Settings state
   const [alertThresholds, setAlertThresholds] = useState<AlertThreshold[]>([])
@@ -455,15 +429,6 @@ function App() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [followLogs, setFollowLogs] = useState(true)
-
-  // Gatling perf state
-  const [gatlingStatus, setGatlingStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle')
-  const [gatlingLog, setGatlingLog] = useState<string[]>([])
-  const [gatlingResults, setGatlingResults] = useState<{
-    requests: number; requestsOk: number; requestsFailed: number
-    p50Ms: number; p75Ms: number; p95Ms: number; p99Ms: number
-    meanMs: number; rps: number; errorRate: number
-  } | null>(null)
 
   const logsContainerRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return
@@ -650,43 +615,6 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to fetch plugins:', e)
-    }
-  }
-
-
-  // --- Pipeline ---
-  const fetchPipeline = async () => {
-    if (!selectedProject) return
-    try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`))
-      if (res.ok) {
-        const data = await res.json()
-        setPipelineData(data)
-      }
-    } catch (e) {
-      console.error('Failed to fetch pipeline:', e)
-    }
-  }
-
-  const runPipeline = async () => {
-    if (!selectedProject) return
-    setPipelineRunning(true)
-    try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pipelineOptions),
-      })
-      if (res.ok) {
-        await fetchPipeline()
-      } else {
-        const data = await res.json()
-        setErrorModal({ title: 'Pipeline Failed', message: data.error || 'Unknown error' })
-      }
-    } catch (e) {
-      console.error('Failed to run pipeline:', e)
-    } finally {
-      setPipelineRunning(false)
     }
   }
 
@@ -975,14 +903,6 @@ function App() {
   }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
-    if (selectedProject && activeTab === 'pipeline') {
-      fetchPipeline()
-      const interval = setInterval(fetchPipeline, 10000)
-      return () => clearInterval(interval)
-    }
-  }, [selectedProject?.name, activeTab, currentTenant])
-
-  useEffect(() => {
     if (selectedProject && activeTab === 'environments') {
       fetchEnvironments()
       const interval = setInterval(fetchEnvironments, 10000)
@@ -997,23 +917,6 @@ function App() {
   }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
-    if (selectedProject && activeTab === 'deployments') {
-      const fetchDeployments = async () => {
-        try {
-          const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deployments`))
-          if (res.ok) {
-            const data = await res.json()
-            setDeployments(data.deployments || [])
-          }
-        } catch (e) {
-          console.error('Failed to fetch deployments:', e)
-        }
-      }
-      fetchDeployments()
-    }
-  }, [selectedProject?.name, activeTab, currentTenant])
-
-  useEffect(() => {
     if (followLogs) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs, followLogs])
 
@@ -1022,65 +925,6 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Poll Gatling status + log while a run is in progress
-  useEffect(() => {
-    if (!selectedProject || activeTab !== 'perf' || gatlingStatus !== 'running') return
-    const poll = async () => {
-      try {
-        const [statusRes, logRes] = await Promise.all([
-          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)),
-          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)),
-        ])
-        if (statusRes.ok) {
-          const s = await statusRes.json()
-          setGatlingStatus(s.status)
-          if (s.status === 'completed' || s.status === 'error') {
-            if (s.status === 'completed') {
-              const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
-              if (rRes.ok) setGatlingResults(await rRes.json())
-            }
-          }
-        }
-        if (logRes.ok) {
-          const l = await logRes.json()
-          setGatlingLog(l.lines)
-        }
-      } catch { /* ignore */ }
-    }
-    poll()
-    const interval = setInterval(poll, 2000)
-    return () => clearInterval(interval)
-  }, [selectedProject?.name, activeTab, gatlingStatus])
-
-  // Fetch latest results when switching to perf tab (if previous run completed)
-  useEffect(() => {
-    if (!selectedProject || activeTab !== 'perf') return
-    fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`))
-      .then(r => r.ok ? r.json() : null)
-      .then(async s => {
-        if (!s) return
-        setGatlingStatus(s.status)
-        if (s.status === 'completed') {
-          const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
-          if (rRes.ok) setGatlingResults(await rRes.json())
-        }
-        const lRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`))
-        if (lRes.ok) setGatlingLog((await lRes.json()).lines)
-      })
-      .catch(() => {})
-  }, [selectedProject?.name, activeTab])
-
-  const handleRunGatling = async () => {
-    if (!selectedProject) return
-    setGatlingStatus('running')
-    setGatlingLog([])
-    setGatlingResults(null)
-    try {
-      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`), { method: 'POST' })
-    } catch {
-      setGatlingStatus('error')
-    }
-  }
 
   const handleStart = async () => {
     if (!selectedProject) return
@@ -1419,15 +1263,6 @@ function App() {
       case 'Degraded': return 'bg-red-900 text-red-300'
       case 'Progressing': return 'bg-blue-900 text-blue-300'
       default: return 'bg-gray-800 text-gray-400'
-    }
-  }
-
-  const pipelineStageBorder = (status: string) => {
-    switch (status) {
-      case 'success': return 'border-green-500 bg-green-900/30'
-      case 'failure': return 'border-red-500 bg-red-900/30'
-      case 'running': return 'border-blue-500 bg-blue-900/30'
-      default: return 'border-gray-600 bg-gray-800/30'
     }
   }
 
