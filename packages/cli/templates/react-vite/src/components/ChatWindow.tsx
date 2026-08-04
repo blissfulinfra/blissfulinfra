@@ -166,7 +166,7 @@ export function ChatWindow() {
     setInput('')
     // Persist message to database
     try {
-      await fetch('/api/messages', {
+      const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -175,6 +175,10 @@ export function ChatWindow() {
           sessionId: mySessionId,
         })
       })
+      if (!res.ok) {
+        const error = await res.text()
+        console.error('Failed to persist message:', res.status, error)
+      }
     } catch (e) {
       // Silently fail — message was sent live via WebSocket, db persistence is best-effort
       console.error('Failed to persist message', e)
