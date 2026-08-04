@@ -160,6 +160,8 @@ export async function demoAction(): Promise<void> {
   console.log(chalk.dim("  ArgoCD:     ") + chalk.cyan(`http://localhost:${ports.argocd}`) + chalk.dim(`   admin / ${argocdPassword ?? "(see cluster up output)"}`));
   console.log(chalk.dim("  Gitea:      ") + chalk.cyan(`http://localhost:${ports.gitea}`) + chalk.dim(`   ${GITEA_USER} / ${GITEA_PASSWORD}   (repo ${TENANT}-gitops = the deploy audit trail)`));
   console.log();
+  console.log(chalk.dim("Optional: ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Jenkins + Grafana/Prometheus/Loki (adds their header links)"));
+  console.log();
   console.log(chalk.dim("Try the canary loop:"));
   console.log(chalk.cyan(`  blissful-infra canary status ${SERVICE}`) + chalk.dim("      watch the rollout"));
   console.log(chalk.dim("  edit ") + chalk.cyan(`~/.blissful-infra/tenants/${TENANT}/projects/${PROJECT}/services/${SERVICE}/src/app.ts`));

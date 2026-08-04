@@ -198,21 +198,33 @@ export function createApiServer(workingDir: string, port = 3002) {
           const t = await getTenant(currentTenant);
           if (t) tenantPorts = t.portBlock;
         }
+        // A link is only a link if something answers it: ports are allocated
+        // at tenant create, but Jenkins/observability only run after
+        // `tenant up` and ArgoCD/Gitea only while the kind cluster is up.
+        // Emitting URLs for absent containers gave the header dead buttons.
+        let upContainers = new Set<string>();
+        try {
+          const { stdout } = await execa("docker", ["ps", "--format", "{{.Names}}"], { reject: false });
+          upContainers = new Set(stdout.trim().split("\n").filter(Boolean));
+        } catch { /* docker unavailable — no links */ }
+        const containerUp = (name: string) => upContainers.has(name);
+        const clusterUp = currentTenant ? containerUp(`blissful-${currentTenant}-control-plane`) : false;
+        const grafanaUp = currentTenant ? containerUp(`${currentTenant}-grafana`) : false;
+
         const links: Record<string, string | null> = {
           // The dashboard's `links.clientName` badge predates the rename to
           // tenants; it carries the tenant name until the UI field is renamed.
           clientName: currentTenant,
           tenantName: currentTenant,
           projectName: contextProject,
-          tempoUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/explore?left=${encodeURIComponent('{"datasource":"Tempo","queries":[{"refId":"A"}]}')}` : null,
+          tempoUrl: grafanaUp && tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/explore?left=${encodeURIComponent('{"datasource":"Tempo","queries":[{"refId":"A"}]}')}` : null,
           jaegerUrl: null,
-          grafanaUrl: tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/d/tenant-overview` : null,
-          prometheusUrl: tenantPorts.prometheus ? `http://localhost:${tenantPorts.prometheus}` : null,
-          jenkinsUrl: tenantPorts.jenkins ? `http://localhost:${tenantPorts.jenkins}` : null,
-          // Kubernetes runtime (ADR-0020) — only present once cluster ports
-          // are allocated (cluster up backfills them).
-          argocdUrl: tenantPorts.argocd ? `http://localhost:${tenantPorts.argocd}` : null,
-          giteaUrl: tenantPorts.gitea ? `http://localhost:${tenantPorts.gitea}` : null,
+          grafanaUrl: grafanaUp && tenantPorts.grafana ? `http://localhost:${tenantPorts.grafana}/d/tenant-overview` : null,
+          prometheusUrl: currentTenant && containerUp(`${currentTenant}-prometheus`) && tenantPorts.prometheus ? `http://localhost:${tenantPorts.prometheus}` : null,
+          jenkinsUrl: currentTenant && containerUp(`${currentTenant}-jenkins`) && tenantPorts.jenkins ? `http://localhost:${tenantPorts.jenkins}` : null,
+          // Kubernetes runtime (ADR-0020) — live only while the cluster is.
+          argocdUrl: clusterUp && tenantPorts.argocd ? `http://localhost:${tenantPorts.argocd}` : null,
+          giteaUrl: clusterUp && tenantPorts.gitea ? `http://localhost:${tenantPorts.gitea}` : null,
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(links));
