@@ -32,16 +32,16 @@ describe("port math (pure)", () => {
     it("tenantIndex 0 returns base ports", () => {
       const b = tenantPortBlock("acme", 0);
       expect(b).toMatchObject({
-        dashboard: 3010, jenkins: 8081, grafana: 3030,
-        prometheus: 9090, tempo: 3200, loki: 3100,
+        dashboard: 3010, jenkins: 8280, grafana: 3030,
+        prometheus: 9490, tempo: 3200, loki: 3100,
       });
     });
 
     it("tenantIndex N adds N to every port", () => {
       const b = tenantPortBlock("acme", 3);
       expect(b).toMatchObject({
-        dashboard: 3013, jenkins: 8084, grafana: 3033,
-        prometheus: 9093, tempo: 3203, loki: 3103,
+        dashboard: 3013, jenkins: 8283, grafana: 3033,
+        prometheus: 9493, tempo: 3203, loki: 3103,
       });
     });
 
@@ -53,7 +53,7 @@ describe("port math (pure)", () => {
   describe("projectPortBlock", () => {
     it("tenant 0 project 0 uses base ports", () => {
       const b = projectPortBlock("acme", "ecommerce", 0, 0);
-      expect(b).toMatchObject({ kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080, postgresExporter: 9187, kafkaExporter: 9308, redisExporter: 9121 });
+      expect(b).toMatchObject({ kafka: 9092, postgres: 5432, redis: 6379, gateway: 8080, postgresExporter: 9600, kafkaExporter: 9308, redisExporter: 9700 });
     });
 
     it("project index offsets ports by 1 within the same tenant", () => {

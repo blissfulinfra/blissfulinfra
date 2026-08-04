@@ -118,7 +118,7 @@ construction). The demo prints the exact URLs; for tenant block *i*:
 | ArgoCD UI | `8440 + i` | NodePort 30080 in the kind node |
 | Gitea | `3300 + i` | NodePort 30300 in the kind node |
 | Kubernetes API | `6550 + i` | kind API server (host loopback) |
-| Jenkins / Grafana / Prometheus / Tempo / Loki | `8081+i` / `3030+i` / `9090+i` / `3200+i` / `3100+i` | tenant compose containers (only after `tenant up`; not part of the demo's critical path) |
+| Jenkins / Grafana / Prometheus / Tempo / Loki | `8280+i` / `3030+i` / `9490+i` / `3200+i` / `3100+i` | tenant compose containers (only after `tenant up`; not part of the demo's critical path) |
 
 ## State on disk
 

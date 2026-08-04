@@ -71,12 +71,16 @@ export const MAX_SERVICES_PER_PROJECT = 20;
 
 const TENANT_BASES = {
   dashboard:  3010,
-  jenkins:    8081,
+  // jenkins and prometheus were 8081/9090, inside the project gateway
+  // (8080+offset) and kafka (9092+offset) ranges — real collisions once a
+  // second project existed. Every tenant base now sits outside every
+  // project/service range; the cluster.test property test enforces it.
+  jenkins:    8280,
   // Grafana must stay clear of the host control-plane dashboard's fixed
   // port 3002 (HOST_DASHBOARD_PORT) — the old base of 3000 collided with it
   // at blockIndex 2.
   grafana:    3030,
-  prometheus: 9090,
+  prometheus: 9490,
   tempo:      3200,
   loki:       3100,
   // Kubernetes runtime (ADR-0020): kind API server, ArgoCD UI, Gitea.
@@ -93,10 +97,14 @@ const PROJECT_BASES = {
   postgres: 5432,
   redis:    6379,
   gateway:  8080,
-  // Exporter sidecars — chosen at the standard upstream ports for each.
-  postgresExporter: 9187,
+  // Exporter sidecars. Their old bases (9187/9121) sat at the upstream
+  // defaults but INSIDE each other's and kafka's 100-wide offset ranges —
+  // the exhaustive port test caught real overlaps. Now each range is clear:
+  // kafka 9092-9191, kafkaExporter 9308-9407, postgresExporter 9600-9699,
+  // redisExporter 9700-9799.
+  postgresExporter: 9600,
   kafkaExporter:    9308,
-  redisExporter:    9121,
+  redisExporter:    9700,
 } as const;
 
 const SERVICE_BASES = {
