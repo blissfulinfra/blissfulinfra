@@ -1082,7 +1082,8 @@ export function createApiServer(workingDir: string, port = 3002) {
           if (isHtml && req.method === "GET" && rest === "/") {
             // For HTML responses on the root path, wrap in iframe to fix React Router path issues.
             // When React loads, it will see the iframe's src URL as its location, not the preview proxy path.
-            const iframeUrl = `http://${targetHost}:${nodePort}/${query.replace(/^\?/, "")}`;
+            // Use localhost for the browser iframe even when in DOCKER_MODE, since NodePorts are published to the host.
+            const iframeUrl = `http://localhost:${nodePort}/${query.replace(/^\?/, "")}`;
             const wrapperHtml = `<!DOCTYPE html>
 <html>
 <head>
