@@ -94,3 +94,75 @@ export async function ensureOrgRepo(
     inClusterUrl: giteaInClusterRepoUrl(tenant),
   };
 }
+
+/**
+ * Source repo for a service — where CI runs (ADR-0023). Distinct from the
+ * tenant's single gitops repo, which holds rendered manifests.
+ */
+export function sourceRepoName(tenant: string, project: string, service: string): string {
+  return `${tenant}-${project}-${service}`;
+}
+
+export function sourcePushUrl(tenant: string, project: string, service: string, giteaPort: number): string {
+  return `http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${giteaPort}/${GITEA_OWNER}/${sourceRepoName(tenant, project, service)}.git`;
+}
+
+export function sourceWebUrl(tenant: string, project: string, service: string, giteaPort: number): string {
+  return `http://localhost:${giteaPort}/${GITEA_OWNER}/${sourceRepoName(tenant, project, service)}`;
+}
+
+/** Create the service's source repo if absent. Idempotent. */
+export async function ensureSourceRepo(
+  tenant: string,
+  project: string,
+  service: string,
+  giteaPort: number,
+): Promise<string> {
+  const res = await giteaFetch(giteaPort, "/user/repos", {
+    method: "POST",
+    body: JSON.stringify({
+      name: sourceRepoName(tenant, project, service),
+      auto_init: false,
+      default_branch: "main",
+      private: false,
+    }),
+  });
+  if (!res.ok && res.status !== 409 && res.status !== 422) {
+    throw new Error(`Gitea source repo create failed: HTTP ${res.status} ${await res.text().catch(() => "")}`);
+  }
+  return sourcePushUrl(tenant, project, service, giteaPort);
+}
+
+/**
+ * A registration token for a new Actions runner. Gitea moved this between
+ * GET and POST across versions, so try both.
+ */
+export async function getRunnerRegistrationToken(giteaPort: number): Promise<string> {
+  for (const method of ["GET", "POST"] as const) {
+    const res = await giteaFetch(giteaPort, "/admin/runners/registration-token", { method });
+    if (res.ok) {
+      const body = await res.json() as { token?: string };
+      if (body.token) return body.token;
+    }
+  }
+  throw new Error(
+    "Could not get an Actions runner registration token from Gitea.\n" +
+    "Is Actions enabled? (cluster up provisions it; recreate the cluster if this tenant predates ADR-0023)",
+  );
+}
+
+/** Workflow runs for a service's source repo, newest first. */
+export async function listWorkflowRuns(
+  tenant: string,
+  project: string,
+  service: string,
+  giteaPort: number,
+): Promise<Array<{ status: string; conclusion: string | null; name: string; run_number: number; created_at: string }>> {
+  const repo = sourceRepoName(tenant, project, service);
+  const res = await giteaFetch(giteaPort, `/repos/${GITEA_OWNER}/${repo}/actions/tasks`);
+  if (!res.ok) return [];
+  const body = await res.json() as {
+    workflow_runs?: Array<{ status: string; conclusion: string | null; name: string; run_number: number; created_at: string }>;
+  };
+  return body.workflow_runs ?? [];
+}

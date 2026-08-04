@@ -154,7 +154,7 @@ Frontends go to Pages, `hono` backends go to Workers. The `hono` template keeps 
 | Hierarchy | `init`, `use`, `tenant create/list/status/up/down/remove`, `project create/list/status/up/down/remove`, `service add/remove/up/down/logs` |
 | Kubernetes | `cluster up/down/status`, `deploy`, `canary status/promote/abort/pause/resume/test`, `rollback` |
 | Cloud | `deploy <service> --target cloudflare` |
-| CI | `pipeline`, `jenkins`, `status` |
+| CI | `ci setup/push/status/logs` (Gitea Actions), `pipeline`, `status`, `jenkins` *(legacy, off by default)* |
 | Intelligence | `agent`, `analyze`, `suggest`, `generate`, `mcp`, `dashboard` |
 | Resilience | `perf`, `chaos`, `compare` *(deferred — still keyed to the pre-2.0 flat model)* |
 

@@ -60,7 +60,7 @@ export async function tenantCreateAction(name: string, opts: TenantCreateOptions
       type: "tenant",
       name,
       infrastructure: {
-        jenkins: opts.jenkins !== false,
+        jenkins: opts.jenkins === true,
         observability: {
           prometheus: opts.prometheus !== false,
           grafana:    opts.grafana    !== false,
@@ -77,7 +77,7 @@ export async function tenantCreateAction(name: string, opts: TenantCreateOptions
         name: "components",
         message: "Tenant-level infrastructure (Kafka/Postgres live at the project level)",
         choices: [
-          { name: "Jenkins (CI/CD)",            value: "jenkins",    checked: opts.jenkins    !== false },
+          { name: "Jenkins (legacy CI — Gitea Actions is the default engine, ADR-0023)", value: "jenkins", checked: opts.jenkins === true },
           { name: "Prometheus (metrics)",       value: "prometheus", checked: opts.prometheus !== false },
           { name: "Grafana (dashboards)",       value: "grafana",    checked: opts.grafana    !== false },
           { name: "Tempo (tracing)",            value: "tempo",      checked: opts.tempo      !== false },

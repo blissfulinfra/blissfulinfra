@@ -76,7 +76,8 @@ These take tenant coordinates: positional service + `--tenant`/`--project` flags
 ### CI + intelligence
 | Command | File | What it does |
 |---|---|---|
-| `pipeline` / `jenkins` | `pipeline.ts`, `jenkins.ts` | Local pipeline stages / tenant Jenkins management |
+| `ci setup/push/status/logs` | `ci.ts` | Gitea Actions CI (ADR-0023): register the tenant runner, push a service's source to trigger its workflow, read runs |
+| `pipeline` / `jenkins` | `pipeline.ts`, `jenkins.ts` | Local pipeline stages / tenant Jenkins (legacy, off by default since ADR-0023) |
 | `status` | `status.ts` | Context-aware tenant/project/service status |
 | `agent` | `agent.ts` | Interactive AI chat session |
 | `analyze` / `suggest` | `analyze.ts` | AI-powered log and metrics analysis |

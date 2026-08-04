@@ -4,6 +4,14 @@
 # the CLI pushes from the host via the NodePort mapping.
 replicaCount: 1
 
+# Recreate, not RollingUpdate: Gitea holds an exclusive levelDB lock on its
+# RWO volume (/data/queues/common), so a surging new pod crashes on
+# "resource temporarily unavailable" while the old one keeps serving — the
+# rollout deadlocks and values changes silently never take effect.
+strategy:
+  type: Recreate
+  rollingUpdate: null
+
 service:
   http:
     type: NodePort
@@ -28,6 +36,11 @@ gitea:
       ROOT_URL: http://localhost:{{GITEA_PORT}}/
     service:
       DISABLE_REGISTRATION: true
+    # CI engine (ADR-0023). The runner itself is deployed by
+    # `blissful-infra ci setup` — it needs a registration token from a
+    # running Gitea, which terraform can't order.
+    actions:
+      ENABLED: true
 
 persistence:
   enabled: true
