@@ -240,6 +240,68 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // Grafana proxy: /api/v1/grafana/* forwards to the tenant's Grafana instance
+      const grafanaMatch = url.pathname.match(/^\/api\/v1\/grafana(\/.*)?$/);
+      if (grafanaMatch) {
+        const currentTenant = tenantFromRequest();
+        if (!currentTenant) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "tenant query param required" }));
+          return;
+        }
+        try {
+          const tenant = await getTenant(currentTenant);
+          if (!tenant) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Tenant not found" }));
+            return;
+          }
+
+          // Check if Grafana is running
+          let upContainers = new Set<string>();
+          try {
+            const { stdout } = await execa("docker", ["ps", "--format", "{{.Names}}"], { reject: false });
+            upContainers = new Set(stdout.trim().split("\n").filter(Boolean));
+          } catch { /* docker unavailable */ }
+
+          const grafanaPort = tenant.portBlock.grafana;
+          const grafanaUp = upContainers.has(`${currentTenant}-grafana`);
+
+          if (!grafanaUp || !grafanaPort) {
+            res.writeHead(503, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Grafana is not running" }));
+            return;
+          }
+
+          const path = grafanaMatch[1] ?? "/";
+          const target = `http://localhost:${grafanaPort}${path}${url.search}`;
+          const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
+          const upstream = await fetch(target, {
+            method: req.method,
+            headers: new Headers(
+              Object.entries(req.headers)
+                .filter(([k, v]) => !["host", "connection"].includes(k.toLowerCase()) && typeof v === "string")
+                .map(([k, v]) => [k, v as string])
+            ),
+            body,
+            signal: AbortSignal.timeout(30000),
+          });
+          const buf = Buffer.from(await upstream.arrayBuffer());
+          const responseHeaders: Record<string, string> = {};
+          upstream.headers.forEach((value, key) => {
+            if (!["content-encoding", "transfer-encoding"].includes(key.toLowerCase())) {
+              responseHeaders[key] = value;
+            }
+          });
+          res.writeHead(upstream.status, responseHeaders);
+          res.end(buf);
+        } catch (e) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Could not reach Grafana", details: String(e) }));
+        }
+        return;
+      }
+
       // GET /api/projects - List all projects in working directory
       if (req.method === "GET" && url.pathname === "/api/v1/projects") {
         const projects = await listProjects(workingDir, tenantFromRequest());
