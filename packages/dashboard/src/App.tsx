@@ -579,8 +579,9 @@ function App() {
   const [environments, setEnvironments] = useState<EnvironmentInfo[]>([])
   const [deployingEnv, setDeployingEnv] = useState<string | null>(null)
   const [rollingBackEnv, setRollingBackEnv] = useState<string | null>(null)
-  // Canary rollout (kubernetes-runtime services) — null when no Rollout exists
-  const [canary, setCanary] = useState<{
+  // Canary rollouts (kubernetes-runtime services) — one entry per service of
+  // the selected project that has a live Rollout.
+  const [canaries, setCanaries] = useState<Array<{
     service: string
     project: string
     status: string
@@ -588,7 +589,7 @@ function App() {
     totalSteps: number
     currentWeight: number
     message?: string
-  } | null>(null)
+  }>>([])
   const [canaryActionPending, setCanaryActionPending] = useState<string | null>(null)
 
   // Deployments state
@@ -1052,35 +1053,46 @@ function App() {
   }
 
   // --- Environments ---
+  // The sidebar selects a PROJECT, but the environments/canary/deploy API
+  // routes key on SERVICE names — iterate the project's services.
+  const projectServiceNames = (): string[] => {
+    const svcs = (selectedProject?.services ?? []).map(s => s.name)
+    return svcs.length > 0 ? svcs : selectedProject ? [selectedProject.name] : []
+  }
+
   const fetchEnvironments = async () => {
     if (!selectedProject) return
+    const services = projectServiceNames()
     try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/environments`))
-      if (res.ok) {
+      const rows = await Promise.all(services.map(async svc => {
+        const res = await fetch(withTenant(`${API_BASE}/projects/${svc}/environments`))
+        if (!res.ok) return []
         const data = await res.json()
-        setEnvironments(data.environments || [])
-      }
+        return (data.environments || []).map((e: EnvironmentInfo) => ({ ...e, service: svc }))
+      }))
+      setEnvironments(rows.flat())
     } catch (e) {
       console.error('Failed to fetch environments:', e)
     }
     // Canary status rides along on the same poll (kubernetes runtime only —
-    // null when the service has no Rollout).
+    // null when a service has no Rollout).
     try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/canary`))
-      if (res.ok) {
+      const results = await Promise.all(services.map(async svc => {
+        const res = await fetch(withTenant(`${API_BASE}/projects/${svc}/canary`))
+        if (!res.ok) return null
         const data = await res.json()
-        setCanary(data.canary ?? null)
-      }
+        return data.canary ?? null
+      }))
+      setCanaries(results.filter(Boolean))
     } catch {
-      setCanary(null)
+      setCanaries([])
     }
   }
 
-  const handleCanaryAction = async (action: 'promote' | 'promote-full' | 'abort') => {
-    if (!selectedProject) return
-    setCanaryActionPending(action)
+  const handleCanaryAction = async (service: string, action: 'promote' | 'promote-full' | 'abort') => {
+    setCanaryActionPending(`${service}:${action}`)
     try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/canary/${action}`), {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${service}/canary/${action}`), {
         method: 'POST',
       })
       if (!res.ok) {
@@ -1095,11 +1107,10 @@ function App() {
     }
   }
 
-  const handleDeploy = async (env: string) => {
-    if (!selectedProject) return
-    setDeployingEnv(env)
+  const handleDeploy = async (service: string, env: string) => {
+    setDeployingEnv(`${service}:${env}`)
     try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deploy`), {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${service}/deploy`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -1116,11 +1127,10 @@ function App() {
     }
   }
 
-  const handleRollback = async (env: string) => {
-    if (!selectedProject) return
-    setRollingBackEnv(env)
+  const handleRollback = async (service: string, env: string) => {
+    setRollingBackEnv(`${service}:${env}`)
     try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/rollback`), {
+      const res = await fetch(withTenant(`${API_BASE}/projects/${service}/rollback`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ env }),
@@ -2910,11 +2920,20 @@ function App() {
                 </div>
               ) : activeTab === 'environments' ? (
                 <div className="flex-1 overflow-auto p-6 space-y-4">
-                  {canary && (
-                    <div data-testid="canary-card" className="bg-gray-800 rounded-lg p-4">
+                  {canaries.map(canary => (
+                    <div key={canary.service} data-testid="canary-card" data-service={canary.service} className="bg-gray-800 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                          <h3 className="font-medium">Canary Rollout</h3>
+                          <h3 className="font-medium">Canary Rollout — {canary.service}</h3>
+                          <a
+                            href={withTenant(`${API_BASE}/projects/${canary.service}/preview/`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-emerald-400 hover:text-emerald-300 underline"
+                            title="Open the deployed app (requests mix across versions mid-canary)"
+                          >
+                            Open App
+                          </a>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                             canary.status === 'Healthy' ? 'bg-green-900/50 text-green-400' :
                             canary.status === 'Paused' ? 'bg-yellow-900/50 text-yellow-400' :
@@ -2929,27 +2948,27 @@ function App() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleCanaryAction('promote')}
+                            onClick={() => handleCanaryAction(canary.service, 'promote')}
                             disabled={canaryActionPending !== null || canary.status === 'Healthy'}
                             className="px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 flex items-center gap-1"
                           >
-                            {canaryActionPending === 'promote' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                            {canaryActionPending === `${canary.service}:promote` ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
                             Promote
                           </button>
                           <button
-                            onClick={() => handleCanaryAction('promote-full')}
+                            onClick={() => handleCanaryAction(canary.service, 'promote-full')}
                             disabled={canaryActionPending !== null || canary.status === 'Healthy'}
                             className="px-2 py-1 rounded text-xs bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 flex items-center gap-1"
                           >
-                            {canaryActionPending === 'promote-full' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                            {canaryActionPending === `${canary.service}:promote-full` ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
                             Promote Full
                           </button>
                           <button
-                            onClick={() => handleCanaryAction('abort')}
+                            onClick={() => handleCanaryAction(canary.service, 'abort')}
                             disabled={canaryActionPending !== null || canary.status === 'Healthy'}
                             className="px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 disabled:bg-gray-700 disabled:text-gray-500 flex items-center gap-1"
                           >
-                            {canaryActionPending === 'abort' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                            {canaryActionPending === `${canary.service}:abort` ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
                             Abort
                           </button>
                         </div>
@@ -2967,12 +2986,13 @@ function App() {
                         <p className="mt-2 text-xs text-gray-500">{canary.message}</p>
                       )}
                     </div>
-                  )}
+                  ))}
                   {environments.length > 0 ? (
                     <div className="bg-gray-800 rounded-lg overflow-hidden">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-gray-700 text-left text-gray-400">
+                            <th className="px-4 py-3">Service</th>
                             <th className="px-4 py-3">Environment</th>
                             <th className="px-4 py-3">Version</th>
                             <th className="px-4 py-3">Status</th>
@@ -2983,8 +3003,9 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {environments.map((env) => (
-                            <tr key={env.name} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                          {environments.map((env: EnvironmentInfo & { service?: string }) => (
+                            <tr key={`${env.service ?? ''}:${env.name}`} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                              <td className="px-4 py-3 font-mono text-xs">{env.service ?? '-'}</td>
                               <td className="px-4 py-3 font-medium">{env.name}</td>
                               <td className="px-4 py-3 font-mono text-xs">{env.version}</td>
                               <td className="px-4 py-3">
@@ -3002,19 +3023,19 @@ function App() {
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
                                   <button
-                                    onClick={() => handleDeploy(env.name)}
-                                    disabled={deployingEnv === env.name}
+                                    onClick={() => handleDeploy(env.service ?? '', env.name)}
+                                    disabled={deployingEnv === `${env.service}:${env.name}`}
                                     className="text-blue-400 hover:text-blue-300 disabled:text-gray-600 text-xs flex items-center gap-1"
                                   >
-                                    {deployingEnv === env.name ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                                    {deployingEnv === `${env.service}:${env.name}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
                                     Deploy
                                   </button>
                                   <button
-                                    onClick={() => handleRollback(env.name)}
-                                    disabled={rollingBackEnv === env.name}
+                                    onClick={() => handleRollback(env.service ?? '', env.name)}
+                                    disabled={rollingBackEnv === `${env.service}:${env.name}`}
                                     className="text-yellow-400 hover:text-yellow-300 disabled:text-gray-600 text-xs flex items-center gap-1"
                                   >
-                                    {rollingBackEnv === env.name ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                                    {rollingBackEnv === `${env.service}:${env.name}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
                                     Rollback
                                   </button>
                                 </div>

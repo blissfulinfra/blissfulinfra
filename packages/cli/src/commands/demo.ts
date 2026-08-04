@@ -156,8 +156,11 @@ export async function demoAction(): Promise<void> {
   console.log(chalk.green.bold("✓ Demo is up.") + chalk.dim("  Everything below is running on your machine:"));
   console.log();
   console.log(chalk.dim("  Dashboard:  ") + chalk.cyan(`http://localhost:${HOST_DASHBOARD_PORT}`) + chalk.dim("   Environments tab → Canary card"));
+  console.log(chalk.dim("  Your app:   ") + chalk.cyan(`http://localhost:${HOST_DASHBOARD_PORT}/api/v1/projects/${SERVICE}/preview/?tenant=${TENANT}`) + chalk.dim("   (proxied into the cluster)"));
   console.log(chalk.dim("  ArgoCD:     ") + chalk.cyan(`http://localhost:${ports.argocd}`) + chalk.dim(`   admin / ${argocdPassword ?? "(see cluster up output)"}`));
   console.log(chalk.dim("  Gitea:      ") + chalk.cyan(`http://localhost:${ports.gitea}`) + chalk.dim(`   ${GITEA_USER} / ${GITEA_PASSWORD}   (repo ${TENANT}-gitops = the deploy audit trail)`));
+  console.log();
+  console.log(chalk.dim("Optional: ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Jenkins + Grafana/Prometheus/Loki (adds their header links)"));
   console.log();
   console.log(chalk.dim("Try the canary loop:"));
   console.log(chalk.cyan(`  blissful-infra canary status ${SERVICE}`) + chalk.dim("      watch the rollout"));

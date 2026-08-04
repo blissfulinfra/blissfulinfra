@@ -98,8 +98,12 @@ export const defaultFixtures: ApiFixtures = {
     ],
     timestamp: 0,
   },
+  // The UI asks per service; bodyFor serves this only for the service named
+  // here and `canary: null` for the project's other services.
   canary: {
     canary: {
+      service: 'api',
+      project: 'checkout',
       status: 'Paused',
       step: 2,
       totalSteps: 4,
@@ -186,7 +190,14 @@ const ROUTE_TABLE: Array<[RegExp, keyof ApiFixtures]> = [
 
 function bodyFor(pathname: string, fixtures: ApiFixtures): unknown {
   const match = ROUTE_TABLE.find(([pattern]) => pattern.test(pathname))
-  return match ? fixtures[match[1]] : {}
+  if (!match) return {}
+  if (match[1] === 'canary') {
+    // Per-service dispatch: only the fixture's own service has a Rollout.
+    const svc = pathname.match(/\/projects\/([^/]+)\/canary$/)?.[1]
+    const payload = fixtures.canary as { canary: { service?: string } | null }
+    if (payload?.canary && payload.canary.service !== svc) return { canary: null }
+  }
+  return fixtures[match[1]]
 }
 
 export async function mockApi(page: Page, overrides: Partial<ApiFixtures> = {}): Promise<void> {

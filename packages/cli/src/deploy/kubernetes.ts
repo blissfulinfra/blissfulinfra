@@ -6,13 +6,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { PrereqMissingError, DeployFailedError } from "./errors.js";
 import type { ServiceCoords } from "../commands/deploy.js";
 import { ensureKind, ensureKubectl, clusterExists, clusterName, kindLoadImage } from "../utils/kind.js";
-import { ensureClusterPorts, getServiceDir } from "../utils/tenant-registry.js";
+import { ensureClusterPorts, getServiceDir, getService } from "../utils/tenant-registry.js";
 import { ensureGiteaReachable, ensureOrgRepo } from "../utils/gitea.js";
 import {
   ensureCheckout,
   renderServiceManifests,
   serviceManifestsExist,
-  bumpImageTag,
   serviceManifestDir,
   commitAndPush,
   headSha,
@@ -139,13 +138,12 @@ export async function deployKubernetes(
   await ensureCheckout(coords.tenant, pushUrl);
 
   const firstDeploy = !(await serviceManifestsExist(coords));
-  if (firstDeploy) {
-    spinner.text = "Rendering service manifests...";
-    await renderServiceManifests(coords, imageName, tag, inClusterUrl);
-  } else {
-    spinner.text = `Bumping image tag to ${tag}...`;
-    await bumpImageTag(coords, tag);
-  }
+  // Always render in full (not just an image-tag bump): manifests are pure
+  // functions of the template + registry, so template improvements propagate
+  // to already-deployed services on their next deploy.
+  spinner.text = firstDeploy ? "Rendering service manifests..." : `Rendering manifests (tag ${tag})...`;
+  const registryEntry = await getService(coords.tenant, coords.project, coords.service);
+  await renderServiceManifests(coords, imageName, tag, inClusterUrl, registryEntry?.ports.http);
 
   const pushed = await commitAndPush(
     coords.tenant,

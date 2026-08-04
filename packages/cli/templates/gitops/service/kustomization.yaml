@@ -6,6 +6,7 @@ kind: Kustomization
 # namespace with the workload.
 resources:
   - rollout.yaml
+  - service.yaml
   - service-stable.yaml
   - service-canary.yaml
   - configmap.yaml
