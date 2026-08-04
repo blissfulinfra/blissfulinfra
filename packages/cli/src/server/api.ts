@@ -1076,12 +1076,40 @@ export function createApiServer(workingDir: string, port = 3002) {
             body,
             signal: AbortSignal.timeout(10000),
           });
-          const buf = Buffer.from(await upstream.arrayBuffer());
-          res.writeHead(upstream.status, {
-            "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream",
-            "Set-Cookie": `blissful_preview_tenant=${encodeURIComponent(previewTenant)}; Path=/api/v1/projects/; SameSite=Lax`,
-          });
-          res.end(buf);
+          const contentType = upstream.headers.get("content-type") ?? "";
+          const isHtml = contentType.includes("text/html");
+
+          if (isHtml && req.method === "GET" && rest === "/") {
+            // For HTML responses on the root path, wrap in iframe to fix React Router path issues.
+            // When React loads, it will see the iframe's src URL as its location, not the preview proxy path.
+            const iframeUrl = `http://${targetHost}:${nodePort}/${query.replace(/^\?/, "")}`;
+            const wrapperHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; overflow: hidden; }
+    iframe { border: none; width: 100%; height: 100vh; display: block; }
+  </style>
+</head>
+<body>
+  <iframe src="${iframeUrl}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-presentation allow-top-navigation allow-top-navigation-by-user-activation"></iframe>
+</body>
+</html>`;
+            res.writeHead(200, {
+              "Content-Type": "text/html; charset=utf-8",
+              "Set-Cookie": `blissful_preview_tenant=${encodeURIComponent(previewTenant)}; Path=/api/v1/projects/; SameSite=Lax`,
+            });
+            res.end(wrapperHtml);
+          } else {
+            const buf = Buffer.from(await upstream.arrayBuffer());
+            res.writeHead(upstream.status, {
+              "Content-Type": contentType,
+              "Set-Cookie": `blissful_preview_tenant=${encodeURIComponent(previewTenant)}; Path=/api/v1/projects/; SameSite=Lax`,
+            });
+            res.end(buf);
+          }
         } catch {
           res.writeHead(502, { "Content-Type": "application/json" });
           res.end(JSON.stringify({

@@ -16,6 +16,8 @@ import { projectCreateAction, projectUpAction } from "./project.js";
 import { serviceAddV2Action } from "./service-v2.js";
 import { deployAction } from "./deploy.js";
 import { clusterUpAction } from "./cluster.js";
+import { ciSetupAction, ciPushAction } from "./ci.js";
+import { sourceWebUrl } from "../utils/gitea.js";
 import { ensureKind, ensureKubectl, clusterExists, kubeContext, writeInternalKubeconfig, warnIfLowDockerMemory } from "../utils/kind.js";
 import { ensureTerraform } from "../utils/terraform.js";
 import { ensureHostDashboardRunning, HOST_DASHBOARD_PORT } from "../utils/host-dashboard-compose.js";
@@ -35,6 +37,7 @@ interface DemoOptions {
   backend?: string;
   frontend?: boolean;
   observability?: boolean;
+  ci?: boolean;
 }
 
 interface DemoPlan {
@@ -42,6 +45,7 @@ interface DemoPlan {
   backend: "hono" | "spring-boot";
   frontend: boolean;
   observability: boolean;
+  ci: boolean;
 }
 
 async function resolvePlan(opts: DemoOptions): Promise<DemoPlan> {
@@ -51,6 +55,7 @@ async function resolvePlan(opts: DemoOptions): Promise<DemoPlan> {
     backend: opts.backend === "spring-boot" ? "spring-boot" : "hono",
     frontend: opts.frontend ?? false,
     observability: opts.observability ?? false,
+    ci: opts.ci ?? false,
   };
   if (!interactive) return plan;
 
@@ -82,6 +87,14 @@ async function resolvePlan(opts: DemoOptions): Promise<DemoPlan> {
       name: "frontend",
       message: "Add a react-vite frontend service too?",
       when: opts.frontend === undefined,
+      default: false,
+    },
+    {
+      type: "confirm",
+      name: "ci",
+      message: "Run CI too? (Gitea Actions: registers a runner and builds your service on push)",
+      when: (a: { runtime?: string }) => opts.ci === undefined
+        && (a.runtime ?? (opts.runtime === "compose" ? "compose" : "kubernetes")) === "kubernetes",
       default: false,
     },
     {
@@ -189,7 +202,7 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
   if (plan.frontend) {
     services.push([FRONTEND_SERVICE, "frontend", "react-vite"]);
   }
-  const TOTAL = plan.runtime === "kubernetes" ? 6 : 5;
+  const TOTAL = (plan.runtime === "kubernetes" ? 6 : 5) + (plan.ci ? 1 : 0);
 
   console.log(chalk.dim(`  tenant '${TENANT}' → project '${project}' (${plan.runtime} runtime) → ${services.map(([n, , t]) => `${n} (${t})`).join(" + ")}`));
   console.log(chalk.dim(plan.runtime === "kubernetes"
@@ -250,6 +263,14 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
     await projectUpAction(TENANT, project);
   }
 
+  if (plan.ci && plan.runtime === "kubernetes") {
+    banner(6, TOTAL, "CI (Gitea Actions: register a runner, push the source, run the pipeline)");
+    await ciSetupAction(TENANT);
+    for (const [name] of services) {
+      await ciPushAction(name, { tenant: TENANT, project });
+    }
+  }
+
   if (plan.observability) {
     console.log();
     console.log(chalk.dim("Starting Jenkins + observability (tenant up)..."));
@@ -273,6 +294,11 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
     }
     console.log(chalk.dim("  ArgoCD:     ") + chalk.cyan(`http://localhost:${ports.argocd}`) + chalk.dim(`   admin / ${argocdPassword ?? "(see cluster up output)"}`));
     console.log(chalk.dim("  Gitea:      ") + chalk.cyan(`http://localhost:${ports.gitea}`) + chalk.dim(`   ${GITEA_USER} / ${GITEA_PASSWORD}   (repo ${TENANT}-gitops = the deploy audit trail)`));
+    if (plan.ci) {
+      console.log(chalk.dim("  CI:         ") + chalk.cyan(`${sourceWebUrl(TENANT, project, BACKEND_SERVICE, ports.gitea!)}/actions`) + chalk.dim("   GitHub-Actions-compatible pipeline"));
+    } else {
+      console.log(chalk.dim("  CI:         ") + chalk.cyan("blissful-infra ci setup && blissful-infra ci push " + BACKEND_SERVICE) + chalk.dim("   run the pipeline"));
+    }
     if (!plan.observability) {
       console.log(chalk.dim("  Optional:   ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Jenkins + Grafana/Prometheus/Loki (adds their header links)"));
     }
@@ -317,6 +343,7 @@ export const demoCommand = new Command("demo")
   .option("--backend <template>", "hono | spring-boot")
   .option("--frontend", "Also scaffold a react-vite frontend")
   .option("--observability", "Also start Jenkins + Grafana/Prometheus/Loki")
+  .option("--ci", "Also register the Gitea Actions runner and run each service's pipeline")
   .action(async (opts: DemoOptions) => {
     await demoAction(opts);
   });

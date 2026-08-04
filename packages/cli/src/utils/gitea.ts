@@ -151,18 +151,23 @@ export async function getRunnerRegistrationToken(giteaPort: number): Promise<str
   );
 }
 
-/** Workflow runs for a service's source repo, newest first. */
+/**
+ * Workflow runs from Gitea's Actions REST API. That API only exists in
+ * Gitea >= 1.24; on older instances (the chart currently pins 1.22) every
+ * endpoint 404s, so return null and let callers fall back to the runner log.
+ */
 export async function listWorkflowRuns(
   tenant: string,
   project: string,
   service: string,
   giteaPort: number,
-): Promise<Array<{ status: string; conclusion: string | null; name: string; run_number: number; created_at: string }>> {
+): Promise<Array<{ status: string; conclusion: string | null; run_number: number }> | null> {
   const repo = sourceRepoName(tenant, project, service);
-  const res = await giteaFetch(giteaPort, `/repos/${GITEA_OWNER}/${repo}/actions/tasks`);
+  const res = await giteaFetch(giteaPort, `/repos/${GITEA_OWNER}/${repo}/actions/runs`);
+  if (res.status === 404) return null;
   if (!res.ok) return [];
   const body = await res.json() as {
-    workflow_runs?: Array<{ status: string; conclusion: string | null; name: string; run_number: number; created_at: string }>;
+    workflow_runs?: Array<{ status: string; conclusion: string | null; run_number: number }>;
   };
   return body.workflow_runs ?? [];
 }

@@ -14,6 +14,7 @@ import {
   ensureSourceRepo,
   getRunnerRegistrationToken,
   listWorkflowRuns,
+  sourceRepoName,
   sourceWebUrl,
 } from "../utils/gitea.js";
 import { PrereqMissingError } from "../deploy/errors.js";
@@ -150,12 +151,36 @@ export async function ciStatusAction(
 ): Promise<void> {
   const coords = await resolveServiceCoords(serviceName, opts);
   const giteaPort = await requireCluster(coords.tenant);
+  const webUrl = `${sourceWebUrl(coords.tenant, coords.project, coords.service, giteaPort)}/actions`;
 
-  const runs = await listWorkflowRuns(coords.tenant, coords.project, coords.service, giteaPort);
   console.log();
   console.log(chalk.bold(`CI: ${coords.tenant}/${coords.project}/${coords.service}`));
-  console.log(chalk.dim(`  ${sourceWebUrl(coords.tenant, coords.project, coords.service, giteaPort)}/actions`));
+  console.log(chalk.dim(`  ${webUrl}`));
   console.log();
+
+  const runs = await listWorkflowRuns(coords.tenant, coords.project, coords.service, giteaPort);
+  if (runs === null) {
+    // Gitea < 1.24 has no Actions REST API — read the runner's task lines,
+    // which name the repo they belong to.
+    const repo = sourceRepoName(coords.tenant, coords.project, coords.service);
+    const { stdout } = await execa("kubectl", [
+      "--context", kubeContext(coords.tenant), "-n", "gitea",
+      "logs", "deployment/act-runner", "-c", "runner", "--tail=500",
+    ], { stdio: "pipe", reject: false });
+    const lines = stdout.split("\n").filter(l => l.includes(repo) || /task \d+ (finished|failed)/.test(l));
+    if (lines.length === 0) {
+      console.log(chalk.dim("No runs seen yet by the runner."));
+      console.log(chalk.cyan(`  blissful-infra ci push ${coords.service}`) + chalk.dim("   push the source to trigger one"));
+    } else {
+      console.log(chalk.dim("From the runner (this Gitea has no Actions REST API — open the URL above for detail):"));
+      for (const l of lines.slice(-8)) {
+        console.log("  " + chalk.dim(l.replace(/^time="[^"]*"\s*/, "")));
+      }
+    }
+    console.log();
+    return;
+  }
+
   if (runs.length === 0) {
     console.log(chalk.dim("No workflow runs yet."));
     console.log(chalk.cyan(`  blissful-infra ci push ${coords.service}`) + chalk.dim("   push the source to trigger one"));
@@ -164,10 +189,8 @@ export async function ciStatusAction(
   }
   for (const run of runs.slice(0, 10)) {
     const outcome = run.conclusion ?? run.status;
-    const color = outcome === "success" ? chalk.green
-      : outcome === "failure" ? chalk.red
-      : chalk.yellow;
-    console.log(`  #${String(run.run_number).padEnd(4)} ${color(outcome.padEnd(10))} ${chalk.dim(run.name)}`);
+    const color = outcome === "success" ? chalk.green : outcome === "failure" ? chalk.red : chalk.yellow;
+    console.log(`  #${String(run.run_number).padEnd(4)} ${color(outcome)}`);
   }
   console.log();
 }
