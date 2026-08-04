@@ -1022,6 +1022,29 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Persist chat messages to localStorage per project
+  useEffect(() => {
+    if (!selectedProject) return
+    const key = `blissful_chat_${selectedProject.name}`
+    localStorage.setItem(key, JSON.stringify(messages))
+  }, [messages, selectedProject])
+
+  // Load chat messages from localStorage when project changes
+  useEffect(() => {
+    if (!selectedProject) return
+    const key = `blissful_chat_${selectedProject.name}`
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      try {
+        setMessages(JSON.parse(stored))
+      } catch {
+        setMessages([])
+      }
+    } else {
+      setMessages([])
+    }
+  }, [selectedProject])
+
   // Poll Gatling status + log while a run is in progress
   useEffect(() => {
     if (!selectedProject || activeTab !== 'perf' || gatlingStatus !== 'running') return
@@ -2239,9 +2262,9 @@ function App() {
                 </div>
               ) : activeTab === 'metrics' ? (
                 <div className="flex-1 flex flex-col">
-                  {links.grafanaUrl ? (
+                  {links.grafanaUrl && currentTenant ? (
                     <iframe
-                      src={`${links.grafanaUrl}?kiosk=tv`}
+                      src={`${API_BASE}/grafana/d/tenant-overview?kiosk=tv&tenant=${encodeURIComponent(currentTenant)}`}
                       className="w-full h-full border-0"
                       allow="fullscreen"
                       title="Grafana Dashboard"
