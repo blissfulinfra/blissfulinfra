@@ -97,24 +97,20 @@ export function Watcher({ projectName, withTenant, apiBase }: Props) {
     }
   }, [available, projectName, gatherContext])
 
-  // Polling loop: pause when tab not focused (Page Visibility API) so we
-  // don't keep the on-device GPU busy while the user is elsewhere.
+  // Polling loop: runs continuously even when the tab is not active, so the
+  // watcher can catch issues in the background and alert the developer.
   useEffect(() => {
     if (!enabled || !available || !projectName) return
     let cancelled = false
     const tick = () => {
       if (cancelled) return
-      if (document.visibilityState !== 'visible') return
       check()
     }
     tick()
     const id = setInterval(tick, POLL_MS)
-    const onVis = () => { if (document.visibilityState === 'visible') tick() }
-    document.addEventListener('visibilitychange', onVis)
     return () => {
       cancelled = true
       clearInterval(id)
-      document.removeEventListener('visibilitychange', onVis)
     }
   }, [enabled, available, projectName, check])
 
