@@ -12,6 +12,21 @@ export const ServiceSchema = z.object({
   name: z.string(),
   status: ServiceStatusSchema,
   port: z.number().optional(),
+  /** backend | frontend | worker (tenant model). */
+  serviceType: z.string().optional(),
+  /** Scaffold template (hono, spring-boot, react-vite, ...). */
+  template: z.string().optional(),
+  /** Per-service Postgres schema on the project instance (compose runtime). */
+  dbSchema: z.string().optional(),
+  /** Where to open the service: absolute URL (compose) or preview path (k8s). */
+  url: z.string().optional(),
+});
+
+export const ProjectInfraPortsSchema = z.object({
+  kafka: z.number().optional(),
+  postgres: z.number().optional(),
+  redis: z.number().optional(),
+  gateway: z.number().optional(),
 });
 
 export const ProjectStatusSchema = z.object({
@@ -22,6 +37,9 @@ export const ProjectStatusSchema = z.object({
   backend: z.string().optional(),
   frontend: z.string().optional(),
   database: z.string().optional(),
+  runtime: z.enum(["compose", "kubernetes"]).optional(),
+  /** Host ports of the project's compose infra (compose runtime only). */
+  infra: ProjectInfraPortsSchema.optional(),
   services: z.array(ServiceSchema),
 });
 
@@ -160,6 +178,7 @@ export const TemplatesResponseSchema = z.object({
 export type ServiceStatus = z.infer<typeof ServiceStatusSchema>;
 export type Service = z.infer<typeof ServiceSchema>;
 export type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
+export type ProjectInfraPorts = z.infer<typeof ProjectInfraPortsSchema>;
 export type ProjectsListResponse = z.infer<typeof ProjectsListResponseSchema>;
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 export type ActionResponse = z.infer<typeof ActionResponseSchema>;

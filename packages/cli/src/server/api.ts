@@ -7,7 +7,7 @@ import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
-import { getTenant, listTenants, findServiceProject, getServiceDir, readProjectRuntime } from "../utils/tenant-registry.js";
+import { getTenant, listTenants, findServiceProject, getServiceDir, readProjectRuntime, readServiceConfig } from "../utils/tenant-registry.js";
 import { kubeContext } from "../utils/kind.js";
 import {
   loadSavedOntology,
@@ -1769,7 +1769,7 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
     name: string;
     projects: Array<{
       name: string;
-      portBlock: { kafka: number; postgres: number; gateway: number };
+      portBlock: { kafka: number; postgres: number; redis?: number; gateway: number };
       services: Array<{ name: string; type: string; ports: { http?: number } }>;
     }>;
   }> };
@@ -1799,9 +1799,14 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
   // Kubernetes-runtime projects run as pods inside the kind node, so their
   // containers never appear in the host's docker ps — derive their status
   // from pod readiness instead (one kubectl call per k8s project).
+  const projectRuntimes = new Map<string, string>();
+  for (const p of tenant.projects) {
+    projectRuntimes.set(p.name, await readProjectRuntime(tenantName, p.name));
+  }
+
   const k8sStatuses = new Map<string, Map<string, "running" | "starting" | "stopped">>();
   for (const p of tenant.projects) {
-    if ((await readProjectRuntime(tenantName, p.name)) !== "kubernetes") continue;
+    if (projectRuntimes.get(p.name) !== "kubernetes") continue;
     const svcStatuses = new Map<string, "running" | "starting" | "stopped">();
     try {
       const { stdout } = await execa("kubectl", [
@@ -1830,12 +1835,38 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
     k8sStatuses.set(p.name, svcStatuses);
   }
 
+  // Per-service scaffold details (template, DB schema) come from each
+  // service.yaml — best-effort, absent fields just hide their UI rows.
+  const serviceDetails = new Map<string, { template?: string; dbSchema?: string }>();
+  await Promise.all(tenant.projects.flatMap(p => p.services.map(async s => {
+    try {
+      const cfg = await readServiceConfig(tenantName, p.name, s.name);
+      serviceDetails.set(`${p.name}/${s.name}`, {
+        template: cfg.backend?.template ?? cfg.frontend?.template ?? (cfg.worker ? `worker-${cfg.worker.runtime}` : undefined),
+        dbSchema: cfg.database?.schema,
+      });
+    } catch { /* unreadable service.yaml */ }
+  })));
+
   return tenant.projects.map(p => {
-    // Service-level statuses
+    const runtime = (projectRuntimes.get(p.name) ?? "compose") as "compose" | "kubernetes";
+    // Service-level statuses + connection details
     const k8s = k8sStatuses.get(p.name);
     const services = p.services.map(s => {
+      const details = serviceDetails.get(`${p.name}/${s.name}`) ?? {};
+      const url = runtime === "kubernetes"
+        ? `/api/v1/projects/${s.name}/preview/`
+        : s.ports.http ? `http://localhost:${s.ports.http}` : undefined;
+      const base = {
+        name: s.name,
+        port: s.ports.http,
+        serviceType: s.type,
+        template: details.template,
+        dbSchema: runtime === "compose" ? details.dbSchema : undefined,
+        url,
+      };
       if (k8s) {
-        return { name: s.name, status: k8s.get(s.name) ?? "stopped", port: s.ports.http };
+        return { ...base, status: k8s.get(s.name) ?? "stopped" };
       }
       const cName = `${tenantName}-${p.name}-${s.name}`;
       const c = containers.find(x => x.name === cName);
@@ -1843,7 +1874,7 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
         c?.state === "running" ? "running"
         : c ? "stopped"
         : "stopped";
-      return { name: s.name, status, port: s.ports.http };
+      return { ...base, status };
     });
 
     // Project-level rollup: running if ANY service container is running
@@ -1857,6 +1888,13 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
       path: `tenants/${tenantName}/projects/${p.name}`,
       status,
       type: "project",
+      runtime,
+      infra: runtime === "compose" ? {
+        kafka: p.portBlock.kafka,
+        postgres: p.portBlock.postgres,
+        redis: p.portBlock.redis,
+        gateway: p.portBlock.gateway,
+      } : undefined,
       services,
     };
   });

@@ -58,6 +58,24 @@ import { Watcher } from './components/Watcher'
 // uses the backend LLM via /api/v1/projects/:name/agent for deeper analysis
 // with tool access.
 
+function CopyChip({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        }).catch(() => { /* clipboard unavailable */ })
+      }}
+      title={`Copy: ${value}`}
+      className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-700/70 hover:bg-gray-600 text-gray-300 cursor-pointer"
+    >
+      {copied ? 'copied!' : label}
+    </button>
+  )
+}
+
 interface Project {
   name: string
   path: string
@@ -66,6 +84,8 @@ interface Project {
   backend?: string
   frontend?: string
   database?: string
+  runtime?: 'compose' | 'kubernetes'
+  infra?: { kafka?: number; postgres?: number; redis?: number; gateway?: number }
   services: Service[]
 }
 
@@ -73,6 +93,10 @@ interface Service {
   name: string
   status: 'running' | 'stopped' | 'starting' | 'unhealthy'
   port?: number
+  serviceType?: string
+  template?: string
+  dbSchema?: string
+  url?: string
 }
 
 interface LogEntry {
@@ -2214,6 +2238,62 @@ function App() {
                     ))}
                   </div>
                 )}
+
+                {/* Connections: how to reach each service + the infra creds
+                    the scaffold wired in. */}
+                <div data-testid="service-connections" className="mt-3 bg-gray-800/60 border border-gray-700 rounded-lg divide-y divide-gray-700/60 text-sm">
+                  {selectedProject.services.map(svc => (
+                    <div key={svc.name} className="flex items-center gap-3 px-3 py-2 flex-wrap">
+                      <span className="font-mono">{svc.name}</span>
+                      {svc.serviceType && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">{svc.serviceType}</span>
+                      )}
+                      {svc.template && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300">{svc.template}</span>
+                      )}
+                      {svc.url && (
+                        <a
+                          href={svc.url.startsWith('/') ? withTenant(svc.url) : svc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-400 hover:text-emerald-300 underline text-xs"
+                        >
+                          {svc.url.startsWith('/') ? 'Open (via cluster proxy)' : svc.url.replace('http://', '')}
+                        </a>
+                      )}
+                      {svc.dbSchema && selectedProject.infra?.postgres && (
+                        <CopyChip
+                          label={`db schema ${svc.dbSchema}`}
+                          value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app?currentSchema=${svc.dbSchema}`}
+                        />
+                      )}
+                    </div>
+                  ))}
+                  {selectedProject.infra && (
+                    <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
+                      <span className="uppercase tracking-wider">infra</span>
+                      {selectedProject.infra.kafka && (
+                        <CopyChip label={`kafka localhost:${selectedProject.infra.kafka}`} value={`localhost:${selectedProject.infra.kafka}`} />
+                      )}
+                      {selectedProject.infra.postgres && (
+                        <CopyChip label={`postgres :${selectedProject.infra.postgres} (postgres/postgres)`} value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app`} />
+                      )}
+                      {selectedProject.infra.redis && (
+                        <CopyChip label={`redis :${selectedProject.infra.redis}`} value={`redis://localhost:${selectedProject.infra.redis}`} />
+                      )}
+                      {selectedProject.infra.gateway && (
+                        <a
+                          href={`http://localhost:${selectedProject.infra.gateway}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline"
+                        >
+                          gateway :{selectedProject.infra.gateway}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Tabs */}
