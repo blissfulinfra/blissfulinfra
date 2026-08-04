@@ -100,7 +100,7 @@ async function resolvePlan(opts: DemoOptions): Promise<DemoPlan> {
     {
       type: "confirm",
       name: "observability",
-      message: "Start Jenkins + Grafana/Prometheus/Loki as well? (enables the Grafana links; ~1-2 min extra)",
+      message: "Start Grafana/Prometheus/Loki as well? (enables the observability links; ~1-2 min extra)",
       when: opts.observability === undefined,
       default: false,
     },
@@ -273,7 +273,7 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
 
   if (plan.observability) {
     console.log();
-    console.log(chalk.dim("Starting Jenkins + observability (tenant up)..."));
+    console.log(chalk.dim("Starting observability stack (Grafana/Prometheus/Loki)..."));
     await tenantUpAction(TENANT);
   }
 
@@ -300,7 +300,7 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
       console.log(chalk.dim("  CI:         ") + chalk.cyan("blissful-infra ci setup && blissful-infra ci push " + BACKEND_SERVICE) + chalk.dim("   run the pipeline"));
     }
     if (!plan.observability) {
-      console.log(chalk.dim("  Optional:   ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Jenkins + Grafana/Prometheus/Loki (adds their header links)"));
+      console.log(chalk.dim("  Optional:   ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Grafana/Prometheus/Loki (adds observability header links)"));
     }
     console.log();
     console.log(chalk.dim("Try the canary loop:"));
@@ -323,7 +323,7 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
       console.log(chalk.dim("  Gateway:    ") + chalk.cyan(`http://localhost:${projectEntry.portBlock.gateway}`));
     }
     if (!plan.observability) {
-      console.log(chalk.dim("  Optional:   ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Jenkins + Grafana/Prometheus/Loki"));
+      console.log(chalk.dim("  Optional:   ") + chalk.cyan("blissful-infra tenant up") + chalk.dim(" starts Grafana/Prometheus/Loki"));
     }
     console.log();
     console.log(chalk.dim("Lifecycle:"));
@@ -342,7 +342,7 @@ export const demoCommand = new Command("demo")
   .option("--runtime <runtime>", "kubernetes | compose")
   .option("--backend <template>", "hono | spring-boot")
   .option("--frontend", "Also scaffold a react-vite frontend")
-  .option("--observability", "Also start Jenkins + Grafana/Prometheus/Loki")
+  .option("--observability", "Also start Grafana/Prometheus/Loki")
   .option("--ci", "Also register the Gitea Actions runner and run each service's pipeline")
   .action(async (opts: DemoOptions) => {
     await demoAction(opts);
