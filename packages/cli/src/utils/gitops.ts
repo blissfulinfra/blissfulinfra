@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { getTenantDir, readServiceConfig } from "./tenant-registry.js";
+import { getTenantDir, readServiceConfig, getProject } from "./tenant-registry.js";
 import { getTemplateDir } from "./template.js";
 
 export interface GitopsCoords {
@@ -71,6 +71,30 @@ async function resolveHealthPath(coords: GitopsCoords): Promise<string> {
   }
 }
 
+/** First backend service in the project — what a frontend's nginx proxies to. */
+async function resolveBackendHost(coords: GitopsCoords): Promise<string> {
+  try {
+    const project = await getProject(coords.tenant, coords.project);
+    return project?.services.find(s => s.type === "backend")?.name ?? "api";
+  } catch {
+    return "api";
+  }
+}
+
+/**
+ * The port the container actually listens on: react-vite frontends ship an
+ * nginx on 80; every backend template serves 8080. The Rollout's
+ * containerPort and probes must match or frontend pods fail readiness.
+ */
+async function resolveContainerPort(coords: GitopsCoords): Promise<number> {
+  try {
+    const config = await readServiceConfig(coords.tenant, coords.project, coords.service);
+    return config.serviceType === "frontend" ? 80 : 8080;
+  } catch {
+    return 8080;
+  }
+}
+
 /**
  * Render templates/gitops/service/ into projects/<project>/<service>/ inside
  * the gitops checkout. Returns the manifest dir.
@@ -90,6 +114,8 @@ export async function renderServiceManifests(
     IMAGE_TAG: imageTag,
     GITOPS_REPO_URL: gitopsRepoUrl,
     HEALTH_PATH: await resolveHealthPath(coords),
+    CONTAINER_PORT: String(await resolveContainerPort(coords)),
+    BACKEND_HOST: await resolveBackendHost(coords),
     SERVICE_NODEPORT: nodePort !== undefined ? String(nodePort) : "",
   };
   const srcDir = getTemplateDir("gitops/service");
