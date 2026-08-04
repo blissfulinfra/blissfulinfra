@@ -1046,10 +1046,18 @@ export function createApiServer(workingDir: string, port = 3002) {
       const previewMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/preview(\/.*)?$/);
       if (previewMatch) {
         const serviceName = previewMatch[1];
-        const previewTenant = tenantFromRequest();
+        // Sub-resources (./assets/*.js, ./vite.svg) are requested WITHOUT the
+        // ?tenant= query param — relative URLs don't inherit query strings.
+        // The first preview request stamps a path-scoped cookie; later ones
+        // read it back. Falls through to context.json as a last resort.
+        const cookieTenant = /(?:^|;\s*)blissful_preview_tenant=([^;]+)/
+          .exec(req.headers.cookie ?? "")?.[1];
+        const previewTenant = tenantFromRequest()
+          ?? (cookieTenant ? decodeURIComponent(cookieTenant) : null)
+          ?? await readContextTenant();
         const owning = previewTenant ? await findServiceProject(previewTenant, serviceName) : null;
         const nodePort = owning?.service.ports.http;
-        if (!owning || !nodePort) {
+        if (!previewTenant || !owning || !nodePort) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: `No previewable service '${serviceName}' (needs a tenant and an http port)` }));
           return;
@@ -1071,6 +1079,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           const buf = Buffer.from(await upstream.arrayBuffer());
           res.writeHead(upstream.status, {
             "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream",
+            "Set-Cookie": `blissful_preview_tenant=${encodeURIComponent(previewTenant)}; Path=/api/v1/projects/; SameSite=Lax`,
           });
           res.end(buf);
         } catch {
@@ -1768,6 +1777,17 @@ async function refreshContainerKubeconfigs(): Promise<void> {
       process.env.KUBECONFIG = files.join(":");
     }
   } catch { /* no tenants dir yet */ }
+}
+
+/** Tenant from the CLI's `use` context — last-resort preview resolution. */
+async function readContextTenant(): Promise<string | null> {
+  try {
+    const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
+    const raw = await fs.readFile(path.join(home, "context.json"), "utf-8");
+    return (JSON.parse(raw) as { tenant?: string }).tenant ?? null;
+  } catch {
+    return null;
+  }
 }
 
 const argocdPasswordCache = new Map<string, { value: string | null; at: number }>();
