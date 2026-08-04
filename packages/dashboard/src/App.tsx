@@ -2236,13 +2236,13 @@ function App() {
                     <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
                       <span className="uppercase tracking-wider">infra</span>
                       {selectedProject.infra.kafka && (
-                        <CopyChip label={`kafka localhost:${selectedProject.infra.kafka}`} value={`localhost:${selectedProject.infra.kafka}`} />
+                        <CopyChip label={`Kafka broker localhost:${selectedProject.infra.kafka} · no auth`} value={`localhost:${selectedProject.infra.kafka}`} />
                       )}
                       {selectedProject.infra.postgres && (
-                        <CopyChip label={`postgres :${selectedProject.infra.postgres} (postgres/postgres)`} value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app`} />
+                        <CopyChip label={`Postgres localhost:${selectedProject.infra.postgres} · login postgres / postgres`} value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app`} />
                       )}
                       {selectedProject.infra.redis && (
-                        <CopyChip label={`redis :${selectedProject.infra.redis}`} value={`redis://localhost:${selectedProject.infra.redis}`} />
+                        <CopyChip label={`Redis localhost:${selectedProject.infra.redis} · no auth`} value={`redis://localhost:${selectedProject.infra.redis}`} />
                       )}
                       {selectedProject.infra.gateway && (
                         <a
@@ -2261,19 +2261,19 @@ function App() {
                       <span className="uppercase tracking-wider">cluster</span>
                       <a href={links.argocdUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ArgoCD</a>
                       {links.argocdPassword && (
-                        <CopyChip label={`admin / ${links.argocdPassword}`} value={links.argocdPassword} />
+                        <CopyChip label={`ArgoCD login: admin / ${links.argocdPassword}`} value={links.argocdPassword} />
                       )}
                       {links.giteaUrl && (
                         <a href={links.giteaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Gitea</a>
                       )}
                       {links.giteaUser && links.giteaPassword && (
-                        <CopyChip label={`${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} />
+                        <CopyChip label={`Gitea login: ${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} />
                       )}
                       {links.gitopsRepo && (
-                        <span className="font-mono">{links.gitopsRepo}</span>
+                        <span className="font-mono" title="The GitOps repo ArgoCD syncs from">repo: {links.gitopsRepo}</span>
                       )}
                       {links.kubeContextName && (
-                        <CopyChip label={links.kubeContextName} value={`kubectl --context ${links.kubeContextName} `} />
+                        <CopyChip label={`kubectl ctx: ${links.kubeContextName}`} value={`kubectl --context ${links.kubeContextName} `} />
                       )}
                     </div>
                   )}
@@ -2284,7 +2284,7 @@ function App() {
                         <a href={links.grafanaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Grafana</a>
                       )}
                       {links.grafanaUser && links.grafanaPassword && (
-                        <CopyChip label={`${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} />
+                        <CopyChip label={`Grafana login: ${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} />
                       )}
                       {links.prometheusUrl && (
                         <a href={links.prometheusUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Prometheus</a>
