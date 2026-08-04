@@ -44,8 +44,9 @@ import { Watcher } from './components/Watcher'
 // uses the backend LLM via /api/v1/projects/:name/agent for deeper analysis
 // with tool access.
 
-function CopyChip({ label, value }: { label: string; value: string }) {
+function CopyChip({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
   const [copied, setCopied] = useState(false)
+  const displayLabel = secret ? label.replace(/\/\s*[^\s]+$/, '/ ••••••') : label
   return (
     <button
       onClick={() => {
@@ -54,10 +55,10 @@ function CopyChip({ label, value }: { label: string; value: string }) {
           setTimeout(() => setCopied(false), 1200)
         }).catch(() => { /* clipboard unavailable */ })
       }}
-      title={`Copy: ${value}`}
+      title={secret ? 'Click to copy password' : `Copy: ${value}`}
       className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-700/70 hover:bg-gray-600 text-gray-300 cursor-pointer"
     >
-      {copied ? 'copied!' : label}
+      {copied ? 'copied!' : displayLabel}
     </button>
   )
 }
@@ -1672,13 +1673,13 @@ function App() {
                       <span className="uppercase tracking-wider">cluster</span>
                       <a href={links.argocdUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ArgoCD</a>
                       {links.argocdPassword && (
-                        <CopyChip label={`ArgoCD login: admin / ${links.argocdPassword}`} value={links.argocdPassword} />
+                        <CopyChip label={`ArgoCD login: admin / ${links.argocdPassword}`} value={links.argocdPassword} secret />
                       )}
                       {links.giteaUrl && (
                         <a href={links.giteaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Gitea</a>
                       )}
                       {links.giteaUser && links.giteaPassword && (
-                        <CopyChip label={`Gitea login: ${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} />
+                        <CopyChip label={`Gitea login: ${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} secret />
                       )}
                       {links.gitopsRepo && (
                         <span className="font-mono" title="The GitOps repo ArgoCD syncs from">repo: {links.gitopsRepo}</span>
@@ -1695,7 +1696,7 @@ function App() {
                         <a href={links.grafanaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Grafana</a>
                       )}
                       {links.grafanaUser && links.grafanaPassword && (
-                        <CopyChip label={`Grafana login: ${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} />
+                        <CopyChip label={`Grafana login: ${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} secret />
                       )}
                       {links.prometheusUrl && (
                         <a href={links.prometheusUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Prometheus</a>
@@ -2040,21 +2041,34 @@ function App() {
                   />
                 </div>
               ) : activeTab === 'metrics' ? (
-                <div className="flex-1 flex flex-col">
+                <div className="flex-1 flex flex-col items-center justify-center p-8">
                   {links.grafanaUrl ? (
-                    <iframe
-                      src={`${links.grafanaUrl}?kiosk=tv`}
-                      className="w-full h-full border-0"
-                      allow="fullscreen"
-                      title="Grafana Dashboard"
-                    />
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                      <div className="text-center">
-                        <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>Grafana is not running</p>
-                        <p className="text-sm mt-2">Start the tenant to view metrics</p>
+                    <div className="text-center space-y-6 max-w-sm">
+                      <div>
+                        <BarChart3 className="w-16 h-16 mx-auto text-blue-400 mb-4" />
+                        <h2 className="text-xl font-semibold text-white mb-2">Grafana Dashboards</h2>
+                        <p className="text-gray-400">View comprehensive metrics and monitoring dashboards</p>
                       </div>
+                      <a
+                        href={`${links.grafanaUrl}?kiosk=tv`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                      >
+                        Open Grafana Dashboard
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                      <div className="bg-gray-800 rounded-lg p-4 text-sm text-gray-300">
+                        <p className="font-medium text-gray-200 mb-1">Login credentials:</p>
+                        <p>Username: <code className="bg-gray-900 px-2 py-1 rounded">admin</code></p>
+                        <p>Password: <code className="bg-gray-900 px-2 py-1 rounded">admin</code></p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50 text-gray-600" />
+                      <p className="text-gray-400 font-medium">Grafana is not running</p>
+                      <p className="text-sm text-gray-500 mt-2">Start the tenant to view metrics</p>
                     </div>
                   )}
                 </div>
