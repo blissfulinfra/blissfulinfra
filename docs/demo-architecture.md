@@ -67,7 +67,7 @@ flowchart TB
 | ArgoCD | In-cluster, `argocd` namespace | Watches the Gitea repo, one `Application` per service (`poc-api`), auto-sync with prune + selfHeal. What git says, the cluster becomes. |
 | Argo Rollouts | In-cluster, `argo-rollouts` namespace | Replaces Deployments with `Rollout` resources: canary strategy 10 → 25 → 50 → 100 with pauses, promotable/abortable at any step. |
 | The service (`api`) | In-cluster, `poc` namespace | A hono (Node/TypeScript) backend from `templates/hono/`. Project = namespace, service = Rollout + canary/stable Services + ConfigMap. |
-| Dashboard | Docker container `blissful-dashboard`, host `:3002` | Control plane UI for every tenant. Ships kubectl + the rollouts plugin, joins the `kind` network and uses each cluster's *internal* kubeconfig — that's how a container can see the cluster at all. Also mounts the Docker socket (compose-runtime status) and `~/.blissful-infra` (registry, configs). |
+| Dashboard | Docker container `blissful-dashboard`, host `:3002` | Control plane UI for every tenant. Its AI Chat tab runs `claude -p` in-container and needs its own credentials: `blissful-infra dashboard login` (OAuth) or a host `ANTHROPIC_API_KEY` exported before `dashboard up`. Ships kubectl + the rollouts plugin, joins the `kind` network and uses each cluster's *internal* kubeconfig — that's how a container can see the cluster at all. Also mounts the Docker socket (compose-runtime status) and `~/.blissful-infra` (registry, configs). |
 
 ## The deploy flow
 

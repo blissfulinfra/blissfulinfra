@@ -3035,7 +3035,9 @@ async function handleAgentQuery(
   // Find available provider
   const provider = await getProvider(requestedProvider);
   if (!provider) {
-    return "Error: No AI provider available. Either install Claude Code (`claude login`), set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN, or start Ollama with `ollama serve`.";
+    return DOCKER_MODE
+      ? "Error: the dashboard's Claude agent has no credentials. Run `blissful-infra dashboard login` (OAuth, uses your Claude subscription), or export ANTHROPIC_API_KEY on the host and rerun `blissful-infra dashboard up`."
+      : "Error: No AI provider available. Either install Claude Code (`claude login`), set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN, or start Ollama with `ollama serve`.";
   }
 
   // Select model
