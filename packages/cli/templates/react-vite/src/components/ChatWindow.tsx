@@ -159,11 +159,26 @@ export function ChatWindow() {
   })
 
 
-  const sendChat = () => {
+  const sendChat = async () => {
     const text = input.trim()
     if (!text || !connected) return
     send({ type: 'chat', payload: { text } })
     setInput('')
+    // Persist message to database
+    try {
+      await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author: myName || 'Anonymous',
+          body: text,
+          sessionId: mySessionId,
+        })
+      })
+    } catch (e) {
+      // Silently fail — message was sent live via WebSocket, db persistence is best-effort
+      console.error('Failed to persist message', e)
+    }
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
