@@ -41,7 +41,7 @@ Topology maps the ADR-0017 hierarchy onto the cluster:
 - **Risks / follow-ups:**
   - **No in-cluster project infra yet**: kubernetes-runtime services scaffold without a Postgres binding (a DB binding would crashloop every pod on Flyway). In-cluster Kafka/Postgres, or bridging to the compose infra, is the next slice.
   - Analysis-driven canaries need in-cluster Prometheus; the pause-based steps are the v1 stand-in.
-  - Pre-existing (unrelated) port-range overlap: tenant jenkins `8081+i` can collide with project gateway `8080+offset` (e.g. tenant 1 jenkins = tenant 0/project 2 gateway = 8082). Known, not addressed here.
+  - ~~Pre-existing port-range overlaps (tenant jenkins/prometheus and the exporter sidecars sat inside project ranges)~~ — fixed 2026-08-03: every tenant/project/service base now occupies a disjoint range, enforced by an exhaustive property test.
   - Chart/provider pins will need periodic bumps; all live in `templates/cluster/terraform/`.
 
 ## Alternatives considered

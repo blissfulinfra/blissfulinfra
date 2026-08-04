@@ -12,6 +12,7 @@ import { rollbackCommand } from "./commands/rollback.js";
 import { statusCommand } from "./commands/status.js";
 import { pipelineCommand } from "./commands/pipeline.js";
 import { jenkinsCommand } from "./commands/jenkins.js";
+import { ciCommand } from "./commands/ci.js";
 // Resilience
 import { perfCommand } from "./commands/perf.js";
 import { chaosCommand } from "./commands/chaos.js";
@@ -51,6 +52,7 @@ program.addCommand(deployCommand);
 program.addCommand(rollbackCommand);
 program.addCommand(statusCommand);
 program.addCommand(pipelineCommand);
+program.addCommand(ciCommand);
 program.addCommand(jenkinsCommand);
 program.addCommand(canaryCommand);
 

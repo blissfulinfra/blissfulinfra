@@ -10,3 +10,9 @@ data:
   PROJECT_NAME: "{{PROJECT_NAME}}"
   SERVICE_NAME: "{{SERVICE_NAME}}"
   LOGGING_LEVEL_ROOT: "INFO"
+  # Frontend nginx wiring: the react-vite image envsubsts its nginx.conf at
+  # boot and crashes without these. The backend's combined k8s Service shares
+  # its compose hostname, so in-cluster DNS just works. Harmless for backends.
+  BACKEND_HOST: "{{BACKEND_HOST}}"
+  BACKEND_PORT: "8080"
+  NGINX_ENVSUBST_FILTER: "^BACKEND_"

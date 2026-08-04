@@ -3,15 +3,6 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getConfig, serviceUrl } from './config'
 import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
-} from 'recharts'
-import {
   Play,
   Square,
   RefreshCw,
@@ -28,14 +19,12 @@ import {
   Copy,
   Check,
   X,
-  HardDrive,
+  BarChart3,
   Network,
   TerminalSquare,
-  BarChart3,
   CheckCircle,
   XCircle,
-  HelpCircle,
-  GitBranch,
+    GitBranch,
   Server,
   ArrowUpCircle,
   RotateCcw,
@@ -58,6 +47,24 @@ import { Watcher } from './components/Watcher'
 // uses the backend LLM via /api/v1/projects/:name/agent for deeper analysis
 // with tool access.
 
+function CopyChip({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        }).catch(() => { /* clipboard unavailable */ })
+      }}
+      title={`Copy: ${value}`}
+      className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-700/70 hover:bg-gray-600 text-gray-300 cursor-pointer"
+    >
+      {copied ? 'copied!' : label}
+    </button>
+  )
+}
+
 interface Project {
   name: string
   path: string
@@ -66,6 +73,8 @@ interface Project {
   backend?: string
   frontend?: string
   database?: string
+  runtime?: 'compose' | 'kubernetes'
+  infra?: { kafka?: number; postgres?: number; redis?: number; gateway?: number }
   services: Service[]
 }
 
@@ -73,6 +82,10 @@ interface Service {
   name: string
   status: 'running' | 'stopped' | 'starting' | 'unhealthy'
   port?: number
+  serviceType?: string
+  template?: string
+  dbSchema?: string
+  url?: string
 }
 
 interface LogEntry {
@@ -107,50 +120,6 @@ interface ModelsResponse {
   error?: string
 }
 
-interface ContainerMetrics {
-  name: string
-  cpuPercent: number
-  memoryUsage: number
-  memoryLimit: number
-  memoryPercent: number
-  networkRx: number
-  networkTx: number
-}
-
-interface HttpMetrics {
-  totalRequests: number
-  requestsPerSecond: number
-  avgResponseTime: number
-  p50Latency?: number
-  p95Latency?: number
-  p99Latency?: number
-  errorCount?: number
-  errorRate?: number
-  status2xx?: number
-  status4xx?: number
-  status5xx?: number
-}
-
-interface MetricsResponse {
-  containers: ContainerMetrics[]
-  httpMetrics?: HttpMetrics
-  timestamp: number
-}
-
-interface MetricsHistory {
-  timestamps: number[]
-  containers: Record<string, { cpu: number[]; memory: number[] }>
-  http: {
-    requestsPerSecond: number[]
-    avgResponseTime: number[]
-    p50Latency: number[]
-    p95Latency: number[]
-    p99Latency: number[]
-    errorRate: number[]
-    lastTotalRequests: number
-  }
-}
-
 interface ServiceHealth {
   name: string
   status: 'healthy' | 'unhealthy' | 'unknown'
@@ -179,34 +148,6 @@ interface PluginStatus {
   isDataPlatform: boolean
 }
 
-interface HealthHistory {
-  timestamps: number[]
-  services: Record<string, ('healthy' | 'unhealthy' | 'unknown')[]>
-}
-
-interface StoredMetrics {
-  timestamp: number
-  projectName: string
-  containers: Array<{
-    name: string
-    cpuPercent: number
-    memoryPercent: number
-  }>
-  http?: {
-    totalRequests: number
-    avgResponseTime: number
-    p50Latency?: number
-    p95Latency?: number
-    p99Latency?: number
-    errorRate?: number
-  }
-}
-
-interface HistoricalMetricsResponse {
-  metrics: StoredMetrics[]
-  count: number
-}
-
 interface AlertThreshold {
   id: string
   name: string
@@ -218,27 +159,12 @@ interface AlertThreshold {
   severity: 'warning' | 'critical'
 }
 
-interface TriggeredAlert {
-  id: string
-  thresholdId: string
-  name: string
-  metric: string
-  value: number
-  threshold: number
-  severity: 'warning' | 'critical'
-  triggeredAt: number
-  resolvedAt?: number
-  container?: string
-}
-
 interface AlertsResponse {
   config: {
     thresholds: AlertThreshold[]
     notifyOnConsole: boolean
     cooldownMs: number
   }
-  activeAlerts: TriggeredAlert[]
-  recentHistory: TriggeredAlert[]
 }
 
 interface PipelineStage {
@@ -289,135 +215,7 @@ interface MetricsStorage {
 // run against different API mounts or hosts without rebuilding.
 const API_BASE = getConfig().apiBase
 
-// Time window options
-const TIME_WINDOWS = [
-  { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
-  { label: '5m', value: 300, dataPoints: 60, intervalMs: 5000 },
-  { label: '15m', value: 900, dataPoints: 90, intervalMs: 10000 },
-  { label: '1h', value: 3600, dataPoints: 120, intervalMs: 30000 },
-  { label: '24h', value: 86400, dataPoints: 144, intervalMs: 600000 },
-] as const
 
-type TimeWindow = (typeof TIME_WINDOWS)[number]
-
-// Format timestamp for x-axis display
-function formatTime(timestamp: number, windowSeconds: number): string {
-  const date = new Date(timestamp)
-  if (windowSeconds <= 300) {
-    // 5 minutes or less: show HH:MM:SS
-    return date.toLocaleTimeString('en-US', { hour12: false })
-  } else if (windowSeconds <= 3600) {
-    // 1 hour or less: show HH:MM
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  } else {
-    // More than 1 hour: show MM/DD HH:MM
-    return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' +
-      date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  }
-}
-
-// Time Series Chart Component using Recharts
-function TimeSeriesChart({
-  data,
-  timestamps,
-  color,
-  maxValue,
-  label,
-  unit = '%',
-  windowSeconds = 60,
-}: {
-  data: number[]
-  timestamps: number[]
-  color: string
-  maxValue?: number
-  label: string
-  unit?: string
-  windowSeconds?: number
-}) {
-  const currentValue = data.length > 0 ? data[data.length - 1] : 0
-
-  // Calculate time domain - include historical data if available
-  const now = Date.now()
-  const dataStart = timestamps.length > 0 ? timestamps[0] : now
-  const windowStart = Math.min(dataStart, now - windowSeconds * 1000)
-  const timeDomain: [number, number] = [windowStart, now]
-
-  // Convert to recharts format
-  const chartData = data.map((value, i) => ({
-    time: timestamps[i] || Date.now(),
-    value,
-  }))
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-400">{label}</span>
-        <span className="text-sm font-mono">
-          {currentValue.toFixed(1)}{unit}
-        </span>
-      </div>
-      <div className="bg-gray-900 rounded-lg overflow-hidden h-32">
-        {chartData.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-gray-600 text-sm">
-            No data
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
-              <defs>
-                <linearGradient id={`gradient-${label.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={color} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={color} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis
-                dataKey="time"
-                type="number"
-                domain={timeDomain}
-                tickFormatter={(ts) => formatTime(ts, windowSeconds)}
-                stroke="#6b7280"
-                fontSize={10}
-                tickLine={false}
-                axisLine={false}
-                tickCount={5}
-              />
-              <YAxis
-                domain={maxValue !== undefined ? [0, maxValue] : ['auto', 'auto']}
-                stroke="#6b7280"
-                fontSize={10}
-                tickLine={false}
-                axisLine={false}
-                width={40}
-                tickFormatter={(v) => `${v}${unit}`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1f2937',
-                  border: '1px solid #374151',
-                  borderRadius: '0.5rem',
-                  fontSize: '12px',
-                }}
-                labelFormatter={(ts) => formatTime(ts as number, windowSeconds)}
-                formatter={(value) => [`${Number(value).toFixed(2)}${unit}`, label]}
-              />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke={color}
-                strokeWidth={2}
-                fill={`url(#gradient-${label.replace(/\s+/g, '-')})`}
-                dot={false}
-                activeDot={{ r: 4, fill: color }}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-    </div>
-  )
-}
 
 function categoryIcon(category: string) {
   if (category === 'AI/ML') return <Cpu className="w-3 h-3" />
@@ -504,14 +302,6 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'watcher' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings' | 'perf'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
-  const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
-    timestamps: [],
-    containers: {},
-    http: { requestsPerSecond: [], avgResponseTime: [], p50Latency: [], p95Latency: [], p99Latency: [], errorRate: [], lastTotalRequests: 0 },
-  })
-  const [metricsLoaded, setMetricsLoaded] = useState(false)
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>(TIME_WINDOWS[0])
-  const [_healthHistory, setHealthHistory] = useState<HealthHistory>({ timestamps: [], services: {} })
 
   // Single source of truth for per-project health.
   //
@@ -565,7 +355,6 @@ function App() {
   const [aiProvider, setAiProvider] = useState<'claude' | 'ollama' | null>(null)
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
-  const [activeAlerts, setActiveAlerts] = useState<TriggeredAlert[]>([])
 
   // Plugin state
   const [pluginStatuses, setPluginStatuses] = useState<PluginStatus[]>([])
@@ -648,6 +437,13 @@ function App() {
     jenkinsUrl: string | null
     argocdUrl: string | null
     giteaUrl: string | null
+    argocdPassword?: string | null
+    giteaUser?: string | null
+    giteaPassword?: string | null
+    gitopsRepo?: string | null
+    kubeContextName?: string | null
+    grafanaUser?: string | null
+    grafanaPassword?: string | null
   }>({ clientName: null, tenantName: null, projectName: null, tempoUrl: null, jaegerUrl: null, grafanaUrl: null, prometheusUrl: null, jenkinsUrl: null, argocdUrl: null, giteaUrl: null })
 
   useEffect(() => {
@@ -720,10 +516,13 @@ function App() {
       if (res.ok) {
         const data = await res.json()
         setProjects(data.projects || [])
-        // Update selected project if it exists
+        // Update selected project if it exists; otherwise auto-select the
+        // first project so the detail view isn't empty on load/tenant switch.
         if (selectedProject) {
           const updated = data.projects.find((p: Project) => p.name === selectedProject.name)
           if (updated) setSelectedProject(updated)
+        } else if ((data.projects || []).length > 0 && !showClientOverview) {
+          setSelectedProject(data.projects[0])
         }
       }
     } catch (e) {
@@ -830,29 +629,12 @@ function App() {
     return 'info'
   }
 
-  // Fetch health for a single project and dispatch into the reducer.
-  // Caller passes the project name explicitly — no implicit `selectedProject`,
-  // so we can call this for sidebar-visible non-selected projects too.
   const fetchHealthFor = async (projectName: string) => {
     try {
       const res = await fetch(withTenant(`${API_BASE}/projects/${projectName}/health`))
       if (!res.ok) return
       const data: HealthResponse = await res.json()
       dispatchHealth({ type: 'set', project: projectName, services: data.services })
-
-      // Update history (only for the selected project — sidebar doesn't graph)
-      if (selectedProject?.name === projectName) {
-        setHealthHistory((prev) => {
-          const maxDataPoints = timeWindow.dataPoints
-          const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
-          const newServices = { ...prev.services }
-          for (const service of data.services) {
-            if (!newServices[service.name]) newServices[service.name] = []
-            newServices[service.name] = [...newServices[service.name], service.status].slice(-maxDataPoints)
-          }
-          return { timestamps: newTimestamps, services: newServices }
-        })
-      }
     } catch (e) {
       console.error(`Failed to fetch health for ${projectName}:`, e)
     }
@@ -871,150 +653,6 @@ function App() {
     }
   }
 
-  const fetchMetrics = async () => {
-    if (!selectedProject) return
-    try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics`))
-      if (res.ok) {
-        const data: MetricsResponse = await res.json()
-        setMetricsLoaded(true)
-
-        if (data.containers.length === 0) {
-          // No containers running - keep metricsLoaded true but containers empty
-          return
-        }
-
-        setMetricsHistory((prev) => {
-          const maxDataPoints = timeWindow.dataPoints
-          const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
-          const newContainers = { ...prev.containers }
-
-          for (const container of data.containers) {
-            if (!newContainers[container.name]) {
-              newContainers[container.name] = { cpu: [], memory: [] }
-            }
-            newContainers[container.name].cpu = [
-              ...newContainers[container.name].cpu,
-              container.cpuPercent,
-            ].slice(-maxDataPoints)
-            newContainers[container.name].memory = [
-              ...newContainers[container.name].memory,
-              container.memoryPercent,
-            ].slice(-maxDataPoints)
-          }
-
-          // Calculate HTTP metrics (requests per second from delta)
-          const newHttp = { ...prev.http }
-          if (data.httpMetrics) {
-            const deltaRequests = data.httpMetrics.totalRequests - prev.http.lastTotalRequests
-            const rps = prev.http.lastTotalRequests > 0 ? Math.max(0, deltaRequests) : 0
-            newHttp.requestsPerSecond = [...prev.http.requestsPerSecond, rps].slice(-maxDataPoints)
-            newHttp.avgResponseTime = [...prev.http.avgResponseTime, data.httpMetrics.avgResponseTime].slice(-maxDataPoints)
-            newHttp.p50Latency = [...prev.http.p50Latency, data.httpMetrics.p50Latency ?? 0].slice(-maxDataPoints)
-            newHttp.p95Latency = [...prev.http.p95Latency, data.httpMetrics.p95Latency ?? 0].slice(-maxDataPoints)
-            newHttp.p99Latency = [...prev.http.p99Latency, data.httpMetrics.p99Latency ?? 0].slice(-maxDataPoints)
-            newHttp.errorRate = [...prev.http.errorRate, data.httpMetrics.errorRate ?? 0].slice(-maxDataPoints)
-            newHttp.lastTotalRequests = data.httpMetrics.totalRequests
-          }
-
-          return { timestamps: newTimestamps, containers: newContainers, http: newHttp }
-        })
-      }
-    } catch (e) {
-      console.error('Failed to fetch metrics:', e)
-      setMetricsLoaded(true) // Mark as loaded even on error
-    }
-  }
-
-  const fetchHistoricalMetrics = async () => {
-    if (!selectedProject) return
-
-    try {
-      // Fetch historical data for the current time window
-      const startTime = Date.now() - timeWindow.value * 1000
-      const res = await fetch(
-        withTenant(`${API_BASE}/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`)
-      )
-
-      if (res.ok) {
-        const data: HistoricalMetricsResponse = await res.json()
-
-        if (data.metrics.length > 0) {
-          // Convert historical metrics to chart format
-          const timestamps: number[] = []
-          const containers: Record<string, { cpu: number[]; memory: number[] }> = {}
-          const http = {
-            requestsPerSecond: [] as number[],
-            avgResponseTime: [] as number[],
-            p50Latency: [] as number[],
-            p95Latency: [] as number[],
-            p99Latency: [] as number[],
-            errorRate: [] as number[],
-            lastTotalRequests: 0,
-          }
-
-          let prevTotalRequests = 0
-
-          for (const m of data.metrics) {
-            timestamps.push(m.timestamp)
-
-            // Process container metrics
-            for (const c of m.containers) {
-              if (!containers[c.name]) {
-                containers[c.name] = { cpu: [], memory: [] }
-              }
-              containers[c.name].cpu.push(c.cpuPercent)
-              containers[c.name].memory.push(c.memoryPercent)
-            }
-
-            // Process HTTP metrics
-            if (m.http) {
-              const rps = prevTotalRequests > 0
-                ? Math.max(0, m.http.totalRequests - prevTotalRequests)
-                : 0
-              http.requestsPerSecond.push(rps)
-              http.avgResponseTime.push(m.http.avgResponseTime || 0)
-              http.p50Latency.push(m.http.p50Latency || 0)
-              http.p95Latency.push(m.http.p95Latency || 0)
-              http.p99Latency.push(m.http.p99Latency || 0)
-              http.errorRate.push(m.http.errorRate || 0)
-              prevTotalRequests = m.http.totalRequests
-              http.lastTotalRequests = m.http.totalRequests
-            }
-          }
-
-          setMetricsHistory({ timestamps, containers, http })
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch historical metrics:', e)
-    }
-  }
-
-  const fetchAlerts = async () => {
-    if (!selectedProject) return
-    try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts`))
-      if (res.ok) {
-        const data: AlertsResponse = await res.json()
-        setActiveAlerts(data.activeAlerts)
-      }
-    } catch (e) {
-      console.error('Failed to fetch alerts:', e)
-    }
-  }
-
-  const acknowledgeAllAlerts = async () => {
-    if (!selectedProject) return
-    try {
-      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/alerts/acknowledge`), {
-        method: 'POST',
-      })
-      setActiveAlerts([])
-    } catch (e) {
-      console.error('Failed to acknowledge alerts:', e)
-    }
-  }
 
   // --- Pipeline ---
   const fetchPipeline = async () => {
@@ -1327,35 +965,6 @@ function App() {
     for (const p of projects) fetchHealthFor(p.name)
   }, [projects.map(p => p.name).join(','), currentTenant])
 
-  useEffect(() => {
-    if (selectedProject && activeTab === 'metrics') {
-      // Clear history when switching projects, tabs, or time window
-      setMetricsHistory({
-        timestamps: [],
-        containers: {},
-        http: { requestsPerSecond: [], avgResponseTime: [], p50Latency: [], p95Latency: [], p99Latency: [], errorRate: [], lastTotalRequests: 0 },
-      })
-      setHealthHistory({ timestamps: [], services: {} })
-      setMetricsLoaded(false)
-
-      // Load historical metrics first, then start polling for new data
-      const loadData = async () => {
-        await fetchHistoricalMetrics()
-        setMetricsLoaded(true)
-        fetchMetrics()
-        fetchAlerts()
-      }
-      loadData()
-
-      const metricsInterval = setInterval(fetchMetrics, timeWindow.intervalMs)
-      const alertsInterval = setInterval(fetchAlerts, 10000)
-
-      return () => {
-        clearInterval(metricsInterval)
-        clearInterval(alertsInterval)
-      }
-    }
-  }, [selectedProject?.name, activeTab, timeWindow, currentTenant])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'plugins') {
@@ -2147,73 +1756,121 @@ function App() {
                   </div>
                 </div>
 
-                {/* Service Health */}
-                {currentHealth.length > 0 ? (
-                  <div data-testid="service-health" className="flex flex-wrap gap-2 mt-3">
-                    {currentHealth.map((service) => {
-                      const svcMeta = selectedProject.services.find(s => s.name === service.name)
-                      return (
-                        <div
-                          key={service.name}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border ${
-                            service.status === 'healthy'
-                              ? 'border-green-500/50 bg-green-500/10'
-                              : service.status === 'unhealthy'
-                              ? 'border-red-500/50 bg-red-500/10'
-                              : 'border-gray-600 bg-gray-700/50'
-                          }`}
+                {/* Connections: how to reach each service + the infra creds
+                    the scaffold wired in. */}
+                <div data-testid="service-connections" className="mt-3 bg-gray-800/60 border border-gray-700 rounded-lg divide-y divide-gray-700/60 text-sm">
+                  {selectedProject.services.map(svc => {
+                    const health = currentHealth.find(h => h.name === svc.name)
+                    const dot = health
+                      ? health.status === 'healthy' ? 'bg-green-400' : health.status === 'unhealthy' ? 'bg-red-400' : 'bg-gray-500'
+                      : statusDot(svc.status)
+                    return (
+                    <div key={svc.name} className="flex items-center gap-3 px-3 py-2 flex-wrap">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                      <span className="font-mono">{svc.name}</span>
+                      {svc.serviceType && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">{svc.serviceType}</span>
+                      )}
+                      {svc.template && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300">{svc.template}</span>
+                      )}
+                      {svc.url ? (
+                        <a
+                          href={svc.url.startsWith('/') ? withTenant(svc.url) : svc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-400 hover:text-emerald-300 underline text-xs"
                         >
-                          {service.status === 'healthy' ? (
-                            <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                          ) : service.status === 'unhealthy' ? (
-                            <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                          ) : (
-                            <HelpCircle className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          )}
-                          <span className="capitalize">{service.name}</span>
-                          {svcMeta?.port && (
-                            <a
-                              href={serviceUrl(svcMeta.port)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:underline"
-                            >
-                              :{svcMeta.port}
-                            </a>
-                          )}
-                          {service.status === 'unhealthy' && service.details && (
-                            <span className="text-red-300 text-xs ml-1">{service.details}</span>
-                          )}
-                          {service.status === 'healthy' && service.responseTimeMs !== undefined && (
-                            <span className="text-gray-500 text-xs">{service.responseTimeMs}ms</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {selectedProject.services.map((service) => (
-                      <div
-                        key={service.name}
-                        className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-sm"
-                      >
-                        <span className={`w-2 h-2 rounded-full ${statusDot(service.status)}`} />
-                        <span>{service.name}</span>
-                        {service.port && (
-                          <a
-                            href={serviceUrl(service.port)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-400 hover:underline"
-                          >
-                            :{service.port}
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          {svc.url.startsWith('/') ? 'Open (via cluster proxy)' : svc.url.replace('http://', '')}
+                        </a>
+                      ) : svc.port ? (
+                        <a
+                          href={serviceUrl(svc.port)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline text-xs"
+                        >
+                          :{svc.port}
+                        </a>
+                      ) : null}
+                      {svc.dbSchema && selectedProject.infra?.postgres && (
+                        <CopyChip
+                          label={`db schema ${svc.dbSchema}`}
+                          value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app?currentSchema=${svc.dbSchema}`}
+                        />
+                      )}
+                      {health?.status === 'healthy' && health.responseTimeMs !== undefined && (
+                        <span className="text-gray-500 text-xs">{health.responseTimeMs}ms</span>
+                      )}
+                      {health?.status === 'unhealthy' && health.details && (
+                        <span className="text-red-300 text-xs">{health.details}</span>
+                      )}
+                    </div>
+                    )
+                  })}
+                  {selectedProject.infra && (
+                    <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
+                      <span className="uppercase tracking-wider">infra</span>
+                      {selectedProject.infra.kafka && (
+                        <CopyChip label={`Kafka broker localhost:${selectedProject.infra.kafka} · no auth`} value={`localhost:${selectedProject.infra.kafka}`} />
+                      )}
+                      {selectedProject.infra.postgres && (
+                        <CopyChip label={`Postgres localhost:${selectedProject.infra.postgres} · login postgres / postgres`} value={`postgresql://postgres:postgres@localhost:${selectedProject.infra.postgres}/app`} />
+                      )}
+                      {selectedProject.infra.redis && (
+                        <CopyChip label={`Redis localhost:${selectedProject.infra.redis} · no auth`} value={`redis://localhost:${selectedProject.infra.redis}`} />
+                      )}
+                      {selectedProject.infra.gateway && (
+                        <a
+                          href={`http://localhost:${selectedProject.infra.gateway}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline"
+                        >
+                          gateway :{selectedProject.infra.gateway}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {selectedProject.runtime === 'kubernetes' && links.argocdUrl && (
+                    <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
+                      <span className="uppercase tracking-wider">cluster</span>
+                      <a href={links.argocdUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ArgoCD</a>
+                      {links.argocdPassword && (
+                        <CopyChip label={`ArgoCD login: admin / ${links.argocdPassword}`} value={links.argocdPassword} />
+                      )}
+                      {links.giteaUrl && (
+                        <a href={links.giteaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Gitea</a>
+                      )}
+                      {links.giteaUser && links.giteaPassword && (
+                        <CopyChip label={`Gitea login: ${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} />
+                      )}
+                      {links.gitopsRepo && (
+                        <span className="font-mono" title="The GitOps repo ArgoCD syncs from">repo: {links.gitopsRepo}</span>
+                      )}
+                      {links.kubeContextName && (
+                        <CopyChip label={`kubectl ctx: ${links.kubeContextName}`} value={`kubectl --context ${links.kubeContextName} `} />
+                      )}
+                    </div>
+                  )}
+                  {(links.grafanaUrl || links.jenkinsUrl) && (
+                    <div className="flex items-center gap-3 px-3 py-2 flex-wrap text-xs text-gray-400">
+                      <span className="uppercase tracking-wider">tenant</span>
+                      {links.grafanaUrl && (
+                        <a href={links.grafanaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Grafana</a>
+                      )}
+                      {links.grafanaUser && links.grafanaPassword && (
+                        <CopyChip label={`Grafana login: ${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} />
+                      )}
+                      {links.prometheusUrl && (
+                        <a href={links.prometheusUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Prometheus</a>
+                      )}
+                      {links.jenkinsUrl && (
+                        <a href={links.jenkinsUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Jenkins</a>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Tabs */}
@@ -2582,187 +2239,22 @@ function App() {
                 </div>
               ) : activeTab === 'metrics' ? (
                 <div className="flex-1 flex flex-col">
-                  {/* Time Window Selector */}
-                  <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
-                    <span className="text-sm text-gray-400">Time Range:</span>
-                    <div className="flex gap-1">
-                      {TIME_WINDOWS.map((tw) => (
-                        <button
-                          key={tw.label}
-                          onClick={() => setTimeWindow(tw)}
-                          className={`px-3 py-1 text-sm rounded transition-colors ${
-                            timeWindow.value === tw.value
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          }`}
-                        >
-                          {tw.label}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-xs text-gray-500 ml-auto">
-                      {metricsHistory.timestamps.length} data points
-                    </span>
-                  </div>
-
-                  <div className="flex-1 overflow-auto p-4">
-                    {!metricsLoaded ? (
-                      <div className="text-gray-500 text-center py-8">
-                        <Loader2 className="w-12 h-12 mx-auto mb-3 opacity-50 animate-spin" />
-                        <p>Loading metrics...</p>
-                      </div>
-                    ) : Object.keys(metricsHistory.containers).length === 0 ? (
-                      <div className="text-gray-500 text-center py-8">
+                  {links.grafanaUrl ? (
+                    <iframe
+                      src={`${links.grafanaUrl}?kiosk=tv`}
+                      className="w-full h-full border-0"
+                      allow="fullscreen"
+                      title="Grafana Dashboard"
+                    />
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-gray-500">
+                      <div className="text-center">
                         <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>No containers running</p>
-                        <p className="text-sm mt-2">Start the project to see metrics</p>
+                        <p>Grafana is not running</p>
+                        <p className="text-sm mt-2">Start the tenant to view metrics</p>
                       </div>
-                    ) : (
-                      <div className="space-y-6">
-                        {/* Active Alerts */}
-                        {activeAlerts.length > 0 && (
-                          <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-red-500">
-                            <div className="flex items-center justify-between mb-3">
-                              <h3 className="text-lg font-medium flex items-center gap-2">
-                                <AlertCircle className="w-5 h-5 text-red-400" />
-                                Active Alerts ({activeAlerts.length})
-                              </h3>
-                              <button
-                                onClick={acknowledgeAllAlerts}
-                                className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
-                              >
-                                Acknowledge All
-                              </button>
-                            </div>
-                            <div className="space-y-2">
-                              {activeAlerts.map((alert) => (
-                                <div
-                                  key={alert.id}
-                                  className={`p-3 rounded-lg ${
-                                    alert.severity === 'critical'
-                                      ? 'bg-red-500/20 border border-red-500/50'
-                                      : 'bg-yellow-500/20 border border-yellow-500/50'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <span className={`text-xs px-2 py-0.5 rounded ${
-                                        alert.severity === 'critical' ? 'bg-red-600' : 'bg-yellow-600'
-                                      }`}>
-                                        {alert.severity.toUpperCase()}
-                                      </span>
-                                      <span className="font-medium">{alert.name}</span>
-                                      {alert.container && (
-                                        <span className="text-sm text-gray-400">[{alert.container}]</span>
-                                      )}
-                                    </div>
-                                    <span className="text-sm text-gray-400">
-                                      {new Date(alert.triggeredAt).toLocaleTimeString()}
-                                    </span>
-                                  </div>
-                                  <div className="text-sm text-gray-300 mt-1">
-                                    {alert.metric}: {alert.value.toFixed(2)} (threshold: {alert.threshold})
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {Object.entries(metricsHistory.containers).map(([containerName, data]) => (
-                          <div key={containerName} className="bg-gray-800 rounded-lg p-4">
-                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                              <HardDrive className="w-5 h-5 text-blue-400" />
-                              {containerName}
-                            </h3>
-
-                            <div className="grid grid-cols-2 gap-6">
-                              <TimeSeriesChart
-                                data={data.cpu}
-                                timestamps={metricsHistory.timestamps}
-                                color="#3b82f6"
-                                maxValue={100}
-                                label="CPU Usage"
-                                unit="%"
-                                windowSeconds={timeWindow.value}
-                              />
-                              <TimeSeriesChart
-                                data={data.memory}
-                                timestamps={metricsHistory.timestamps}
-                                color="#22c55e"
-                                maxValue={100}
-                                label="Memory Usage"
-                                unit="%"
-                                windowSeconds={timeWindow.value}
-                              />
-                            </div>
-                          </div>
-                        ))}
-
-                        {/* HTTP Request Metrics */}
-                        <div className="bg-gray-800 rounded-lg p-4">
-                          <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                            <Network className="w-5 h-5 text-purple-400" />
-                            HTTP Requests
-                          </h3>
-
-                          {metricsHistory.http.requestsPerSecond.length === 0 ? (
-                            <p className="text-sm text-gray-500">
-                              No HTTP metrics available. Metrics are collected from Spring Boot Actuator on port 8080.
-                            </p>
-                          ) : (
-                            <div className="space-y-6">
-                              <div className="grid grid-cols-2 gap-6">
-                                <TimeSeriesChart
-                                  data={metricsHistory.http.requestsPerSecond}
-                                  timestamps={metricsHistory.timestamps}
-                                  color="#a855f7"
-                                  label="Requests/sec"
-                                  unit=""
-                                  windowSeconds={timeWindow.value}
-                                />
-                                <TimeSeriesChart
-                                  data={metricsHistory.http.errorRate}
-                                  timestamps={metricsHistory.timestamps}
-                                  color="#ef4444"
-                                  label="Error Rate"
-                                  unit="%"
-                                  maxValue={100}
-                                  windowSeconds={timeWindow.value}
-                                />
-                              </div>
-                              <div className="grid grid-cols-3 gap-6">
-                                <TimeSeriesChart
-                                  data={metricsHistory.http.p50Latency}
-                                  timestamps={metricsHistory.timestamps}
-                                  color="#22c55e"
-                                  label="p50 Latency"
-                                  unit="ms"
-                                  windowSeconds={timeWindow.value}
-                                />
-                                <TimeSeriesChart
-                                  data={metricsHistory.http.p95Latency}
-                                  timestamps={metricsHistory.timestamps}
-                                  color="#eab308"
-                                  label="p95 Latency"
-                                  unit="ms"
-                                  windowSeconds={timeWindow.value}
-                                />
-                                <TimeSeriesChart
-                                  data={metricsHistory.http.p99Latency}
-                                  timestamps={metricsHistory.timestamps}
-                                  color="#f97316"
-                                  label="p99 Latency"
-                                  unit="ms"
-                                  windowSeconds={timeWindow.value}
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ) : activeTab === 'plugins' ? (
                 <div className="flex-1 overflow-auto p-6">

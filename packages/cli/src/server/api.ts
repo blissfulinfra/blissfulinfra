@@ -7,7 +7,7 @@ import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
-import { getTenant, listTenants, findServiceProject, getServiceDir, readProjectRuntime } from "../utils/tenant-registry.js";
+import { getTenant, listTenants, findServiceProject, getServiceDir, readProjectRuntime, readServiceConfig } from "../utils/tenant-registry.js";
 import { kubeContext } from "../utils/kind.js";
 import {
   loadSavedOntology,
@@ -225,6 +225,15 @@ export function createApiServer(workingDir: string, port = 3002) {
           // Kubernetes runtime (ADR-0020) — live only while the cluster is.
           argocdUrl: clusterUp && tenantPorts.argocd ? `http://localhost:${tenantPorts.argocd}` : null,
           giteaUrl: clusterUp && tenantPorts.gitea ? `http://localhost:${tenantPorts.gitea}` : null,
+          // Dev credentials, surfaced in the dashboard's connections card.
+          // Everything here is local-only, fixed, dev-grade by design.
+          argocdPassword: clusterUp && currentTenant ? await readArgoCDAdminPassword(currentTenant) : null,
+          giteaUser: clusterUp ? "blissful" : null,
+          giteaPassword: clusterUp ? "blissful-dev-pw" : null,
+          gitopsRepo: clusterUp && currentTenant ? `blissful/${currentTenant}-gitops` : null,
+          kubeContextName: clusterUp && currentTenant ? `kind-blissful-${currentTenant}` : null,
+          grafanaUser: grafanaUp ? "admin" : null,
+          grafanaPassword: grafanaUp ? "admin" : null,
         };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(links));
@@ -1037,10 +1046,18 @@ export function createApiServer(workingDir: string, port = 3002) {
       const previewMatch = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/preview(\/.*)?$/);
       if (previewMatch) {
         const serviceName = previewMatch[1];
-        const previewTenant = tenantFromRequest();
+        // Sub-resources (./assets/*.js, ./vite.svg) are requested WITHOUT the
+        // ?tenant= query param — relative URLs don't inherit query strings.
+        // The first preview request stamps a path-scoped cookie; later ones
+        // read it back. Falls through to context.json as a last resort.
+        const cookieTenant = /(?:^|;\s*)blissful_preview_tenant=([^;]+)/
+          .exec(req.headers.cookie ?? "")?.[1];
+        const previewTenant = tenantFromRequest()
+          ?? (cookieTenant ? decodeURIComponent(cookieTenant) : null)
+          ?? await readContextTenant();
         const owning = previewTenant ? await findServiceProject(previewTenant, serviceName) : null;
         const nodePort = owning?.service.ports.http;
-        if (!owning || !nodePort) {
+        if (!previewTenant || !owning || !nodePort) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: `No previewable service '${serviceName}' (needs a tenant and an http port)` }));
           return;
@@ -1059,11 +1076,40 @@ export function createApiServer(workingDir: string, port = 3002) {
             body,
             signal: AbortSignal.timeout(10000),
           });
-          const buf = Buffer.from(await upstream.arrayBuffer());
-          res.writeHead(upstream.status, {
-            "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream",
-          });
-          res.end(buf);
+          const contentType = upstream.headers.get("content-type") ?? "";
+          const isHtml = contentType.includes("text/html");
+
+          if (isHtml && req.method === "GET" && rest === "/") {
+            // For HTML responses on the root path, wrap in iframe to fix React Router path issues.
+            // When React loads, it will see the iframe's src URL as its location, not the preview proxy path.
+            const iframeUrl = `http://${targetHost}:${nodePort}/${query.replace(/^\?/, "")}`;
+            const wrapperHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; overflow: hidden; }
+    iframe { border: none; width: 100%; height: 100vh; display: block; }
+  </style>
+</head>
+<body>
+  <iframe src="${iframeUrl}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-presentation allow-top-navigation allow-top-navigation-by-user-activation"></iframe>
+</body>
+</html>`;
+            res.writeHead(200, {
+              "Content-Type": "text/html; charset=utf-8",
+              "Set-Cookie": `blissful_preview_tenant=${encodeURIComponent(previewTenant)}; Path=/api/v1/projects/; SameSite=Lax`,
+            });
+            res.end(wrapperHtml);
+          } else {
+            const buf = Buffer.from(await upstream.arrayBuffer());
+            res.writeHead(upstream.status, {
+              "Content-Type": contentType,
+              "Set-Cookie": `blissful_preview_tenant=${encodeURIComponent(previewTenant)}; Path=/api/v1/projects/; SameSite=Lax`,
+            });
+            res.end(buf);
+          }
         } catch {
           res.writeHead(502, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
@@ -1761,6 +1807,36 @@ async function refreshContainerKubeconfigs(): Promise<void> {
   } catch { /* no tenants dir yet */ }
 }
 
+/** Tenant from the CLI's `use` context — last-resort preview resolution. */
+async function readContextTenant(): Promise<string | null> {
+  try {
+    const home = process.env.BLISSFUL_HOME ?? "/blissful-home";
+    const raw = await fs.readFile(path.join(home, "context.json"), "utf-8");
+    return (JSON.parse(raw) as { tenant?: string }).tenant ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const argocdPasswordCache = new Map<string, { value: string | null; at: number }>();
+
+/** ArgoCD's generated admin password, from the cluster secret. Cached 60s. */
+async function readArgoCDAdminPassword(tenant: string): Promise<string | null> {
+  const cached = argocdPasswordCache.get(tenant);
+  if (cached && Date.now() - cached.at < 60_000) return cached.value;
+  let value: string | null = null;
+  try {
+    const { stdout } = await execa("kubectl", [
+      "--context", kubeContext(tenant),
+      "-n", "argocd", "get", "secret", "argocd-initial-admin-secret",
+      "-o", "jsonpath={.data.password}",
+    ], { stdio: "pipe", timeout: 8000 });
+    value = stdout ? Buffer.from(stdout, "base64").toString("utf-8") : null;
+  } catch { /* cluster not reachable */ }
+  argocdPasswordCache.set(tenant, { value, at: Date.now() });
+  return value;
+}
+
 async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> {
   // Read the registry directly (no CLI subprocess). BLISSFUL_HOME is set on
   // the dashboard container to point at the mounted host registry.
@@ -1769,7 +1845,7 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
     name: string;
     projects: Array<{
       name: string;
-      portBlock: { kafka: number; postgres: number; gateway: number };
+      portBlock: { kafka: number; postgres: number; redis?: number; gateway: number };
       services: Array<{ name: string; type: string; ports: { http?: number } }>;
     }>;
   }> };
@@ -1799,9 +1875,14 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
   // Kubernetes-runtime projects run as pods inside the kind node, so their
   // containers never appear in the host's docker ps — derive their status
   // from pod readiness instead (one kubectl call per k8s project).
+  const projectRuntimes = new Map<string, string>();
+  for (const p of tenant.projects) {
+    projectRuntimes.set(p.name, await readProjectRuntime(tenantName, p.name));
+  }
+
   const k8sStatuses = new Map<string, Map<string, "running" | "starting" | "stopped">>();
   for (const p of tenant.projects) {
-    if ((await readProjectRuntime(tenantName, p.name)) !== "kubernetes") continue;
+    if (projectRuntimes.get(p.name) !== "kubernetes") continue;
     const svcStatuses = new Map<string, "running" | "starting" | "stopped">();
     try {
       const { stdout } = await execa("kubectl", [
@@ -1830,12 +1911,38 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
     k8sStatuses.set(p.name, svcStatuses);
   }
 
+  // Per-service scaffold details (template, DB schema) come from each
+  // service.yaml — best-effort, absent fields just hide their UI rows.
+  const serviceDetails = new Map<string, { template?: string; dbSchema?: string }>();
+  await Promise.all(tenant.projects.flatMap(p => p.services.map(async s => {
+    try {
+      const cfg = await readServiceConfig(tenantName, p.name, s.name);
+      serviceDetails.set(`${p.name}/${s.name}`, {
+        template: cfg.backend?.template ?? cfg.frontend?.template ?? (cfg.worker ? `worker-${cfg.worker.runtime}` : undefined),
+        dbSchema: cfg.database?.schema,
+      });
+    } catch { /* unreadable service.yaml */ }
+  })));
+
   return tenant.projects.map(p => {
-    // Service-level statuses
+    const runtime = (projectRuntimes.get(p.name) ?? "compose") as "compose" | "kubernetes";
+    // Service-level statuses + connection details
     const k8s = k8sStatuses.get(p.name);
     const services = p.services.map(s => {
+      const details = serviceDetails.get(`${p.name}/${s.name}`) ?? {};
+      const url = runtime === "kubernetes"
+        ? `/api/v1/projects/${s.name}/preview/`
+        : s.ports.http ? `http://localhost:${s.ports.http}` : undefined;
+      const base = {
+        name: s.name,
+        port: s.ports.http,
+        serviceType: s.type,
+        template: details.template,
+        dbSchema: runtime === "compose" ? details.dbSchema : undefined,
+        url,
+      };
       if (k8s) {
-        return { name: s.name, status: k8s.get(s.name) ?? "stopped", port: s.ports.http };
+        return { ...base, status: k8s.get(s.name) ?? "stopped" };
       }
       const cName = `${tenantName}-${p.name}-${s.name}`;
       const c = containers.find(x => x.name === cName);
@@ -1843,7 +1950,7 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
         c?.state === "running" ? "running"
         : c ? "stopped"
         : "stopped";
-      return { name: s.name, status, port: s.ports.http };
+      return { ...base, status };
     });
 
     // Project-level rollup: running if ANY service container is running
@@ -1857,6 +1964,13 @@ async function listTenantProjects(tenantName: string): Promise<ProjectStatus[]> 
       path: `tenants/${tenantName}/projects/${p.name}`,
       status,
       type: "project",
+      runtime,
+      infra: runtime === "compose" ? {
+        kafka: p.portBlock.kafka,
+        postgres: p.portBlock.postgres,
+        redis: p.portBlock.redis,
+        gateway: p.portBlock.gateway,
+      } : undefined,
       services,
     };
   });
@@ -2969,7 +3083,9 @@ async function handleAgentQuery(
   // Find available provider
   const provider = await getProvider(requestedProvider);
   if (!provider) {
-    return "Error: No AI provider available. Either install Claude Code (`claude login`), set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN, or start Ollama with `ollama serve`.";
+    return DOCKER_MODE
+      ? "Error: the dashboard's Claude agent has no credentials. Run `blissful-infra dashboard login` (OAuth, uses your Claude subscription), or export ANTHROPIC_API_KEY on the host and rerun `blissful-infra dashboard up`."
+      : "Error: No AI provider available. Either install Claude Code (`claude login`), set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN, or start Ollama with `ollama serve`.";
   }
 
   // Select model

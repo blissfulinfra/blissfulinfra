@@ -28,40 +28,33 @@ afterEach(async () => {
 });
 
 describe("cluster port allocation", () => {
-  // Note: a pre-existing jenkins/gateway range overlap (8081+t vs 8080+offset)
-  // is documented in ADR-0020 and out of scope here. This test pins the NEW
-  // cluster ranges: they must never collide with any other allocated port.
-  it("kubeApi/argocd/gitea never collide with any non-cluster port", () => {
-    const clusterKeys = new Set(["kubeApi", "argocd", "gitea"]);
-    const otherPorts = new Set<number>();
-    const clusterPorts = new Map<number, string>();
+  it("every allocated port across all tenants/projects/services is globally unique", () => {
+    // This caught two real collisions in the wild: gateway 8081 vs tenant
+    // jenkins, and project kafka vs tenant prometheus. Keep it exhaustive.
+    const claimed = new Map<number, string>();
+    const claim = (port: number | undefined, owner: string) => {
+      if (port === undefined) return;
+      const existing = claimed.get(port);
+      expect(existing, `port ${port} claimed by both ${existing} and ${owner}`).toBeUndefined();
+      claimed.set(port, owner);
+    };
 
     for (let t = 0; t < MAX_TENANTS; t++) {
       const tb = tenantPortBlock(`t${t}`, t);
       for (const [k, v] of Object.entries(tb)) {
-        if (typeof v !== "number" || k === "blockIndex") continue;
-        if (clusterKeys.has(k)) {
-          expect(clusterPorts.has(v), `cluster port ${v} allocated twice`).toBe(false);
-          clusterPorts.set(v, `tenant[${t}].${k}`);
-        } else {
-          otherPorts.add(v);
-        }
+        if (typeof v === "number" && k !== "blockIndex") claim(v, `tenant[${t}].${k}`);
       }
       for (let p = 0; p < MAX_PROJECTS_PER_TENANT; p++) {
         const pb = projectPortBlock(`t${t}`, `p${p}`, t, p);
         for (const [k, v] of Object.entries(pb)) {
-          if (typeof v === "number" && k !== "projectIndex") otherPorts.add(v);
+          if (typeof v === "number" && k !== "projectIndex") claim(v, `project[${t}.${p}].${k}`);
         }
         for (let s = 0; s < MAX_SERVICES_PER_PROJECT; s++) {
           const sp = servicePorts(`t${t}`, `p${p}`, `s${s}`, "backend", t, p, s);
-          if (sp.http) otherPorts.add(sp.http);
-          if (sp.metrics) otherPorts.add(sp.metrics);
+          claim(sp.http, `service[${t}.${p}.${s}].http`);
+          claim(sp.metrics, `service[${t}.${p}.${s}].metrics`);
         }
       }
-    }
-
-    for (const [port, owner] of clusterPorts) {
-      expect(otherPorts.has(port), `${owner} (${port}) collides with an existing range`).toBe(false);
     }
   });
 

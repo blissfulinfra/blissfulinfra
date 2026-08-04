@@ -63,11 +63,11 @@ flowchart TB
 |---|---|---|
 | Terraform workspace | `~/.blissful-infra/tenants/demo/cluster/` | Rendered from `templates/cluster/terraform/`; one `apply` creates the kind cluster and helm-installs ArgoCD, Argo Rollouts and Gitea. `terraform destroy` (or `clean`) is the teardown. |
 | kind cluster | Docker container `blissful-demo-control-plane` | A full single-node Kubernetes. Its API server publishes on the host (`:655x`); NodePorts 30080/30300 map to the tenant's ArgoCD/Gitea host ports. |
-| Gitea | In-cluster, `gitea` namespace | The GitOps origin. One repo per tenant (`blissful/demo-gitops`). The CLI pushes to it from the host via the NodePort; ArgoCD pulls it over in-cluster DNS. Dev creds `blissful` / `blissful-dev-pw`. |
+| Gitea | In-cluster, `gitea` namespace | The GitOps origin **and CI engine** (ADR-0023): `blissful-infra ci setup` registers an act_runner, `ci push <service>` mirrors the service source to its own repo and the push triggers a GitHub-Actions-compatible workflow. One repo per tenant (`blissful/demo-gitops`). The CLI pushes to it from the host via the NodePort; ArgoCD pulls it over in-cluster DNS. Dev creds `blissful` / `blissful-dev-pw`. |
 | ArgoCD | In-cluster, `argocd` namespace | Watches the Gitea repo, one `Application` per service (`poc-api`), auto-sync with prune + selfHeal. What git says, the cluster becomes. |
 | Argo Rollouts | In-cluster, `argo-rollouts` namespace | Replaces Deployments with `Rollout` resources: canary strategy 10 → 25 → 50 → 100 with pauses, promotable/abortable at any step. |
 | The service (`api`) | In-cluster, `poc` namespace | A hono (Node/TypeScript) backend from `templates/hono/`. Project = namespace, service = Rollout + canary/stable Services + ConfigMap. |
-| Dashboard | Docker container `blissful-dashboard`, host `:3002` | Control plane UI for every tenant. Ships kubectl + the rollouts plugin, joins the `kind` network and uses each cluster's *internal* kubeconfig — that's how a container can see the cluster at all. Also mounts the Docker socket (compose-runtime status) and `~/.blissful-infra` (registry, configs). |
+| Dashboard | Docker container `blissful-dashboard`, host `:3002` | Control plane UI for every tenant. Its AI Chat tab runs `claude -p` in-container and needs its own credentials: `blissful-infra dashboard login` (OAuth) or a host `ANTHROPIC_API_KEY` exported before `dashboard up`. Ships kubectl + the rollouts plugin, joins the `kind` network and uses each cluster's *internal* kubeconfig — that's how a container can see the cluster at all. Also mounts the Docker socket (compose-runtime status) and `~/.blissful-infra` (registry, configs). |
 
 ## The deploy flow
 
@@ -118,7 +118,7 @@ construction). The demo prints the exact URLs; for tenant block *i*:
 | ArgoCD UI | `8440 + i` | NodePort 30080 in the kind node |
 | Gitea | `3300 + i` | NodePort 30300 in the kind node |
 | Kubernetes API | `6550 + i` | kind API server (host loopback) |
-| Jenkins / Grafana / Prometheus / Tempo / Loki | `8081+i` / `3030+i` / `9090+i` / `3200+i` / `3100+i` | tenant compose containers (only after `tenant up`; not part of the demo's critical path) |
+| Jenkins / Grafana / Prometheus / Tempo / Loki | `8280+i` / `3030+i` / `9490+i` / `3200+i` / `3100+i` | tenant compose containers (only after `tenant up`; not part of the demo's critical path) |
 
 ## State on disk
 

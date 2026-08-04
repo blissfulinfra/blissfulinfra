@@ -1,0 +1,26 @@
+# Gitea Actions (ADR-0023). Same syntax as GitHub Actions — this file works
+# unchanged on github.com, which is the point.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Container image builds
+        run: docker build -t {{PROJECT_NAME}}:ci .

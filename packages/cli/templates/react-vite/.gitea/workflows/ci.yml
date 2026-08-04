@@ -1,0 +1,22 @@
+# Gitea Actions (ADR-0023). GitHub Actions-compatible syntax.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Typecheck + build
+        run: npm run build
+
+      - name: Container image builds
+        run: docker build -t {{PROJECT_NAME}}:ci .

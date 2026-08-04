@@ -44,7 +44,7 @@ brew install kind kubectl hashicorp/tap/terraform argoproj/tap/kubectl-argo-roll
 git clone https://github.com/cavanpage/blissful-infra.git && cd blissful-infra && ./demo.sh
 ```
 
-`./demo.sh` builds the repo and runs `blissful-infra demo`: it provisions a kind cluster with ArgoCD, Argo Rollouts and Gitea via Terraform, scaffolds a hono service, deploys it through the full GitOps loop and opens up the dashboard on [localhost:3002](http://localhost:3002). Rerun it after editing the service to watch a canary deploy at 10% waiting for your Promote. Everything is idempotent; tear down with `./demo.sh clean` (or `blissful-infra clean --all` to remove every tenant and the dashboard). Curious what it actually built? See [docs/demo-architecture.md](docs/demo-architecture.md).
+`./demo.sh` builds the repo and runs `blissful-infra demo`, a guided walkthrough: pick a **runtime** (kubernetes — kind + ArgoCD + Argo Rollouts canaries — or compose with the full Kafka/Postgres/gateway stack), a **backend** (hono or spring-boot), an optional **react-vite frontend** and optional **observability** (Jenkins + Grafana/Prometheus/Loki), then it builds and deploys the lot and opens the dashboard on [localhost:3002](http://localhost:3002). `--defaults` skips the prompts (kubernetes + hono). Rerun it after editing the service to watch a canary deploy at 10% waiting for your Promote. Everything is idempotent; tear down with `./demo.sh clean` (or `blissful-infra clean --all` to remove every tenant and the dashboard). Curious what it actually built? See [docs/demo-architecture.md](docs/demo-architecture.md).
 
 ## Golden path: Kubernetes + ArgoCD + canary deploys
 
@@ -154,7 +154,7 @@ Frontends go to Pages, `hono` backends go to Workers. The `hono` template keeps 
 | Hierarchy | `init`, `use`, `tenant create/list/status/up/down/remove`, `project create/list/status/up/down/remove`, `service add/remove/up/down/logs` |
 | Kubernetes | `cluster up/down/status`, `deploy`, `canary status/promote/abort/pause/resume/test`, `rollback` |
 | Cloud | `deploy <service> --target cloudflare` |
-| CI | `pipeline`, `jenkins`, `status` |
+| CI | `ci setup/push/status/logs` (Gitea Actions), `pipeline`, `status`, `jenkins` *(legacy, off by default)* |
 | Intelligence | `agent`, `analyze`, `suggest`, `generate`, `mcp`, `dashboard` |
 | Resilience | `perf`, `chaos`, `compare` *(deferred — still keyed to the pre-2.0 flat model)* |
 

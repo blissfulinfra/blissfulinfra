@@ -28,7 +28,7 @@ test.describe('project detail', () => {
   test('renders live service health, not the stale registry status', async ({ page }) => {
     await selectProject(page)
 
-    const health = page.getByTestId('service-health')
+    const health = page.getByTestId('service-connections')
     await expect(health).toContainText('api')
     await expect(health).toContainText('12ms')
     await expect(health).toContainText('web')

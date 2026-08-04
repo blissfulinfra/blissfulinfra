@@ -69,6 +69,7 @@ Use `_template.md` as a starting point.
 | [0020](./0020-local-kubernetes-runtime.md) | Local Kubernetes runtime: kind + Terraform + ArgoCD + Argo Rollouts + Gitea | Accepted | 2026-07-27 |
 | [0021](./0021-mcp-in-process-control-plane.md) | The MCP server is an in-process control plane, not an HTTP shim | Accepted | 2026-07-28 |
 | [0022](./0022-cloudflare-as-promotion-target.md) | Cloudflare is a promotion target, and Hono is the template that can reach it | Accepted | 2026-07-28 |
+| [0023](./0023-gitea-actions-replaces-jenkins.md) | Gitea Actions replaces Jenkins as the CI engine | Accepted | 2026-08-04 |
 
 When you add an ADR, append a row to this index in the same PR.
 

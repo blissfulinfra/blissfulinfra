@@ -10,6 +10,9 @@ logger.error = (msg, options) => {
 }
 
 export default defineConfig({
+  // Relative base: assets resolve under whatever path serves the app
+  // (dashboard preview proxy, gateway prefix), not just the origin root.
+  base: './',
   customLogger: logger,
   plugins: [react()],
   resolve: {

@@ -331,7 +331,7 @@ async function removeFromTenantProjectsList(tenantName: string, projectName: str
 
 // ─── project up / down ──────────────────────────────────────────────────────
 
-async function projectUpAction(tenantName: string, projectName: string): Promise<void> {
+export async function projectUpAction(tenantName: string, projectName: string): Promise<void> {
   const p = await getProject(tenantName, projectName);
   if (!p) {
     console.error(chalk.red(`Project '${projectName}' not found in tenant '${tenantName}'.`));
