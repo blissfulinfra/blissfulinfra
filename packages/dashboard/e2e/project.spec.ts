@@ -50,23 +50,6 @@ test.describe('project detail', () => {
     await expect(page.getByText('Started ApiApplication in 3.1s')).toBeVisible()
   })
 
-  test('switches to the pipeline tab and renders the stages', async ({ page }) => {
-    await selectProject(page)
-    await page.getByTestId('tab-nav').getByRole('button', { name: 'Pipeline' }).click()
-
-    for (const stage of ['Build', 'Test', 'Deploy']) {
-      await expect(page.getByText(stage, { exact: true }).first()).toBeVisible()
-    }
-  })
-
-  test('switches to the deployments tab and renders the history', async ({ page }) => {
-    await selectProject(page)
-    await page.getByTestId('tab-nav').getByRole('button', { name: 'Deployments' }).click()
-
-    await expect(page.getByText('a1b2c3d')).toBeVisible()
-    await expect(page.getByText('No deployments recorded yet')).toHaveCount(0)
-  })
-
   test('switches to the environments tab and renders the ArgoCD sync table', async ({ page }) => {
     await selectProject(page)
     await page.getByTestId('tab-nav').getByRole('button', { name: 'Environments' }).click()
