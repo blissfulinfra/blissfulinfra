@@ -332,6 +332,12 @@ export async function demoAction(opts: DemoOptions): Promise<void> {
   }
   console.log();
   console.log(chalk.dim("Tear down: ") + chalk.cyan("blissful-infra clean") + chalk.dim("   (or ./demo.sh clean; --all removes every tenant)"));
+  console.log();
+  console.log(chalk.dim("To enable the AI Chat agent in the dashboard:"));
+  console.log(chalk.cyan("  blissful-infra dashboard login") + chalk.dim("              OAuth via Claude Code / Claude Desktop"));
+  console.log(chalk.dim("  OR:"));
+  console.log(chalk.cyan("  export ANTHROPIC_API_KEY=sk-...") + chalk.dim("            set your API key, then restart dashboard"));
+  console.log();
   console.log(chalk.dim("How it fits together: docs/demo-architecture.md"));
   console.log();
 }

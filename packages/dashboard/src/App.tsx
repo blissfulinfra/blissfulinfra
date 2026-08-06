@@ -22,9 +22,6 @@ import {
   BarChart3,
   Network,
   TerminalSquare,
-  CheckCircle,
-  XCircle,
-    GitBranch,
   Server,
   ArrowUpCircle,
   RotateCcw,
@@ -47,8 +44,9 @@ import { Watcher } from './components/Watcher'
 // uses the backend LLM via /api/v1/projects/:name/agent for deeper analysis
 // with tool access.
 
-function CopyChip({ label, value }: { label: string; value: string }) {
+function CopyChip({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
   const [copied, setCopied] = useState(false)
+  const displayLabel = secret ? label.replace(/\/\s*[^\s]+$/, '/ ••••••') : label
   return (
     <button
       onClick={() => {
@@ -57,10 +55,10 @@ function CopyChip({ label, value }: { label: string; value: string }) {
           setTimeout(() => setCopied(false), 1200)
         }).catch(() => { /* clipboard unavailable */ })
       }}
-      title={`Copy: ${value}`}
+      title={secret ? 'Click to copy password' : `Copy: ${value}`}
       className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-700/70 hover:bg-gray-600 text-gray-300 cursor-pointer"
     >
-      {copied ? 'copied!' : label}
+      {copied ? 'copied!' : displayLabel}
     </button>
   )
 }
@@ -165,21 +163,6 @@ interface AlertsResponse {
     notifyOnConsole: boolean
     cooldownMs: number
   }
-}
-
-interface PipelineStage {
-  name: string
-  status: 'success' | 'failure' | 'running' | 'skipped' | 'pending'
-}
-
-interface PipelineData {
-  lastRun?: {
-    status: 'success' | 'failure' | 'running' | 'unknown'
-    duration?: number
-    timestamp?: string
-    stages: PipelineStage[]
-  }
-  jenkinsUrl?: string
 }
 
 interface EnvironmentInfo {
@@ -300,7 +283,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'watcher' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'deployments' | 'settings' | 'perf'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'watcher' | 'metrics' | 'plugins' | 'environments' | 'settings'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
 
   // Single source of truth for per-project health.
@@ -359,11 +342,6 @@ function App() {
   // Plugin state
   const [pluginStatuses, setPluginStatuses] = useState<PluginStatus[]>([])
 
-  // Pipeline state
-  const [pipelineData, setPipelineData] = useState<PipelineData | null>(null)
-  const [pipelineRunning, setPipelineRunning] = useState(false)
-  const [pipelineOptions, setPipelineOptions] = useState({ push: true, skipTests: false, skipScan: false })
-
   // Environments state
   const [environments, setEnvironments] = useState<EnvironmentInfo[]>([])
   const [deployingEnv, setDeployingEnv] = useState<string | null>(null)
@@ -380,9 +358,6 @@ function App() {
     message?: string
   }>>([])
   const [canaryActionPending, setCanaryActionPending] = useState<string | null>(null)
-
-  // Deployments state
-  const [deployments, setDeployments] = useState<any[]>([])
 
   // Settings state
   const [alertThresholds, setAlertThresholds] = useState<AlertThreshold[]>([])
@@ -455,15 +430,6 @@ function App() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [followLogs, setFollowLogs] = useState(true)
-
-  // Gatling perf state
-  const [gatlingStatus, setGatlingStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle')
-  const [gatlingLog, setGatlingLog] = useState<string[]>([])
-  const [gatlingResults, setGatlingResults] = useState<{
-    requests: number; requestsOk: number; requestsFailed: number
-    p50Ms: number; p75Ms: number; p95Ms: number; p99Ms: number
-    meanMs: number; rps: number; errorRate: number
-  } | null>(null)
 
   const logsContainerRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return
@@ -650,43 +616,6 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to fetch plugins:', e)
-    }
-  }
-
-
-  // --- Pipeline ---
-  const fetchPipeline = async () => {
-    if (!selectedProject) return
-    try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`))
-      if (res.ok) {
-        const data = await res.json()
-        setPipelineData(data)
-      }
-    } catch (e) {
-      console.error('Failed to fetch pipeline:', e)
-    }
-  }
-
-  const runPipeline = async () => {
-    if (!selectedProject) return
-    setPipelineRunning(true)
-    try {
-      const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/pipeline`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pipelineOptions),
-      })
-      if (res.ok) {
-        await fetchPipeline()
-      } else {
-        const data = await res.json()
-        setErrorModal({ title: 'Pipeline Failed', message: data.error || 'Unknown error' })
-      }
-    } catch (e) {
-      console.error('Failed to run pipeline:', e)
-    } finally {
-      setPipelineRunning(false)
     }
   }
 
@@ -975,14 +904,6 @@ function App() {
   }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
-    if (selectedProject && activeTab === 'pipeline') {
-      fetchPipeline()
-      const interval = setInterval(fetchPipeline, 10000)
-      return () => clearInterval(interval)
-    }
-  }, [selectedProject?.name, activeTab, currentTenant])
-
-  useEffect(() => {
     if (selectedProject && activeTab === 'environments') {
       fetchEnvironments()
       const interval = setInterval(fetchEnvironments, 10000)
@@ -997,23 +918,6 @@ function App() {
   }, [selectedProject?.name, activeTab, currentTenant])
 
   useEffect(() => {
-    if (selectedProject && activeTab === 'deployments') {
-      const fetchDeployments = async () => {
-        try {
-          const res = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/deployments`))
-          if (res.ok) {
-            const data = await res.json()
-            setDeployments(data.deployments || [])
-          }
-        } catch (e) {
-          console.error('Failed to fetch deployments:', e)
-        }
-      }
-      fetchDeployments()
-    }
-  }, [selectedProject?.name, activeTab, currentTenant])
-
-  useEffect(() => {
     if (followLogs) logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs, followLogs])
 
@@ -1022,65 +926,6 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Poll Gatling status + log while a run is in progress
-  useEffect(() => {
-    if (!selectedProject || activeTab !== 'perf' || gatlingStatus !== 'running') return
-    const poll = async () => {
-      try {
-        const [statusRes, logRes] = await Promise.all([
-          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`)),
-          fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`)),
-        ])
-        if (statusRes.ok) {
-          const s = await statusRes.json()
-          setGatlingStatus(s.status)
-          if (s.status === 'completed' || s.status === 'error') {
-            if (s.status === 'completed') {
-              const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
-              if (rRes.ok) setGatlingResults(await rRes.json())
-            }
-          }
-        }
-        if (logRes.ok) {
-          const l = await logRes.json()
-          setGatlingLog(l.lines)
-        }
-      } catch { /* ignore */ }
-    }
-    poll()
-    const interval = setInterval(poll, 2000)
-    return () => clearInterval(interval)
-  }, [selectedProject?.name, activeTab, gatlingStatus])
-
-  // Fetch latest results when switching to perf tab (if previous run completed)
-  useEffect(() => {
-    if (!selectedProject || activeTab !== 'perf') return
-    fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/status`))
-      .then(r => r.ok ? r.json() : null)
-      .then(async s => {
-        if (!s) return
-        setGatlingStatus(s.status)
-        if (s.status === 'completed') {
-          const rRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/results`))
-          if (rRes.ok) setGatlingResults(await rRes.json())
-        }
-        const lRes = await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/log`))
-        if (lRes.ok) setGatlingLog((await lRes.json()).lines)
-      })
-      .catch(() => {})
-  }, [selectedProject?.name, activeTab])
-
-  const handleRunGatling = async () => {
-    if (!selectedProject) return
-    setGatlingStatus('running')
-    setGatlingLog([])
-    setGatlingResults(null)
-    try {
-      await fetch(withTenant(`${API_BASE}/projects/${selectedProject.name}/perf/gatling/run`), { method: 'POST' })
-    } catch {
-      setGatlingStatus('error')
-    }
-  }
 
   const handleStart = async () => {
     if (!selectedProject) return
@@ -1419,15 +1264,6 @@ function App() {
       case 'Degraded': return 'bg-red-900 text-red-300'
       case 'Progressing': return 'bg-blue-900 text-blue-300'
       default: return 'bg-gray-800 text-gray-400'
-    }
-  }
-
-  const pipelineStageBorder = (status: string) => {
-    switch (status) {
-      case 'success': return 'border-green-500 bg-green-900/30'
-      case 'failure': return 'border-red-500 bg-red-900/30'
-      case 'running': return 'border-blue-500 bg-blue-900/30'
-      default: return 'border-gray-600 bg-gray-800/30'
     }
   }
 
@@ -1837,13 +1673,13 @@ function App() {
                       <span className="uppercase tracking-wider">cluster</span>
                       <a href={links.argocdUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ArgoCD</a>
                       {links.argocdPassword && (
-                        <CopyChip label={`ArgoCD login: admin / ${links.argocdPassword}`} value={links.argocdPassword} />
+                        <CopyChip label={`ArgoCD login: admin / ${links.argocdPassword}`} value={links.argocdPassword} secret />
                       )}
                       {links.giteaUrl && (
                         <a href={links.giteaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Gitea</a>
                       )}
                       {links.giteaUser && links.giteaPassword && (
-                        <CopyChip label={`Gitea login: ${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} />
+                        <CopyChip label={`Gitea login: ${links.giteaUser} / ${links.giteaPassword}`} value={links.giteaPassword} secret />
                       )}
                       {links.gitopsRepo && (
                         <span className="font-mono" title="The GitOps repo ArgoCD syncs from">repo: {links.gitopsRepo}</span>
@@ -1860,7 +1696,7 @@ function App() {
                         <a href={links.grafanaUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Grafana</a>
                       )}
                       {links.grafanaUser && links.grafanaPassword && (
-                        <CopyChip label={`Grafana login: ${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} />
+                        <CopyChip label={`Grafana login: ${links.grafanaUser} / ${links.grafanaPassword}`} value={links.grafanaPassword} secret />
                       )}
                       {links.prometheusUrl && (
                         <a href={links.prometheusUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Prometheus</a>
@@ -1937,17 +1773,6 @@ function App() {
                   )}
                 </button>
                 <button
-                  onClick={() => setActiveTab('pipeline')}
-                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                    activeTab === 'pipeline'
-                      ? 'border-blue-400 text-blue-400'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <GitBranch className="w-4 h-4" />
-                  Pipeline
-                </button>
-                <button
                   onClick={() => setActiveTab('environments')}
                   className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                     activeTab === 'environments'
@@ -1957,28 +1782,6 @@ function App() {
                 >
                   <Server className="w-4 h-4" />
                   Environments
-                </button>
-                <button
-                  onClick={() => setActiveTab('deployments')}
-                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                    activeTab === 'deployments'
-                      ? 'border-blue-400 text-blue-400'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <ArrowUpCircle className="w-4 h-4" />
-                  Deployments
-                </button>
-                <button
-                  onClick={() => setActiveTab('perf')}
-                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                    activeTab === 'perf'
-                      ? 'border-blue-400 text-blue-400'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <Activity className="w-4 h-4" />
-                  Perf
                 </button>
                 <button
                   onClick={() => setActiveTab('settings')}
@@ -2238,21 +2041,34 @@ function App() {
                   />
                 </div>
               ) : activeTab === 'metrics' ? (
-                <div className="flex-1 flex flex-col">
+                <div className="flex-1 flex flex-col items-center justify-center p-8">
                   {links.grafanaUrl ? (
-                    <iframe
-                      src={`${links.grafanaUrl}?kiosk=tv`}
-                      className="w-full h-full border-0"
-                      allow="fullscreen"
-                      title="Grafana Dashboard"
-                    />
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                      <div className="text-center">
-                        <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>Grafana is not running</p>
-                        <p className="text-sm mt-2">Start the tenant to view metrics</p>
+                    <div className="text-center space-y-6 max-w-sm">
+                      <div>
+                        <BarChart3 className="w-16 h-16 mx-auto text-blue-400 mb-4" />
+                        <h2 className="text-xl font-semibold text-white mb-2">Grafana Dashboards</h2>
+                        <p className="text-gray-400">View comprehensive metrics and monitoring dashboards</p>
                       </div>
+                      <a
+                        href={`${links.grafanaUrl}?kiosk=tv`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                      >
+                        Open Grafana Dashboard
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                      <div className="bg-gray-800 rounded-lg p-4 text-sm text-gray-300">
+                        <p className="font-medium text-gray-200 mb-1">Login credentials:</p>
+                        <p>Username: <code className="bg-gray-900 px-2 py-1 rounded">admin</code></p>
+                        <p>Password: <code className="bg-gray-900 px-2 py-1 rounded">admin</code></p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50 text-gray-600" />
+                      <p className="text-gray-400 font-medium">Grafana is not running</p>
+                      <p className="text-sm text-gray-500 mt-2">Start the tenant to view metrics</p>
                     </div>
                   )}
                 </div>
@@ -2295,118 +2111,6 @@ function App() {
                           </div>
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
-              ) : activeTab === 'pipeline' ? (
-                <div className="flex-1 overflow-auto p-6">
-                  {(pipelineData?.lastRun || pipelineData?.jenkinsUrl) ? (
-                    <div className="space-y-6">
-                      {/* Stage Visualization */}
-                      <div className="bg-gray-800 rounded-lg p-4">
-                        <h3 className="text-sm font-semibold text-gray-300 mb-4">Pipeline Stages</h3>
-                        <div className="flex items-center gap-2 overflow-x-auto">
-                          {(pipelineData.lastRun?.stages && pipelineData.lastRun.stages.length > 0
-                            ? pipelineData.lastRun.stages
-                            : [
-                                { name: 'Build', status: 'pending' as const },
-                                { name: 'Test', status: 'pending' as const },
-                                { name: 'Containerize', status: 'pending' as const },
-                                { name: 'Scan', status: 'pending' as const },
-                                { name: 'Deploy', status: 'pending' as const },
-                              ]
-                          ).map((stage, i, arr) => (
-                            <div key={stage.name} className="flex items-center gap-2">
-                              <div className={`border-2 rounded-lg px-4 py-3 min-w-[120px] text-center ${pipelineStageBorder(stage.status)}`}>
-                                <div className="text-sm font-medium">{stage.name}</div>
-                                <div className="text-xs text-gray-400 mt-1 capitalize">{stage.status}</div>
-                              </div>
-                              {i < arr.length - 1 && <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Last Run Info */}
-                      {pipelineData.lastRun ? (
-                        <div className="bg-gray-800 rounded-lg p-4">
-                          <h3 className="text-sm font-semibold text-gray-300 mb-3">Last Run</h3>
-                          <div className="grid grid-cols-3 gap-4">
-                            <div>
-                              <div className="text-xs text-gray-500">Status</div>
-                              <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
-                                pipelineData.lastRun.status === 'success' ? 'bg-green-900 text-green-300' :
-                                pipelineData.lastRun.status === 'failure' ? 'bg-red-900 text-red-300' :
-                                pipelineData.lastRun.status === 'running' ? 'bg-blue-900 text-blue-300' :
-                                'bg-gray-700 text-gray-400'
-                              }`}>
-                                {pipelineData.lastRun.status}
-                              </span>
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-500">Duration</div>
-                              <div className="text-sm mt-1">{pipelineData.lastRun.duration ? `${pipelineData.lastRun.duration}s` : '-'}</div>
-                            </div>
-                            <div>
-                              <div className="text-xs text-gray-500">Timestamp</div>
-                              <div className="text-sm mt-1">{pipelineData.lastRun.timestamp ? new Date(pipelineData.lastRun.timestamp).toLocaleString() : '-'}</div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-800 rounded-lg p-4 text-center text-gray-500 text-sm">
-                          No builds yet — run the pipeline to see results
-                        </div>
-                      )}
-
-                      {/* Run Pipeline */}
-                      <div className="bg-gray-800 rounded-lg p-4">
-                        <h3 className="text-sm font-semibold text-gray-300 mb-3">Run Pipeline</h3>
-                        <div className="flex flex-wrap items-center gap-4 mb-4">
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input type="checkbox" checked={pipelineOptions.push} onChange={(e) => setPipelineOptions(p => ({ ...p, push: e.target.checked }))} className="rounded" />
-                            Push image
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input type="checkbox" checked={pipelineOptions.skipTests} onChange={(e) => setPipelineOptions(p => ({ ...p, skipTests: e.target.checked }))} className="rounded" />
-                            Skip tests
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-gray-300">
-                            <input type="checkbox" checked={pipelineOptions.skipScan} onChange={(e) => setPipelineOptions(p => ({ ...p, skipScan: e.target.checked }))} className="rounded" />
-                            Skip scan
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={runPipeline}
-                            disabled={pipelineRunning}
-                            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
-                          >
-                            {pipelineRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                            {pipelineRunning ? 'Running...' : 'Run Pipeline'}
-                          </button>
-                          {pipelineData?.jenkinsUrl && (
-                            <a href={pipelineData.jenkinsUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline flex items-center gap-1">
-                              <ExternalLink className="w-3 h-3" /> Jenkins
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-gray-500 min-h-[300px]">
-                      <div className="text-center">
-                        <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>No Jenkinsfile found</p>
-                        <button
-                          onClick={runPipeline}
-                          disabled={pipelineRunning}
-                          className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 mx-auto"
-                        >
-                          {pipelineRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                          {pipelineRunning ? 'Running...' : 'Run Pipeline'}
-                        </button>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -2545,190 +2249,6 @@ function App() {
                       </div>
                     </div>
                   )}
-                </div>
-              ) : activeTab === 'deployments' ? (
-                <div className="flex-1 overflow-auto p-6 space-y-4">
-                  {deployments.length === 0 ? (
-                    <div className="flex items-center justify-center min-h-[200px] text-gray-500 text-sm">
-                      No deployments recorded yet
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {deployments.map((d: any) => {
-                        const shortSha = d.gitSha ? d.gitSha.slice(0, 7) : 'unknown'
-                        const statusColor =
-                          d.status === 'success' ? 'bg-green-900 text-green-300' :
-                          d.status === 'failed' ? 'bg-red-900 text-red-300' :
-                          'bg-blue-900 text-blue-300'
-                        const hasDelta = d.latencyDelta !== undefined && d.latencyDelta !== null
-                        const deltaColor = d.regression
-                          ? 'bg-red-900 text-red-300'
-                          : hasDelta && d.latencyDelta < 0
-                            ? 'bg-green-900 text-green-300'
-                            : 'bg-gray-700 text-gray-400'
-                        return (
-                          <div
-                            key={d.id}
-                            className="bg-gray-800 rounded-lg border border-gray-700 p-4 space-y-2"
-                          >
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <span className="font-mono text-sm text-blue-400">{shortSha}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusColor}`}>
-                                {d.status}
-                              </span>
-                              {d.strategy && (
-                                <span className="text-xs px-2 py-0.5 rounded font-medium bg-purple-900 text-purple-300">
-                                  {d.strategy}
-                                </span>
-                              )}
-                              {d.imageTag && d.imageTag !== d.gitSha && (
-                                <span className="text-xs text-gray-500 font-mono">tag {d.imageTag}</span>
-                              )}
-                              {d.environment && (
-                                <span className="text-xs text-gray-500">ns {d.environment}</span>
-                              )}
-                              <span className="text-xs text-gray-500 ml-auto">
-                                {new Date(d.timestamp).toLocaleString()}
-                              </span>
-                            </div>
-                            {hasDelta && (
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs px-2 py-0.5 rounded font-medium ${deltaColor}`}>
-                                  {d.latencyDelta > 0 ? '+' : ''}{d.latencyDelta.toFixed(1)}ms latency delta
-                                  {d.regression ? ' ⚠ regression' : ''}
-                                </span>
-                                {d.latencyBefore !== undefined && (
-                                  <span className="text-xs text-gray-500">
-                                    P95 before: {d.latencyBefore.toFixed(1)}ms → after: {d.latencyAfter?.toFixed(1)}ms
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {d.regression && d.jaegerTraceUrl && (
-                              <div>
-                                <a
-                                  href={d.jaegerTraceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors w-fit"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  View Traces
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : activeTab === 'perf' ? (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  {/* Toolbar */}
-                  <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-4">
-                    <button
-                      onClick={handleRunGatling}
-                      disabled={gatlingStatus === 'running'}
-                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      {gatlingStatus === 'running' ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Running...</>
-                      ) : (
-                        <><Play className="w-4 h-4" /> Run Load Test</>
-                      )}
-                    </button>
-                    <div className="flex items-center gap-2 text-sm">
-                      {gatlingStatus === 'idle' && <span className="text-gray-500">No run yet</span>}
-                      {gatlingStatus === 'running' && <span className="text-yellow-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse inline-block" /> Running...</span>}
-                      {gatlingStatus === 'completed' && <span className="text-green-400 flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Completed</span>}
-                      {gatlingStatus === 'error' && <span className="text-red-400 flex items-center gap-1"><XCircle className="w-4 h-4" /> Failed</span>}
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-auto p-4 space-y-4">
-                    {/* Results cards */}
-                    {gatlingResults && (
-                      <>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-xs text-gray-500 mb-1">Total Requests</div>
-                            <div className="text-2xl font-bold">{gatlingResults.requests.toLocaleString()}</div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              <span className="text-green-400">{gatlingResults.requestsOk.toLocaleString()} ok</span>
-                              {gatlingResults.requestsFailed > 0 && <span className="text-red-400 ml-2">{gatlingResults.requestsFailed} failed</span>}
-                            </div>
-                          </div>
-                          <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-xs text-gray-500 mb-1">Requests / sec</div>
-                            <div className="text-2xl font-bold">{gatlingResults.rps.toFixed(1)}</div>
-                          </div>
-                          <div className="bg-gray-800 rounded-lg p-4">
-                            <div className="text-xs text-gray-500 mb-1">Error Rate</div>
-                            <div className={`text-2xl font-bold ${gatlingResults.errorRate > 1 ? 'text-red-400' : 'text-green-400'}`}>
-                              {gatlingResults.errorRate.toFixed(2)}%
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Percentile bars */}
-                        <div className="bg-gray-800 rounded-lg p-4">
-                          <div className="text-sm font-medium text-gray-300 mb-3">Response Time Percentiles</div>
-                          <div className="space-y-3">
-                            {[
-                              { label: 'p50', ms: gatlingResults.p50Ms },
-                              { label: 'p75', ms: gatlingResults.p75Ms },
-                              { label: 'p95', ms: gatlingResults.p95Ms },
-                              { label: 'p99', ms: gatlingResults.p99Ms },
-                            ].map(({ label, ms }) => {
-                              const max = gatlingResults.p99Ms || 1
-                              const pct = Math.min(100, (ms / max) * 100)
-                              const color = ms < 200 ? 'bg-green-500' : ms < 500 ? 'bg-yellow-500' : 'bg-red-500'
-                              return (
-                                <div key={label} className="flex items-center gap-3 text-sm">
-                                  <span className="w-8 text-gray-400 font-mono text-xs">{label}</span>
-                                  <div className="flex-1 bg-gray-700 rounded-full h-2">
-                                    <div className={`${color} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
-                                  </div>
-                                  <span className="w-16 text-right text-gray-300 font-mono text-xs">{ms}ms</span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                          <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500">
-                            Mean: {gatlingResults.meanMs}ms
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Live log */}
-                    {(gatlingStatus === 'running' || gatlingLog.length > 0) && (
-                      <div className="bg-gray-800 rounded-lg p-3">
-                        <div className="text-xs text-gray-500 mb-2 font-medium">
-                          {gatlingStatus === 'running' ? 'Live output' : 'Last run output'}
-                        </div>
-                        <div className="font-mono text-xs space-y-px max-h-64 overflow-auto">
-                          {gatlingLog.length === 0 && gatlingStatus === 'running' && (
-                            <div className="text-gray-600">Starting Gatling...</div>
-                          )}
-                          {gatlingLog.map((line, i) => (
-                            <div key={i} className={`leading-5 ${line.includes('ERROR') || line.includes('FAILED') ? 'text-red-400' : line.includes('OK') || line.includes('success') ? 'text-green-400' : 'text-gray-400'}`}>
-                              {line}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {gatlingStatus === 'idle' && !gatlingResults && (
-                      <div className="text-center text-gray-600 py-12">
-                        <Activity className="w-12 h-12 mx-auto mb-3 opacity-40" />
-                        <p>Click <span className="text-gray-400">Run Load Test</span> to start a Gatling simulation</p>
-                        <p className="text-sm mt-1">Requires the <span className="text-indigo-400">gatling</span> plugin to be enabled for this project</p>
-                      </div>
-                    )}
-                  </div>
                 </div>
               ) : activeTab === 'settings' ? (
                 <div className="flex-1 overflow-auto p-6 space-y-6">

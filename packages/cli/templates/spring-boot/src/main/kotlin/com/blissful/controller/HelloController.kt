@@ -46,6 +46,12 @@ data class ChatMessageDto(
 )
 
 data class ChatHistoryResponse(val messages: List<ChatMessageDto>, val total: Int)
+
+data class SaveChatMessageRequest(
+    val author: String,
+    val body: String,
+    val sessionId: String? = null
+)
 {{/IF_POSTGRES}}
 
 @RestController
@@ -120,6 +126,22 @@ class HelloController(
                 )
             },
             total = messages.size
+        )
+    }
+
+    @PostMapping("/messages")
+    fun saveMessage(@RequestBody request: SaveChatMessageRequest): ChatMessageDto {
+        val msg = chatMessageService.save(
+            sessionId = request.sessionId ?: "",
+            author = request.author,
+            body = request.body
+        )
+        return ChatMessageDto(
+            id = msg.id!!,
+            sessionId = msg.sessionId,
+            author = msg.author,
+            body = msg.body,
+            createdAt = msg.createdAt.toString()
         )
     }
 

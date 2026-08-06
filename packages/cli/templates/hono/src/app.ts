@@ -34,6 +34,36 @@ export function createApp() {
     return c.json({ greeting: `Hello, ${name}` });
   });
 
+{{#IF_POSTGRES}}
+  // Chat message persistence (demo frontend)
+  // In production, integrate with your real database
+  const chatMessages: Array<{ id: number; author: string; body: string; createdAt: string; sessionId: string }> = [];
+  let messageId = 1;
+
+  app.get("/api/messages", c => {
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 200);
+    const recent = chatMessages.slice(-limit);
+    return c.json({ messages: recent, total: recent.length });
+  });
+
+  app.post("/api/messages", async c => {
+    try {
+      const body = await c.req.json() as { author: string; body: string; sessionId?: string };
+      const msg = {
+        id: messageId++,
+        author: body.author || "Anonymous",
+        body: body.body,
+        sessionId: body.sessionId || "",
+        createdAt: new Date().toISOString(),
+      };
+      chatMessages.push(msg);
+      return c.json(msg);
+    } catch (e) {
+      return c.json({ error: "Failed to save message" }, 400);
+    }
+  });
+{{/IF_POSTGRES}}
+
   return app;
 }
 
